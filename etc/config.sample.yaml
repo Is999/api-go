@@ -1,0 +1,142 @@
+# gozero-api 生产配置模板。保留占位密钥时会启动失败，部署前必须替换。
+# admin 管理后台和 cron 不在本服务启动。
+
+Name: "gozero_api"
+Host: "0.0.0.0"
+Port: 8890
+Mode: "pro"
+Timeout: 30000
+MaxBytes: 10485760
+
+# 站点/应用 ID，用于 Redis Key 命名空间。
+app_id: "1"
+# 应用密钥，用于安全链路扩展；生产环境请替换为强随机字符串。
+app_key: "replace-with-strong-app-key"
+# 当前实例 ID；为空时使用主机名，建议容器环境注入 Pod 名。
+instance_id: ""
+
+# JWT 密钥，请替换为强随机字符串，并保证多实例配置一致。
+jwt_secret: "replace-with-strong-secret"
+# JWT 过期时间，单位秒。
+jwt_expires_in: 86400
+
+# 配置热加载；监听到运行期配置变化后会刷新内存快照。
+hot_reload:
+  enabled: false
+  check_interval_seconds: 5
+
+# 可选外部配置入口，留空时只读取 -f 指定的主配置。
+config_files:
+  runtime: ""
+
+# 前台认证配置。
+auth:
+  # 是否开放注册接口，生产环境默认关闭。
+  register_enabled: false
+  # JWT issuer。
+  issuer: "gozero_api"
+  # Redis 会话 TTL；<=0 或超过 jwt_expires_in 时使用 jwt_expires_in。
+  session_ttl_seconds: 86400
+  # 用户资料缓存 TTL。
+  profile_cache_ttl_seconds: 300
+  # 密码最小长度。
+  password_min_length: 8
+  # 登录入口限流，按 IP 和用户名分别计数。
+  login_rate_limit:
+    enabled: true
+    window_seconds: 60
+    max_attempts: 5
+    lock_seconds: 300
+  # 注册入口限流，按 IP 计数。
+  register_rate_limit:
+    enabled: true
+    window_seconds: 60
+    max_attempts: 3
+    lock_seconds: 600
+
+# 日志输出配置。
+log:
+  level: "info"
+  mode: "file"
+  path: "logs"
+  encoding: "json"
+  rotation: "size"
+  max_size: 100
+  max_backups: 7
+  keep_days: 14
+  compress: true
+
+# 可观测性配置。
+observability:
+  service_name: "gozero_api"
+  environment: "pro"
+  trace_enabled: true
+  otlp_protocol: "grpc"
+  otlp_endpoint: ""
+  otlp_insecure: true
+  sample_ratio: 1
+  slow_sql_ms: 500
+  redis_slow_ms: 100
+  log_body_max_bytes: 4096
+
+# 签名验签和加解密配置。未配置秘钥时兼容普通请求；配置后启动期会校验版本路由和 AES/RSA 材料。
+security:
+  secret_key: {}
+# 启用示例：
+# security:
+#   secret_key:
+#     key_version: "v1"
+#     sign_status: 1
+#     crypto_status: 1
+#     # 生产启用灰度时必须配置 gray_salt，并保证 stable/gray 版本均存在。
+#     # stable_version: "v1"
+#     # gray_version: "v2"
+#     # gray_percent: 10
+#     # gray_salt: "replace-with-random-gray-salt"
+#     aes_key_ref: "/run/secrets/gozero-api/aes_key"
+#     aes_iv_ref: "/run/secrets/gozero-api/aes_iv"
+#     rsa_public_key_user_ref: "/run/secrets/gozero-api/rsa_public_key_user.pem"
+#     rsa_private_key_server_ref: "/run/secrets/gozero-api/rsa_private_key_server.pem"
+
+# 通用收集器，默认关闭；轻量事件可用 sync，异步聚合可用 redis。
+collector:
+  enabled: false
+  transport: "auto"
+  redis:
+    enabled: false
+    stream: "gozero_api:collector:events"
+    consumer: "gozero_api"
+    max_len: 100000
+
+# 运维级接口保护；配置热加载接口只允许内网来源并必须携带 X-Ops-Token。
+ops:
+  # 生产环境必须通过密钥管理注入强随机令牌，留空会拒绝访问配置热加载接口。
+  config_reload_token: ""
+  # 可选内网 IP 或 CIDR 白名单，留空表示允许本机、私有地址和链路本地地址。
+  config_reload_allowed_ips: []
+
+# MySQL 主库配置。
+mysql:
+  write_data_source: "user:password@tcp(127.0.0.1:3306)/gozero_api?charset=utf8mb4&parseTime=true&loc=Local"
+  read_data_sources: []
+  max_open_conns: 50
+  max_idle_conns: 20
+  conn_max_lifetime: 300
+  debug: false
+
+# 命名扩展库示例；默认不配置。
+# site_mysql:
+#   user_archive:
+#     write_data_source: "user:password@tcp(127.0.0.1:3306)/gozero_api_archive?charset=utf8mb4&parseTime=true&loc=Local"
+#     read_data_sources: []
+
+# Redis 配置，多实例共享同一 Redis 以保证登录态一致。
+redis:
+  type: "single"
+  addrs:
+    - "127.0.0.1:6379"
+  password: ""
+  db: 0
+  pool_size: 50
+  tls: false
+  tls_insecure_skip_verify: false

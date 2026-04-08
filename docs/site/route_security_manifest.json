@@ -1,0 +1,185 @@
+{
+  "version": 1,
+  "routes": [
+    {
+      "alias": "health.live",
+      "method": "GET",
+      "path": "/api/health",
+      "access": "public",
+      "chain": "none",
+      "describe": "存活检查",
+      "requestSign": [],
+      "requestCipher": [],
+      "responseSign": [],
+      "responseCipher": [],
+      "documentPath": "docs/site/接口文档/前台系统/健康检查接口.md"
+    },
+    {
+      "alias": "health.live",
+      "method": "GET",
+      "path": "/api/live",
+      "access": "public",
+      "chain": "none",
+      "describe": "存活检查",
+      "requestSign": [],
+      "requestCipher": [],
+      "responseSign": [],
+      "responseCipher": [],
+      "documentPath": "docs/site/接口文档/前台系统/健康检查接口.md"
+    },
+    {
+      "alias": "health.ready",
+      "method": "GET",
+      "path": "/api/ready",
+      "access": "public",
+      "chain": "none",
+      "describe": "就绪检查",
+      "requestSign": [],
+      "requestCipher": [],
+      "responseSign": [],
+      "responseCipher": [],
+      "documentPath": "docs/site/接口文档/前台系统/健康检查接口.md"
+    },
+    {
+      "alias": "health.metrics",
+      "method": "GET",
+      "path": "/api/metrics",
+      "access": "public",
+      "chain": "none",
+      "describe": "指标抓取",
+      "requestSign": [],
+      "requestCipher": [],
+      "responseSign": [],
+      "responseCipher": [],
+      "documentPath": "docs/site/接口文档/前台系统/健康检查接口.md"
+    },
+    {
+      "alias": "auth.register",
+      "method": "POST",
+      "path": "/api/auth/register",
+      "access": "public",
+      "chain": "public",
+      "describe": "前台用户注册",
+      "requestSign": [
+        "username",
+        "password",
+        "nickname",
+        "email",
+        "phone"
+      ],
+      "requestCipher": [
+        "password",
+        "email",
+        "phone"
+      ],
+      "responseSign": [
+        "token",
+        "expiresAt"
+      ],
+      "responseCipher": [
+        "token",
+        "user.email",
+        "user.phone"
+      ],
+      "documentPath": "docs/site/接口文档/前台系统/认证接口.md"
+    },
+    {
+      "alias": "auth.login",
+      "method": "POST",
+      "path": "/api/auth/login",
+      "access": "public",
+      "chain": "public",
+      "describe": "前台用户登录",
+      "requestSign": [
+        "username",
+        "password"
+      ],
+      "requestCipher": [
+        "password"
+      ],
+      "responseSign": [
+        "token",
+        "expiresAt"
+      ],
+      "responseCipher": [
+        "token",
+        "user.email",
+        "user.phone"
+      ],
+      "documentPath": "docs/site/接口文档/前台系统/认证接口.md"
+    },
+    {
+      "alias": "auth.refresh",
+      "method": "POST",
+      "path": "/api/auth/refresh",
+      "access": "auth",
+      "chain": "auth",
+      "describe": "刷新访问令牌",
+      "requestSign": [],
+      "requestCipher": [],
+      "responseSign": [
+        "token",
+        "expiresAt"
+      ],
+      "responseCipher": [
+        "token"
+      ],
+      "documentPath": "docs/site/接口文档/前台系统/认证接口.md"
+    },
+    {
+      "alias": "auth.logout",
+      "method": "POST",
+      "path": "/api/auth/logout",
+      "access": "auth",
+      "chain": "auth",
+      "describe": "前台用户退出登录",
+      "requestSign": [],
+      "requestCipher": [],
+      "responseSign": [],
+      "responseCipher": [],
+      "documentPath": "docs/site/接口文档/前台系统/认证接口.md"
+    },
+    {
+      "alias": "user.profile",
+      "method": "GET",
+      "path": "/api/user/profile",
+      "access": "auth",
+      "chain": "auth",
+      "describe": "获取当前用户资料",
+      "requestSign": [],
+      "requestCipher": [],
+      "responseSign": [],
+      "responseCipher": [
+        "email",
+        "phone"
+      ],
+      "documentPath": "docs/site/接口文档/前台系统/用户接口.md"
+    },
+    {
+      "alias": "system.config_reload.status",
+      "method": "GET",
+      "path": "/internal/system/config-reload/status",
+      "access": "internal",
+      "chain": "internal",
+      "describe": "内网查询配置热加载状态",
+      "requestSign": [],
+      "requestCipher": [],
+      "responseSign": [],
+      "responseCipher": [],
+      "documentPath": "docs/site/接口文档/前台系统/系统接口.md"
+    },
+    {
+      "alias": "system.config_reload.run",
+      "method": "POST",
+      "path": "/internal/system/config-reload/run",
+      "access": "internal",
+      "chain": "internal",
+      "describe": "内网手动触发配置热加载",
+      "requestSign": [],
+      "requestCipher": [],
+      "responseSign": [],
+      "responseCipher": [],
+      "documentPath": "docs/site/接口文档/前台系统/系统接口.md"
+    }
+  ]
+}

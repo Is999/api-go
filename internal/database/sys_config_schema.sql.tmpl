@@ -1,0 +1,22 @@
+-- 代码资产：创建运行期系统配置表，表名固定为 sys_config。
+-- SQL 方言：MySQL 8.0 InnoDB。
+-- 调用方：internal/database.SysConfigSchemaSQL 通过 go:embed 加载，并先剥离本说明再返回可执行 SQL。
+-- 参数来源：无动态参数；DDL 固定创建 sys_config 表。
+-- 安全边界：仅用于初始化或迁移；上线前确认 uuid 唯一索引不会与历史配置冲突。
+CREATE TABLE IF NOT EXISTS `sys_config` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `uuid` varchar(100) NOT NULL COMMENT '配置唯一标识,命名规则(驼峰)：项目名+key',
+  `title` varchar(100) NOT NULL DEFAULT '' COMMENT '配置标题',
+  `type` tinyint unsigned NOT NULL DEFAULT 1 COMMENT '展示和校验类型：0 分组; 1 Object; 2 Array; 3 String; 4 Integer; 5 Float; 6 Boolean',
+  `value` json NOT NULL COMMENT '配置值(JSON 格式，可为 string/number/bool/array/object)',
+  `example` json NOT NULL COMMENT '配置示例',
+  `remark` varchar(255) NOT NULL DEFAULT '' COMMENT '备注',
+  `page` varchar(200) NOT NULL DEFAULT '' COMMENT '配置项所属页面路径',
+  `pid` int unsigned NOT NULL DEFAULT 0 COMMENT '上级ID',
+  `pids` varchar(255) NOT NULL DEFAULT '' COMMENT '上级ID族谱',
+  `version` int unsigned NOT NULL DEFAULT 0 COMMENT '版本号',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_uuid` (`uuid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='参数配置表';

@@ -1,0 +1,139 @@
+# gozero-api DNMP 本地配置示例。
+
+# go-zero HTTP 基础配置。
+Name: "gozero_api"
+Host: "0.0.0.0"
+Port: 8890
+Mode: "dev"
+Timeout: 30000
+MaxBytes: 10485760
+
+# 站点/应用 ID，用于 Redis Key 命名空间。
+app_id: "1"
+# 应用密钥仅供本地示例使用，部署前必须替换。
+app_key: "dnmp-local-app-key-please-change"
+# 当前实例 ID，本地固定便于日志排查。
+instance_id: "local-api-1"
+# JWT 密钥仅供本地示例使用，部署前必须替换。
+jwt_secret: "please-change-this-jwt-secret"
+# JWT 过期时间，单位秒。
+jwt_expires_in: 86400
+
+# 本地默认开启配置热加载，修改运行期配置后无需重启即可生效。
+hot_reload:
+  enabled: true
+  check_interval_seconds: 5
+
+# 可选外部配置入口，留空时只读取 -f 指定的主配置。
+config_files:
+  runtime: ""
+
+# 前台认证配置。
+auth:
+  # 是否开放注册接口，本地默认开启。
+  register_enabled: true
+  # JWT issuer。
+  issuer: "gozero_api"
+  # Redis 会话 TTL；<=0 或超过 jwt_expires_in 时使用 jwt_expires_in。
+  session_ttl_seconds: 86400
+  # 用户资料缓存 TTL。
+  profile_cache_ttl_seconds: 300
+  # 密码最小长度。
+  password_min_length: 8
+  # 登录入口限流，按 IP 和用户名分别计数。
+  login_rate_limit:
+    enabled: true
+    window_seconds: 60
+    max_attempts: 10
+    lock_seconds: 120
+  # 注册入口限流，按 IP 计数。
+  register_rate_limit:
+    enabled: true
+    window_seconds: 60
+    max_attempts: 5
+    lock_seconds: 180
+
+# 本地日志配置。
+log:
+  level: "debug"
+  mode: "console"
+  encoding: "plain"
+
+# 可观测性配置。
+observability:
+  service_name: "gozero_api"
+  environment: "dev"
+  trace_enabled: true
+  otlp_protocol: "grpc"
+  otlp_endpoint: ""
+  otlp_insecure: true
+  sample_ratio: 1
+  slow_sql_ms: 300
+  redis_slow_ms: 80
+  log_body_max_bytes: 4096
+
+# 签名验签和加解密配置。未配置秘钥时兼容普通请求；配置后启动期会校验版本路由和 AES/RSA 材料。
+security:
+  secret_key: {}
+# 启用示例：
+# security:
+#   secret_key:
+#     key_version: "v1"
+#     sign_status: 1
+#     crypto_status: 1
+#     # stable_version: "v1"
+#     # gray_version: "v2"
+#     # gray_percent: 10
+#     # gray_salt: "local-gray-salt"
+#     aes_key_ref: "./etc/secrets/aes_key"
+#     aes_iv_ref: "./etc/secrets/aes_iv"
+#     rsa_public_key_user_ref: "./etc/secrets/rsa_public_key_user.pem"
+#     rsa_private_key_server_ref: "./etc/secrets/rsa_private_key_server.pem"
+
+# 通用收集器，默认关闭；本地调试可改为 sync。
+collector:
+  enabled: false
+  transport: "auto"
+  redis:
+    enabled: false
+    stream: "gozero_api:collector:events"
+    consumer: "gozero_api-local"
+    max_len: 10000
+
+# 运维级接口保护；本地调试配置热加载接口只允许本机来源并携带 X-Ops-Token。
+ops:
+  config_reload_token: "dnmp-local-ops-token"
+  config_reload_allowed_ips:
+    - "127.0.0.1"
+    - "::1"
+
+# 本地 MySQL 读写分离配置。
+mysql:
+  write_data_source: "root:password@tcp(127.0.0.1:3307)/gozero_api?charset=utf8mb4&parseTime=true&loc=Local"
+  read_data_sources:
+    - "root:password@tcp(127.0.0.1:3308)/gozero_api?charset=utf8mb4&parseTime=true&loc=Local"
+  max_open_conns: 20
+  max_idle_conns: 10
+  conn_max_lifetime: 300
+  debug: false
+
+# 本地 Redis Cluster 配置。
+redis:
+  type: "cluster"
+  addrs:
+    - "127.0.0.1:7001"
+    - "127.0.0.1:7002"
+    - "127.0.0.1:7003"
+    - "127.0.0.1:7004"
+    - "127.0.0.1:7005"
+    - "127.0.0.1:7006"
+  addr_map:
+    redis-cluster-7001: "127.0.0.1"
+    redis-cluster-7002: "127.0.0.1"
+    redis-cluster-7003: "127.0.0.1"
+    redis-cluster-7004: "127.0.0.1"
+    redis-cluster-7005: "127.0.0.1"
+    redis-cluster-7006: "127.0.0.1"
+  password: ""
+  db: 0
+  pool_size: 20

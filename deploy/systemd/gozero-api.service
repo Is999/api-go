@@ -1,0 +1,19 @@
+[Unit]
+Description=gozero-api
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=gozero-api
+Group=gozero-api
+WorkingDirectory=/opt/gozero-api
+ExecStart=/opt/gozero-api/bin/gozero-api -f /etc/gozero-api/config.yaml
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+LimitNOFILE=65535
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
