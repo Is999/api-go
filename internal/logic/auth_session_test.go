@@ -236,7 +236,7 @@ func newAuthLogicForSession(client redis.UniversalClient, authCfg config.AuthCon
 }
 
 func sessionKeysForUser(keys []string, userID int64) []string {
-	prefix := "api:user:session:site-a:" + strconv.FormatInt(userID, 10) + ":"
+	prefix := "app:site-a:user:session:" + strconv.FormatInt(userID, 10) + ":"
 	result := make([]string, 0, len(keys))
 	for _, key := range keys {
 		if strings.HasPrefix(key, prefix) {

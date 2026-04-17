@@ -138,7 +138,7 @@ func (l *SysConfigLogic) loadSysConfigThroughCache(uuid string) (*sysConfigCache
 	}
 	cacheKey := l.sysConfigCacheKey(uuid)
 	var entry *sysConfigCacheEntry
-	err := redislock.WithLock(l.Context(), l.Redis(), cacheLockKey(cacheKey), cacheRebuildLockTTL, func(ctx context.Context) error {
+	err := redislock.WithLock(l.Context(), l.Redis(), l.cacheLockKey(cacheKey), cacheRebuildLockTTL, func(ctx context.Context) error {
 		// 拿到锁后再读一次缓存，避免等待锁期间其它实例已经完成回源。
 		cached, err := l.readSysConfigCache(uuid)
 		if err == nil {
@@ -282,13 +282,7 @@ func (l *SysConfigLogic) writeSysConfigHash(ctx context.Context, key string, val
 
 // sysConfigCacheKey 生成当前站点下的系统配置缓存 Key。
 func (l *SysConfigLogic) sysConfigCacheKey(uuid string) string {
-	appID := "default"
-	if l != nil && l.svc != nil {
-		if cfgAppID := strings.TrimSpace(l.svc.CurrentConfig().AppID); cfgAppID != "" {
-			appID = cfgAppID
-		}
-	}
-	return fmt.Sprintf(keys.SysConfigUUID, appID, strings.TrimSpace(uuid))
+	return l.AppRedisKey(fmt.Sprintf(keys.SysConfigUUID, strings.TrimSpace(uuid)))
 }
 
 // sysConfigModelToCacheEntry 把系统配置模型转换为缓存快照。

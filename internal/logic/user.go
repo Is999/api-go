@@ -3,7 +3,6 @@ package logic
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	codes "gozero_api/common/codes"
@@ -132,12 +131,7 @@ func (l *UserLogic) DeleteUserProfileCache(userID int64) error {
 
 // userProfileKey 生成当前站点下的用户资料缓存 Key。
 func (l *UserLogic) userProfileKey(userID int64) string {
-	cfg := l.svc.CurrentConfig()
-	appID := strings.TrimSpace(cfg.AppID)
-	if appID == "" {
-		appID = "default"
-	}
-	return fmt.Sprintf(keys.UserProfile, appID, userID)
+	return l.AppRedisKey(fmt.Sprintf(keys.UserProfile, userID))
 }
 
 // profileCacheTTL 返回用户资料缓存 TTL，未配置时使用 5 分钟。

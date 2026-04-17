@@ -389,14 +389,12 @@ func (l *AuthLogic) generateJWT(user *model.APIUser, jti string) (string, int64,
 
 // userSessionKey 生成当前站点下的用户会话 Redis Key。
 func (l *AuthLogic) userSessionKey(userID int64, jti string) string {
-	cfg := l.svc.CurrentConfig()
-	return fmt.Sprintf(keys.UserSession, userSessionAppID(cfg.AppID), userID, strings.TrimSpace(jti))
+	return l.AppRedisKey(fmt.Sprintf(keys.UserSession, userID, strings.TrimSpace(jti)))
 }
 
 // userSessionIndexKey 生成当前站点下的用户会话 jti 索引 Redis Key。
 func (l *AuthLogic) userSessionIndexKey(userID int64) string {
-	cfg := l.svc.CurrentConfig()
-	return fmt.Sprintf(keys.UserSessionIndex, userSessionAppID(cfg.AppID), userID)
+	return l.AppRedisKey(fmt.Sprintf(keys.UserSessionIndex, userID))
 }
 
 // userSessionAppID 返回用户会话使用的站点命名空间。
@@ -594,21 +592,8 @@ func (l *AuthLogic) authRateLimitKeys(action, subject string) (string, string) {
 		subject = "unknown"
 	}
 	subjectHash := utils.Md5(subject)
-	appID := authRateLimitAppID(l.svc)
-	return fmt.Sprintf(keys.AuthRateLimitCount, appID, action, subjectHash),
-		fmt.Sprintf(keys.AuthRateLimitLock, appID, action, subjectHash)
-}
-
-// authRateLimitAppID 返回认证限流使用的站点命名空间。
-func authRateLimitAppID(svcCtx *svc.ServiceContext) string {
-	appID := ""
-	if svcCtx != nil {
-		appID = strings.TrimSpace(svcCtx.CurrentConfig().AppID)
-	}
-	if appID == "" {
-		return "default"
-	}
-	return appID
+	return l.AppRedisKey(fmt.Sprintf(keys.AuthRateLimitCount, action, subjectHash)),
+		l.AppRedisKey(fmt.Sprintf(keys.AuthRateLimitLock, action, subjectHash))
 }
 
 // normalizeAuthRateLimitConfig 补齐认证限流默认值。

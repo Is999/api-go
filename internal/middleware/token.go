@@ -131,12 +131,12 @@ func VerifyUserTokenFromRequest(ctx context.Context, svcCtx *svc.ServiceContext,
 
 // UserSessionKey 生成前台用户会话缓存键。
 func UserSessionKey(appID string, userID int64, jti string) string {
-	return fmt.Sprintf(keys.UserSession, tokenSessionAppID(appID), userID, strings.TrimSpace(jti))
+	return keys.AppScopedKey(tokenSessionAppID(appID), fmt.Sprintf(keys.UserSession, userID, strings.TrimSpace(jti)))
 }
 
 // UserSessionIndexKey 生成前台用户会话 jti 索引键。
 func UserSessionIndexKey(appID string, userID int64) string {
-	return fmt.Sprintf(keys.UserSessionIndex, tokenSessionAppID(appID), userID)
+	return keys.AppScopedKey(tokenSessionAppID(appID), fmt.Sprintf(keys.UserSessionIndex, userID))
 }
 
 // syncUserSessionIndex 在鉴权成功后懒补用户 jti 索引，兼容上线前已存在的 session。

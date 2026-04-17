@@ -49,7 +49,7 @@ func TestSysConfigCacheKeyUsesAppNamespace(t *testing.T) {
 	logicObj := NewSysConfigLogic(context.Background(), svc.NewServiceContext(config.Config{AppID: "site-a"}, "v1", svc.Dependencies{}))
 
 	got := logicObj.sysConfigCacheKey("featureFlag")
-	want := "api:sys_config:site-a:featureFlag"
+	want := "app:site-a:config_uuid:featureFlag"
 	if got != want {
 		t.Fatalf("sysConfigCacheKey() = %q, want %q", got, want)
 	}

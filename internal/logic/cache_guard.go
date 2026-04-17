@@ -37,11 +37,6 @@ func emptyCacheTTL() time.Duration {
 	return jitterTTL(2 * time.Minute)
 }
 
-// cacheLockKey 返回缓存重建锁的 Redis 键。
-func cacheLockKey(cacheKey string) string {
-	return fmt.Sprintf(keys.CacheRebuildLock, cacheKey)
-}
-
 // tryRebuildCacheWithLock 使用 redsync 保护缓存重建，避免热点 key 并发击穿数据库。
 func (l *BaseLogic) tryRebuildCacheWithLock(cacheKey string, rebuild func() error) error {
 	if rebuild == nil {
@@ -50,7 +45,7 @@ func (l *BaseLogic) tryRebuildCacheWithLock(cacheKey string, rebuild func() erro
 	if l == nil || l.Redis() == nil || cacheKey == "" {
 		return rebuild()
 	}
-	lockKey := cacheLockKey(cacheKey)
+	lockKey := l.cacheLockKey(cacheKey)
 	err := redislock.WithLock(l.Context(), l.Redis(), lockKey, cacheRebuildLockTTL, func(context.Context) error {
 		return rebuild()
 	})
@@ -58,4 +53,9 @@ func (l *BaseLogic) tryRebuildCacheWithLock(cacheKey string, rebuild func() erro
 		return nil
 	}
 	return errors.Tag(err)
+}
+
+// cacheLockKey 返回当前 app_id 作用域下的缓存重建锁 Redis 键。
+func (l *BaseLogic) cacheLockKey(cacheKey string) string {
+	return l.AppRedisKey(fmt.Sprintf(keys.CacheRebuildLock, keys.TrimAppScopedPrefix(cacheKey)))
 }

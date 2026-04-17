@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	keys "gozero_api/common/rediskeys"
 	"gozero_api/helper"
 	"gozero_api/internal/infra/loggerx"
 	"gozero_api/internal/requestctx"
@@ -59,6 +60,22 @@ func (l *BaseLogic) Redis() redis.UniversalClient {
 		return nil
 	}
 	return l.svc.Rds
+}
+
+// AppID 返回当前 Redis 缓存命名空间使用的 app_id。
+func (l *BaseLogic) AppID() string {
+	if l == nil || l.svc == nil {
+		return keys.NormalizeAppID("")
+	}
+	return keys.NormalizeAppID(l.svc.CurrentConfig().AppID)
+}
+
+// AppRedisKey 给业务 Redis key 追加当前 app_id 命名空间。
+func (l *BaseLogic) AppRedisKey(key string) string {
+	if l == nil {
+		return keys.AppScopedKey("", key)
+	}
+	return keys.AppScopedKey(l.AppID(), key)
 }
 
 // Meta 返回当前请求链路元数据。

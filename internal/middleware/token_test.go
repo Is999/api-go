@@ -35,7 +35,7 @@ func TestBearerTokenMissing(t *testing.T) {
 // TestUserSessionKey 验证用户会话 Redis Key 模板。
 func TestUserSessionKey(t *testing.T) {
 	got := UserSessionKey("1", 42, "jti")
-	want := "api:user:session:1:42:jti"
+	want := "app:1:user:session:42:jti"
 	if got != want {
 		t.Fatalf("UserSessionKey() = %q, want %q", got, want)
 	}
@@ -44,7 +44,7 @@ func TestUserSessionKey(t *testing.T) {
 // TestUserSessionIndexKey 验证用户会话 jti 索引 Redis Key 模板。
 func TestUserSessionIndexKey(t *testing.T) {
 	got := UserSessionIndexKey("1", 42)
-	want := "api:user:session:index:1:42"
+	want := "app:1:user:session:index:42"
 	if got != want {
 		t.Fatalf("UserSessionIndexKey() = %q, want %q", got, want)
 	}
