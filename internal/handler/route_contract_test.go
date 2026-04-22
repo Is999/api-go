@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"gozero_api/internal/config"
-	"gozero_api/internal/security"
-	"gozero_api/internal/svc"
+	"api/internal/config"
+	"api/internal/handler/shared"
+	"api/internal/security"
+	"api/internal/svc"
 
 	"github.com/zeromicro/go-zero/rest"
 )
@@ -54,10 +55,10 @@ func TestDefaultRouteContractsValid(t *testing.T) {
 		if access != contract.Meta.Access {
 			t.Fatalf("route contract access mismatch: %+v", contract)
 		}
-		if contract.Meta.Access == RouteAccessInternal && !strings.HasPrefix(contract.Path, "/internal/") {
+		if contract.Meta.Access == shared.RouteAccessInternal && !strings.HasPrefix(contract.Path, "/internal/") {
 			t.Fatalf("internal route must use /internal/ prefix: %+v", contract)
 		}
-		if contract.Meta.Access != RouteAccessInternal && strings.HasPrefix(contract.Path, "/internal/") {
+		if contract.Meta.Access != shared.RouteAccessInternal && strings.HasPrefix(contract.Path, "/internal/") {
 			t.Fatalf("non-internal route must not use /internal/ prefix: %+v", contract)
 		}
 	}

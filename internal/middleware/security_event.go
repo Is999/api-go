@@ -4,18 +4,18 @@ import (
 	"context"
 	"strings"
 
-	"gozero_api/internal/logic"
-	"gozero_api/internal/svc"
+	authlogic "api/internal/logic/auth"
+	"api/internal/svc"
 )
 
 // emitSecurityFailureEvent 投递签名或加密链路失败事件。
 func emitSecurityFailureEvent(ctx context.Context, svcCtx *svc.ServiceContext, reason string) {
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
-		reason = logic.AuthEventReasonSecurityFailed
+		reason = authlogic.AuthEventReasonSecurityFailed
 	}
-	logic.RecordAuthEvent(ctx, svcCtx, logic.AuthEventInput{
-		Action: logic.AuthEventActionSecurityFailed,
+	authlogic.RecordAuthEvent(ctx, svcCtx, authlogic.AuthEventInput{
+		Action: authlogic.AuthEventActionSecurityFailed,
 		Reason: reason,
 	})
 }

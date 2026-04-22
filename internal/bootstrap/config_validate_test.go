@@ -3,7 +3,7 @@ package bootstrap
 import (
 	"testing"
 
-	"gozero_api/internal/config"
+	"api/internal/config"
 )
 
 // TestValidateConfigRejectsWeakJWTSecret 确保明显弱 JWT 密钥不能通过启动校验。
@@ -30,12 +30,31 @@ func TestValidateConfigRejectsInvalidCollectorRedis(t *testing.T) {
 	}
 }
 
+// TestValidateConfigRejectsMissingAppID 确保 app_id 缺失时不会落到共享 Redis 默认命名空间。
+func TestValidateConfigRejectsMissingAppID(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.AppID = ""
+	if err := validateConfig(cfg); err == nil {
+		t.Fatal("expected missing app_id to be rejected")
+	}
+}
+
 // TestValidateConfigRejectsCollectorRedisEnabledWithoutStream 确保启用 Redis Stream 载体时必须配置 Stream。
 func TestValidateConfigRejectsCollectorRedisEnabledWithoutStream(t *testing.T) {
 	cfg := validBootstrapConfig()
 	cfg.Collector.Redis.Enabled = true
 	if err := validateConfig(cfg); err == nil {
 		t.Fatal("expected collector.redis.enabled without stream to be rejected")
+	}
+}
+
+// TestValidateConfigRejectsForeignCollectorStream 确保 Collector 不会误用其它站点 Redis Stream。
+func TestValidateConfigRejectsForeignCollectorStream(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.AppID = "site-2"
+	cfg.Collector.Redis.Stream = "app:site-1:collector:events"
+	if err := validateConfig(cfg); err == nil {
+		t.Fatal("expected foreign collector.redis.stream to be rejected")
 	}
 }
 
@@ -127,6 +146,7 @@ func TestValidateConfigAcceptsProductionSafeConfig(t *testing.T) {
 
 func validBootstrapConfig() config.Config {
 	return config.Config{
+		AppID:     "1",
 		JwtSecret: "test-secret-please-change",
 		Auth: config.AuthConfig{
 			PasswordMinLength: 8,

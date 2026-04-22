@@ -1,6 +1,6 @@
 package i18n
 
-import codes "gozero_api/common/codes"
+import codes "api/common/codes"
 
 // codeToMessageKey 维护业务响应码到多语言 key 的映射。
 var codeToMessageKey = map[int]string{

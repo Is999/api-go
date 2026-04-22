@@ -8,9 +8,9 @@ import (
 	"os"
 	"strings"
 
-	i18n "gozero_api/common/i18n"
-	"gozero_api/internal/infra/loggerx"
-	"gozero_api/internal/requestctx"
+	i18n "api/common/i18n"
+	"api/internal/infra/loggerx"
+	"api/internal/requestctx"
 
 	"github.com/Is999/go-utils"
 	"go.opentelemetry.io/otel"
@@ -27,12 +27,12 @@ type TraceMiddleware struct {
 // NewTraceMiddleware 创建服务端 span 中间件。
 func NewTraceMiddleware() *TraceMiddleware {
 	return &TraceMiddleware{
-		tracer: otel.Tracer("gozero_api/http"),
+		tracer: otel.Tracer("api/http"),
 		node:   resolveNodeName(),
 	}
 }
 
-// Handle 基于标准 W3C tracecontext 继承链路，并兼容前端 X-Trace-Id。
+// Handle 基于标准 W3C tracecontext 继承链路，并接收前端 X-Trace-Id。
 func (m *TraceMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, _ := requestctx.New(r.Context())
@@ -58,7 +58,7 @@ func (m *TraceMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// inheritTraceIDFromHeader 兼容前端传入的 X-Trace-Id。
+// inheritTraceIDFromHeader 接收前端传入的 X-Trace-Id。
 func inheritTraceIDFromHeader(ctx context.Context, r *http.Request) context.Context {
 	if r == nil {
 		return ctx
@@ -101,7 +101,7 @@ func parseHeaderTraceID(raw string) (trace.TraceID, bool) {
 	return traceID, true
 }
 
-// newParentSpanID 为兼容 trace id 创建临时父 span id。
+// newParentSpanID 为外部 trace id 创建临时父 span id。
 func newParentSpanID() trace.SpanID {
 	var spanID trace.SpanID
 	if _, err := rand.Read(spanID[:]); err != nil || !spanID.IsValid() {

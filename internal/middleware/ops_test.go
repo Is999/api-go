@@ -4,7 +4,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"gozero_api/internal/config"
+	"api/internal/config"
 )
 
 // TestValidateConfigReloadOpsRequiresToken 确保未配置运维令牌时默认拒绝热加载接口。

@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"strings"
 
-	"gozero_api/internal/config"
+	"api/internal/config"
 
 	"github.com/Is999/go-utils/errors"
 	"go.opentelemetry.io/otel"
@@ -21,7 +21,7 @@ import (
 func Setup(ctx context.Context, cfg config.ObservabilityConfig) (func(context.Context) error, error) {
 	serviceName := strings.TrimSpace(cfg.ServiceName)
 	if serviceName == "" {
-		serviceName = "gozero_api"
+		serviceName = "api"
 	}
 	environment := strings.TrimSpace(cfg.Environment)
 	if environment == "" {

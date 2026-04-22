@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	codes "gozero_api/common/codes"
-	i18n "gozero_api/common/i18n"
+	codes "api/common/codes"
+	i18n "api/common/i18n"
 
 	"github.com/Is999/go-utils/errors"
 )

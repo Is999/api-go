@@ -1,8 +1,8 @@
 # AI开发规范
 
-本文档用于约束 AI 参与 `gozero-api` 开发、重构、补测试和补文档时的输出标准。目标是让 AI 生成代码与 `gozero-admin` 保持同一工程风格、质量门槛和可维护性。
+本文档用于约束 AI 参与 `api` 开发、重构、补测试和补文档时的输出标准。目标是让 AI 生成代码与 `admin` 保持同一工程风格、质量门槛和可维护性。
 
-> **重要提醒**：每次让 AI 修改 `gozero-api` 前，必须先让 AI 阅读本文档。
+> **重要提醒**：每次让 AI 修改 `api` 前，必须先让 AI 阅读本文档。
 
 ## 1. 总原则
 
@@ -45,7 +45,7 @@
 - 新增或移动 `*.sql.tmpl`、`.lua` 时，必须同步检查 Go 侧 `//go:embed`、渲染方法和最小单测。
 - Go 调用侧必须使用 `embedasset.StripLeadingLineComments(template, "--")` 或当前包 helper 剥离文件头说明，再交给 MySQL、ClickHouse 或 Redis 执行。
 - 不允许在业务接口中执行 Redis 全库 `SCAN` 或模板通配扫描；高基数缓存必须通过索引集合、精确 Key、白名单模板、登记模板或异步离线任务处理。
-- 业务读取 `sys_config` 运行期配置时优先声明 `SysConfigKey` 并使用类型化 getter；只有兼容旧链路或动态 uuid 场景才直接调用 `GetCachedValue(uuid)`。
+- 业务读取 `sys_config` 运行期配置时优先声明 `SysConfigKey` 并使用类型化 getter；只有动态 uuid 场景才直接调用 `GetCachedValue(uuid)`。
 - 重构时优先复用现有 helper、模板渲染器、分页游标、去重和错误包装方法；同类逻辑重复时抽到当前包公共 helper。
 
 `*.sql.tmpl` 文件头使用连续 SQL 行注释，保持简洁：
@@ -71,6 +71,7 @@
 ## 5. 错误处理规范
 
 - 底层错误必须使用 `github.com/Is999/go-utils/errors` 的 `errors.Tag`、`errors.Wrap` 或 `errors.Wrapf` 包装。
+- 同一个函数里，同一个 `error` 值只包装一次；跨函数边界可以继续包装，因为那是新的调用语义和上下文，避免裸错误漏出去。
 - 业务中间层只返回错误，不打印 `error` 级日志；禁止在 logic、repository、service、model、helper 等内层随意调用 `loggerx.Errorw`、`loggerx.ErrorTextw` 或 `logx.Error*`。
 - 顶层 handler、启动入口、健康检查或不可返回错误的兜底协程统一打印 `error` 级日志；同一错误链路只能在最外层打印一次。
 - 底层需要补排障信息时只能通过 `errors.Wrapf` 写入上下文字段，不能用多处 `error` 日志替代错误链。
@@ -130,7 +131,7 @@ loggerx.Infow(ctx, "工作流节点开始处理",
 
 ## 9. 前端联动规范
 
-- 接口字段命名优先延续现有前台调用习惯，必要时兼容 snake_case 和 camelCase。
+- 接口字段命名以新版契约为准，字段别名必须在接口文档中明确声明。
 - 敏感操作必须复用既有登录态、签名、加密、秘钥版本或二次校验机制。
 - 加密、签名、秘钥版本配置变更后，必须同步更新启动校验、接口文档、配置样例和前端配置说明。
 - 前端请求不得默认把整份表单、筛选条件或大 JSON 对象纳入签名/加密；只传后端文档声明的关键字段。

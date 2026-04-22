@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"gozero_api/internal/config"
-	"gozero_api/internal/svc"
+	"api/internal/config"
+	"api/internal/svc"
 
 	"github.com/Is999/go-utils/errors"
 	"github.com/alicebob/miniredis/v2"
@@ -63,7 +63,7 @@ func TestVerifyUserTokenRejectsAppIDMismatch(t *testing.T) {
 	}
 }
 
-// TestVerifyUserTokenBackfillsSessionIndex 确保旧 session 鉴权成功后懒补 jti 索引。
+// TestVerifyUserTokenBackfillsSessionIndex 确保已有 session 鉴权成功后补齐 jti 索引。
 func TestVerifyUserTokenBackfillsSessionIndex(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
@@ -119,15 +119,16 @@ func TestVerifyUserTokenReturnsIdentityOnSessionExpired(t *testing.T) {
 	}
 }
 
-// TestVerifyUserTokenAcceptsDefaultAppIDClaim 确保空 AppID 兼容 default 会话命名空间。
-func TestVerifyUserTokenAcceptsDefaultAppIDClaim(t *testing.T) {
+// TestVerifyUserTokenRejectsEmptyAppIDClaim 确保 token 必须携带明确 app_id。
+func TestVerifyUserTokenRejectsEmptyAppIDClaim(t *testing.T) {
 	token := signedUserToken(t, "test-secret-please-change", "")
 	svcCtx := svc.NewServiceContext(config.Config{
+		AppID:     "site-a",
 		JwtSecret: "test-secret-please-change",
 	}, "v1", svc.Dependencies{})
 
-	if _, err := VerifyUserToken(context.Background(), svcCtx, token, false); err != nil {
-		t.Fatalf("VerifyUserToken() error = %v", err)
+	if _, err := VerifyUserToken(context.Background(), svcCtx, token, false); !errors.Is(err, errInvalidToken) {
+		t.Fatalf("VerifyUserToken() error = %v, want errInvalidToken", err)
 	}
 }
 

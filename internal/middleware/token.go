@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	keys "gozero_api/common/rediskeys"
-	"gozero_api/internal/config"
-	"gozero_api/internal/svc"
+	keys "api/common/rediskeys"
+	"api/internal/config"
+	"api/internal/svc"
 
 	"github.com/Is999/go-utils/errors"
 	"github.com/golang-jwt/jwt/v4"
@@ -131,15 +131,15 @@ func VerifyUserTokenFromRequest(ctx context.Context, svcCtx *svc.ServiceContext,
 
 // UserSessionKey 生成前台用户会话缓存键。
 func UserSessionKey(appID string, userID int64, jti string) string {
-	return keys.AppScopedKey(tokenSessionAppID(appID), fmt.Sprintf(keys.UserSession, userID, strings.TrimSpace(jti)))
+	return keys.AppScopedKey(strings.TrimSpace(appID), fmt.Sprintf(keys.UserSession, userID, strings.TrimSpace(jti)))
 }
 
 // UserSessionIndexKey 生成前台用户会话 jti 索引键。
 func UserSessionIndexKey(appID string, userID int64) string {
-	return keys.AppScopedKey(tokenSessionAppID(appID), fmt.Sprintf(keys.UserSessionIndex, userID))
+	return keys.AppScopedKey(strings.TrimSpace(appID), fmt.Sprintf(keys.UserSessionIndex, userID))
 }
 
-// syncUserSessionIndex 在鉴权成功后懒补用户 jti 索引，兼容上线前已存在的 session。
+// syncUserSessionIndex 在鉴权成功后补齐用户 jti 索引，保证会话批量失效可精确命中。
 func syncUserSessionIndex(ctx context.Context, rds redis.UniversalClient, appID string, userID int64, jti string, expiresAt int64, sessionKey string) error {
 	jti = strings.TrimSpace(jti)
 	if rds == nil || userID <= 0 || jti == "" {
@@ -172,19 +172,7 @@ func syncUserSessionIndex(ctx context.Context, rds redis.UniversalClient, appID 
 
 // tokenAppIDMatches 判断 token 中的 app_id 是否匹配当前服务命名空间。
 func tokenAppIDMatches(configAppID string, claimAppID string) bool {
-	expected := tokenSessionAppID(configAppID)
+	expected := strings.TrimSpace(configAppID)
 	claimAppID = strings.TrimSpace(claimAppID)
-	if claimAppID == "" && expected == "default" {
-		return true
-	}
-	return tokenSessionAppID(claimAppID) == expected
-}
-
-// tokenSessionAppID 返回用户会话使用的站点命名空间。
-func tokenSessionAppID(appID string) string {
-	appID = strings.TrimSpace(appID)
-	if appID == "" {
-		return "default"
-	}
-	return appID
+	return expected != "" && claimAppID != "" && claimAppID == expected
 }

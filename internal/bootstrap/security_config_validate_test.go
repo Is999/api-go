@@ -7,12 +7,13 @@ import (
 	"encoding/pem"
 	"testing"
 
-	"gozero_api/internal/config"
+	"api/internal/config"
 )
 
 // TestValidateConfigRejectsSecurityWithoutAppID 确保配置安全链路时必须绑定 AppID。
 func TestValidateConfigRejectsSecurityWithoutAppID(t *testing.T) {
 	cfg := validBootstrapConfig()
+	cfg.AppID = ""
 	cfg.Security.SecretKey = config.SecuritySecretKeyConfig{
 		KeyVersion:   "v1",
 		SignStatus:   0,

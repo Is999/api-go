@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"gozero_api/internal/collector"
-	"gozero_api/internal/config"
-	"gozero_api/internal/logic"
-	"gozero_api/internal/requestctx"
-	"gozero_api/internal/svc"
+	"api/internal/config"
+	"api/internal/infra/collectorx"
+	authlogic "api/internal/logic/auth"
+	"api/internal/requestctx"
+	"api/internal/svc"
 )
 
 // TestAuthMiddlewareMissingBearerEmitsAuthSecurityEvent 确保鉴权失败也会投递脱敏风控事件。
@@ -39,14 +39,14 @@ func TestAuthMiddlewareMissingBearerEmitsAuthSecurityEvent(t *testing.T) {
 		t.Fatalf("collector events = %d, want 1", len(*seen))
 	}
 	event := (*seen)[0]
-	if event.BizType != logic.AuthCollectorBizType {
-		t.Fatalf("biz type = %q, want %q", event.BizType, logic.AuthCollectorBizType)
+	if event.BizType != authlogic.AuthCollectorBizType {
+		t.Fatalf("biz type = %q, want %q", event.BizType, authlogic.AuthCollectorBizType)
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		t.Fatalf("Unmarshal(payload) error = %v", err)
 	}
-	if payload["action"] != logic.AuthEventActionAuthFailed || payload["reason"] != logic.AuthEventReasonMissingBearer {
+	if payload["action"] != authlogic.AuthEventActionAuthFailed || payload["reason"] != authlogic.AuthEventReasonMissingBearer {
 		t.Fatalf("payload action/reason = %+v", payload)
 	}
 	if payload["route"] != "user.profile" {
@@ -66,7 +66,7 @@ func TestEmitAuthFailureEventIncludesKnownIdentity(t *testing.T) {
 	svcCtx, seen := newAuthMiddlewareEventService(t)
 	middleware := NewAuthMiddleware(svcCtx)
 
-	middleware.emitAuthFailureEvent(context.Background(), logic.AuthEventReasonSessionExpired, &UserTokenIdentity{
+	middleware.emitAuthFailureEvent(context.Background(), authlogic.AuthEventReasonSessionExpired, &UserTokenIdentity{
 		UserID:   42,
 		UserName: "Demo_User",
 		JTI:      "session-jti",
@@ -86,8 +86,8 @@ func TestEmitAuthFailureEventIncludesKnownIdentity(t *testing.T) {
 	if payload["user_id"].(float64) != 42 {
 		t.Fatalf("payload user_id = %v, want 42", payload["user_id"])
 	}
-	if payload["reason"] != logic.AuthEventReasonSessionExpired {
-		t.Fatalf("payload reason = %v, want %s", payload["reason"], logic.AuthEventReasonSessionExpired)
+	if payload["reason"] != authlogic.AuthEventReasonSessionExpired {
+		t.Fatalf("payload reason = %v, want %s", payload["reason"], authlogic.AuthEventReasonSessionExpired)
 	}
 	raw := string(event.Payload)
 	for _, forbidden := range []string{"Demo_User", "session-jti"} {
@@ -105,7 +105,7 @@ func TestEmitSecurityFailureEvent(t *testing.T) {
 	requestctx.SetRequest(ctx, http.MethodPost, "/api/auth/login", "127.0.0.1")
 	requestctx.SetTrace(ctx, "trace-id", "span-id")
 
-	emitSecurityFailureEvent(ctx, svcCtx, logic.AuthEventReasonRequestDecryptFailed)
+	emitSecurityFailureEvent(ctx, svcCtx, authlogic.AuthEventReasonRequestDecryptFailed)
 
 	if len(*seen) != 1 {
 		t.Fatalf("collector events = %d, want 1", len(*seen))
@@ -114,11 +114,11 @@ func TestEmitSecurityFailureEvent(t *testing.T) {
 	if err := json.Unmarshal((*seen)[0].Payload, &payload); err != nil {
 		t.Fatalf("Unmarshal(payload) error = %v", err)
 	}
-	if payload["action"] != logic.AuthEventActionSecurityFailed {
-		t.Fatalf("payload action = %v, want %s", payload["action"], logic.AuthEventActionSecurityFailed)
+	if payload["action"] != authlogic.AuthEventActionSecurityFailed {
+		t.Fatalf("payload action = %v, want %s", payload["action"], authlogic.AuthEventActionSecurityFailed)
 	}
-	if payload["reason"] != logic.AuthEventReasonRequestDecryptFailed {
-		t.Fatalf("payload reason = %v, want %s", payload["reason"], logic.AuthEventReasonRequestDecryptFailed)
+	if payload["reason"] != authlogic.AuthEventReasonRequestDecryptFailed {
+		t.Fatalf("payload reason = %v, want %s", payload["reason"], authlogic.AuthEventReasonRequestDecryptFailed)
 	}
 	if payload["route"] != "auth.login" {
 		t.Fatalf("payload route = %v, want auth.login", payload["route"])
@@ -129,7 +129,7 @@ func TestEmitSecurityFailureEvent(t *testing.T) {
 	}
 }
 
-func newAuthMiddlewareEventService(t *testing.T) (*svc.ServiceContext, *[]collector.Event) {
+func newAuthMiddlewareEventService(t *testing.T) (*svc.ServiceContext, *[]collectorx.Event) {
 	t.Helper()
 	cfg := config.Config{
 		AppID:     "site-a",
@@ -140,19 +140,19 @@ func newAuthMiddlewareEventService(t *testing.T) (*svc.ServiceContext, *[]collec
 			Transport: "sync",
 		},
 	}
-	manager, err := collector.New(config.CollectorConfig{
+	manager, err := collectorx.New(config.CollectorConfig{
 		Enabled:   true,
 		Transport: "sync",
 	}, nil)
 	if err != nil {
-		t.Fatalf("collector.New() error = %v", err)
+		t.Fatalf("collectorx.New() error = %v", err)
 	}
-	seen := make([]collector.Event, 0, 1)
-	if err := manager.RegisterProcessorFunc(logic.AuthCollectorBizType, func(ctx context.Context, events []collector.Event) ([]collector.ProcessResult, error) {
+	seen := make([]collectorx.Event, 0, 1)
+	if err := manager.RegisterProcessorFunc(authlogic.AuthCollectorBizType, func(ctx context.Context, events []collectorx.Event) ([]collectorx.ProcessResult, error) {
 		seen = append(seen, events...)
-		results := make([]collector.ProcessResult, 0, len(events))
+		results := make([]collectorx.ProcessResult, 0, len(events))
 		for _, event := range events {
-			results = append(results, collector.ProcessResult{EventID: event.EventID, Success: true})
+			results = append(results, collectorx.ProcessResult{EventID: event.EventID, Success: true})
 		}
 		return results, nil
 	}); err != nil {

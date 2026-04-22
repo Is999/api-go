@@ -1,7 +1,7 @@
-# gozero-api 生产配置模板。保留占位密钥时会启动失败，部署前必须替换。
+# api 生产配置模板。保留占位密钥时会启动失败，部署前必须替换。
 # admin 管理后台和 cron 不在本服务启动。
 
-Name: "gozero_api"
+Name: "api"
 Host: "0.0.0.0"
 Port: 8890
 Mode: "pro"
@@ -34,7 +34,7 @@ auth:
   # 是否开放注册接口，生产环境默认关闭。
   register_enabled: false
   # JWT issuer。
-  issuer: "gozero_api"
+  issuer: "api"
   # Redis 会话 TTL；<=0 或超过 jwt_expires_in 时使用 jwt_expires_in。
   session_ttl_seconds: 86400
   # 用户资料缓存 TTL。
@@ -68,7 +68,7 @@ log:
 
 # 可观测性配置。
 observability:
-  service_name: "gozero_api"
+  service_name: "api"
   environment: "pro"
   trace_enabled: true
   otlp_protocol: "grpc"
@@ -93,10 +93,10 @@ security:
 #     # gray_version: "v2"
 #     # gray_percent: 10
 #     # gray_salt: "replace-with-random-gray-salt"
-#     aes_key_ref: "/run/secrets/gozero-api/aes_key"
-#     aes_iv_ref: "/run/secrets/gozero-api/aes_iv"
-#     rsa_public_key_user_ref: "/run/secrets/gozero-api/rsa_public_key_user.pem"
-#     rsa_private_key_server_ref: "/run/secrets/gozero-api/rsa_private_key_server.pem"
+#     aes_key_ref: "/run/secrets/api/aes_key"
+#     aes_iv_ref: "/run/secrets/api/aes_iv"
+#     rsa_public_key_user_ref: "/run/secrets/api/rsa_public_key_user.pem"
+#     rsa_private_key_server_ref: "/run/secrets/api/rsa_private_key_server.pem"
 
 # 通用收集器，默认关闭；轻量事件可用 sync，异步聚合可用 redis。
 collector:
@@ -104,8 +104,9 @@ collector:
   transport: "auto"
   redis:
     enabled: false
-    stream: "gozero_api:collector:events"
-    consumer: "gozero_api"
+    # Redis Stream 业务名称，运行时自动转成 app:{app_id}:api:collector:events。
+    stream: "api:collector:events"
+    consumer: "api"
     max_len: 100000
 
 # 运维级接口保护；配置热加载接口只允许内网来源并必须携带 X-Ops-Token。
@@ -117,7 +118,7 @@ ops:
 
 # MySQL 主库配置。
 mysql:
-  write_data_source: "user:password@tcp(127.0.0.1:3306)/gozero_api?charset=utf8mb4&parseTime=true&loc=Local"
+  write_data_source: "user:password@tcp(127.0.0.1:3306)/api?charset=utf8mb4&parseTime=true&loc=Local"
   read_data_sources: []
   max_open_conns: 50
   max_idle_conns: 20
@@ -127,7 +128,7 @@ mysql:
 # 命名扩展库示例；默认不配置。
 # site_mysql:
 #   user_archive:
-#     write_data_source: "user:password@tcp(127.0.0.1:3306)/gozero_api_archive?charset=utf8mb4&parseTime=true&loc=Local"
+#     write_data_source: "user:password@tcp(127.0.0.1:3306)/api_archive?charset=utf8mb4&parseTime=true&loc=Local"
 #     read_data_sources: []
 
 # Redis 配置，多实例共享同一 Redis 以保证登录态一致。

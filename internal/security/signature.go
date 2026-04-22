@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	"gozero_api/helper"
+	"api/helper"
 
 	utils "github.com/Is999/go-utils"
 	"github.com/Is999/go-utils/errors"
@@ -17,7 +17,7 @@ import (
 const (
 	// SignFieldAll 表示签名时所有首层字段参与排序签名。
 	SignFieldAll = "*"
-	// CipherWholeBody 表示兼容整包密文标记；新接口请求和响应默认禁止使用。
+	// CipherWholeBody 表示已废弃的整包加密标记，仅用于识别并拒绝非法输入。
 	CipherWholeBody = "cipher"
 	// CipherJSONPrefix 表示字段值在加解密前需要按 JSON 编解码。
 	CipherJSONPrefix = "json:"
@@ -69,8 +69,8 @@ func PolicyByRoute(route string) RouteSecurityPolicy {
 	return RouteSecurityPolicy{}
 }
 
-// BuildSignString 生成待签名字符串。
-func BuildSignString(data map[string]any, signParams []string, traceID, appID string) string {
+// BuildSignString 生成待签名字符串，按字段排序后拼接时间绑定的请求盐值。
+func BuildSignString(data map[string]any, signParams []string, traceID, timestamp, appID string) string {
 	params := resolveSignParams(data, signParams)
 	sort.Strings(params)
 
@@ -86,18 +86,20 @@ func BuildSignString(data map[string]any, signParams []string, traceID, appID st
 		builder.WriteString("&")
 	}
 	builder.WriteString("key=")
-	builder.WriteString(utils.Md5(appID + "-" + traceID))
+	builder.WriteString(utils.Md5(appID + "-" + traceID + "-" + timestamp))
 	return builder.String()
 }
 
-// EncodeCipherParams 把字段级加密配置编码成请求头值；cipher 仅兼容旧整包密文标记。
+// EncodeCipherParams 把字段级加密配置编码成请求头值；整包加密标记不再生成请求头。
 func EncodeCipherParams(params []string) string {
 	params = helper.UniqueNonEmptyStrings(params)
 	if len(params) == 0 {
 		return ""
 	}
-	if len(params) == 1 && strings.EqualFold(params[0], CipherWholeBody) {
-		return CipherWholeBody
+	for _, param := range params {
+		if strings.EqualFold(param, CipherWholeBody) {
+			return ""
+		}
 	}
 	body, err := json.Marshal(params)
 	if err != nil {

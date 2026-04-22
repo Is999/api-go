@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"gozero_api/internal/config"
-	"gozero_api/internal/security"
+	"api/internal/config"
+	"api/internal/security"
 
 	"github.com/Is999/go-utils/errors"
 )

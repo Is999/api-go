@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"gozero_api/internal/config"
-	"gozero_api/internal/infra/loggerx"
+	"api/internal/config"
+	"api/internal/infra/loggerx"
 
 	"github.com/Is999/go-utils/errors"
 	drivermysql "github.com/go-sql-driver/mysql"

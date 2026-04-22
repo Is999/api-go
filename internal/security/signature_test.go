@@ -16,16 +16,16 @@ func TestBuildSignStringUsesStableOrder(t *testing.T) {
 		"profile": map[string]any{"name": "tom", "age": 18},
 	}
 
-	got := BuildSignString(data, []string{SignFieldAll}, "trace", "app")
-	want := `a=1&b=2&profile={"age":18,"name":"tom"}&key=` + utils.Md5("app-trace")
+	got := BuildSignString(data, []string{SignFieldAll}, "trace", "1700000000", "app")
+	want := `a=1&b=2&profile={"age":18,"name":"tom"}&key=` + utils.Md5("app-trace-1700000000")
 	if got != want {
 		t.Fatalf("BuildSignString() = %q, want %q", got, want)
 	}
 }
 
 func TestEncodeCipherParams(t *testing.T) {
-	if got := EncodeCipherParams([]string{CipherWholeBody}); got != CipherWholeBody {
-		t.Fatalf("EncodeCipherParams whole body = %q", got)
+	if got := EncodeCipherParams([]string{CipherWholeBody}); got != "" {
+		t.Fatalf("EncodeCipherParams whole body = %q, want empty", got)
 	}
 
 	got := EncodeCipherParams([]string{"token", " token ", "", "user.email"})

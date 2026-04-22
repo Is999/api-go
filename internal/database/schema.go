@@ -3,22 +3,22 @@ package database
 import (
 	_ "embed"
 
-	"gozero_api/common/embedasset"
+	"api/common/embedasset"
 )
 
 // apiUserSchemaSQL 保存前台用户表 DDL 模板。
 //
-//go:embed api_user_schema.sql.tmpl
+//go:embed assets/api_user_schema.sql.tmpl
 var apiUserSchemaSQL string
 
 // sysConfigSchemaSQL 保存系统配置表 DDL 模板。
 //
-//go:embed sys_config_schema.sql.tmpl
+//go:embed assets/sys_config_schema.sql.tmpl
 var sysConfigSchemaSQL string
 
 // schemaMigrationsSQL 保存数据库迁移版本表 DDL 模板。
 //
-//go:embed schema_migrations.sql.tmpl
+//go:embed assets/schema_migrations.sql.tmpl
 var schemaMigrationsSQL string
 
 // APIUserSchemaSQL 返回剥离文件头说明后的前台用户表 DDL。

@@ -1,6 +1,9 @@
 package handler
 
-import "gozero_api/internal/middleware"
+import (
+	"api/internal/handler/shared"
+	"api/internal/middleware"
+)
 
 // RouteSecurityChain 表示路由实际挂载的安全链路。
 type RouteSecurityChain string
@@ -25,15 +28,15 @@ type RouteSecurityContract struct {
 // DefaultRouteSecurityContracts 返回内置路由安全链路契约集合。
 func DefaultRouteSecurityContracts() []RouteSecurityContract {
 	return []RouteSecurityContract{
-		{Alias: HealthLive.Alias, Chain: RouteSecurityNone},
-		{Alias: HealthReady.Alias, Chain: RouteSecurityNone},
-		{Alias: HealthMetrics.Alias, Chain: RouteSecurityNone},
-		{Alias: AuthRegister.Alias, Chain: RouteSecurityPublic},
-		{Alias: AuthLogin.Alias, Chain: RouteSecurityPublic},
-		{Alias: AuthRefresh.Alias, Chain: RouteSecurityAuth},
-		{Alias: AuthLogout.Alias, Chain: RouteSecurityAuth},
-		{Alias: UserProfile.Alias, Chain: RouteSecurityAuth},
-		{Alias: SystemConfigReloadStatus.Alias, Chain: RouteSecurityInternal},
-		{Alias: SystemConfigReloadRun.Alias, Chain: RouteSecurityInternal},
+		{Alias: shared.HealthLive.Alias, Chain: RouteSecurityNone},
+		{Alias: shared.HealthReady.Alias, Chain: RouteSecurityNone},
+		{Alias: shared.HealthMetrics.Alias, Chain: RouteSecurityNone},
+		{Alias: shared.AuthRegister.Alias, Chain: RouteSecurityPublic},
+		{Alias: shared.AuthLogin.Alias, Chain: RouteSecurityPublic},
+		{Alias: shared.AuthRefresh.Alias, Chain: RouteSecurityAuth},
+		{Alias: shared.AuthLogout.Alias, Chain: RouteSecurityAuth},
+		{Alias: shared.UserProfile.Alias, Chain: RouteSecurityAuth},
+		{Alias: shared.SystemConfigReloadStatus.Alias, Chain: RouteSecurityInternal},
+		{Alias: shared.SystemConfigReloadRun.Alias, Chain: RouteSecurityInternal},
 	}
 }

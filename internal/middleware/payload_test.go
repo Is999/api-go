@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"gozero_api/internal/security"
+	"api/internal/security"
 
 	"github.com/Is999/go-utils/errors"
 )

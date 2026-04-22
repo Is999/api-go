@@ -4,11 +4,11 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	codes "gozero_api/common/codes"
-	i18n "gozero_api/common/i18n"
-	"gozero_api/helper"
-	"gozero_api/internal/infra/loggerx"
-	"gozero_api/internal/requestctx"
+	codes "api/common/codes"
+	i18n "api/common/i18n"
+	"api/helper"
+	"api/internal/infra/loggerx"
+	"api/internal/requestctx"
 
 	"github.com/Is999/go-utils/errors"
 	"github.com/zeromicro/go-zero/core/logx"

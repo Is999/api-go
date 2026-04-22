@@ -5,8 +5,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"gozero_api/internal/collector"
-	"gozero_api/internal/config"
+	"api/internal/config"
+	"api/internal/infra/collectorx"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
@@ -59,7 +59,7 @@ type ServiceContext struct {
 	SiteDBs      SiteDatabases         // 主库与可选扩展库连接集合
 	Rds          redis.UniversalClient // Redis 客户端
 	ConfigReload ConfigReloadExecutor  // 配置热加载执行器
-	Collector    *collector.Manager    // 通用收集器
+	Collector    *collectorx.Manager   // 通用收集器
 	components   *ComponentRegistry    // 启动期组件生命周期清单
 }
 

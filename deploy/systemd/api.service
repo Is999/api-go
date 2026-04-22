@@ -1,0 +1,19 @@
+[Unit]
+Description=api
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=api
+Group=api
+WorkingDirectory=/opt/api
+ExecStart=/opt/api/bin/api -f /etc/api/config.yaml
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+LimitNOFILE=65535
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

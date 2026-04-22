@@ -18,12 +18,13 @@ type securityVectorFile struct {
 }
 
 type securitySignVector struct {
-	Name     string         `json:"name"`
-	AppID    string         `json:"appID"`
-	TraceID  string         `json:"traceID"`
-	Fields   []string       `json:"fields"`
-	Data     map[string]any `json:"data"`
-	Expected string         `json:"expected"`
+	Name      string         `json:"name"`
+	AppID     string         `json:"appID"`
+	TraceID   string         `json:"traceID"`
+	Timestamp string         `json:"timestamp"`
+	Fields    []string       `json:"fields"`
+	Data      map[string]any `json:"data"`
+	Expected  string         `json:"expected"`
 }
 
 type securityCipherHeaderVector struct {
@@ -43,7 +44,7 @@ func TestSecurityVectorsBuildSignString(t *testing.T) {
 	vectors := loadSecurityVectors(t)
 	for _, vector := range vectors.SignVectors {
 		t.Run(vector.Name, func(t *testing.T) {
-			got := BuildSignString(vector.Data, vector.Fields, vector.TraceID, vector.AppID)
+			got := BuildSignString(vector.Data, vector.Fields, vector.TraceID, vector.Timestamp, vector.AppID)
 			if got != vector.Expected {
 				t.Fatalf("BuildSignString() = %q, want %q", got, vector.Expected)
 			}

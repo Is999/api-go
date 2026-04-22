@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gozero_api/internal/config"
+	"api/internal/config"
 
 	"github.com/Is999/go-utils/errors"
 	"github.com/zeromicro/go-zero/core/conf"

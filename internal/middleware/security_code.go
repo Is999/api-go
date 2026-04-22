@@ -3,9 +3,9 @@ package middleware
 import (
 	"strings"
 
-	codes "gozero_api/common/codes"
-	"gozero_api/internal/logic"
-	"gozero_api/internal/security"
+	codes "api/common/codes"
+	authlogic "api/internal/logic/auth"
+	"api/internal/security"
 
 	"github.com/Is999/go-utils/errors"
 )
@@ -17,21 +17,21 @@ func resolveSecurityFailureCode(reason string, fallback int, err error) int {
 		return codes.SecurityPayloadTooLarge
 	}
 	switch strings.TrimSpace(reason) {
-	case logic.AuthEventReasonSecurityAppIDInvalid:
+	case authlogic.AuthEventReasonSecurityAppIDInvalid:
 		return codes.SecurityAppIDInvalid
-	case logic.AuthEventReasonSecurityKeyUnavailable:
+	case authlogic.AuthEventReasonSecurityKeyUnavailable:
 		return codes.SecurityKeyUnavailable
-	case logic.AuthEventReasonSignatureFailed:
+	case authlogic.AuthEventReasonSignatureFailed:
 		return codes.SecuritySignatureFailed
-	case logic.AuthEventReasonSecurityPayloadTooLarge:
+	case authlogic.AuthEventReasonSecurityPayloadTooLarge:
 		return codes.SecurityPayloadTooLarge
-	case logic.AuthEventReasonResponseSignFailed:
+	case authlogic.AuthEventReasonResponseSignFailed:
 		return codes.SecurityResponseSignFailed
-	case logic.AuthEventReasonCryptoDisabled:
+	case authlogic.AuthEventReasonCryptoDisabled:
 		return codes.SecurityCryptoDisabled
-	case logic.AuthEventReasonRequestDecryptFailed:
+	case authlogic.AuthEventReasonRequestDecryptFailed:
 		return codes.SecurityRequestDecryptFailed
-	case logic.AuthEventReasonResponseEncryptFailed:
+	case authlogic.AuthEventReasonResponseEncryptFailed:
 		return codes.SecurityResponseEncryptFailed
 	default:
 		if fallback != codes.Undefined {
@@ -44,11 +44,11 @@ func resolveSecurityFailureCode(reason string, fallback int, err error) int {
 // resolveSecurityFailureReason 将安全链路内部错误归并为稳定风控原因。
 func resolveSecurityFailureReason(reason string, err error) string {
 	if errors.Is(err, security.ErrSecurityPayloadTooLarge) {
-		return logic.AuthEventReasonSecurityPayloadTooLarge
+		return authlogic.AuthEventReasonSecurityPayloadTooLarge
 	}
 	reason = strings.TrimSpace(reason)
 	if reason == "" {
-		return logic.AuthEventReasonSecurityFailed
+		return authlogic.AuthEventReasonSecurityFailed
 	}
 	return reason
 }

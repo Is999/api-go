@@ -7,11 +7,11 @@ import (
 	"net/netip"
 	"strings"
 
-	codes "gozero_api/common/codes"
-	i18n "gozero_api/common/i18n"
-	"gozero_api/helper"
-	"gozero_api/internal/config"
-	"gozero_api/internal/svc"
+	codes "api/common/codes"
+	i18n "api/common/i18n"
+	"api/helper"
+	"api/internal/config"
+	"api/internal/svc"
 
 	utils "github.com/Is999/go-utils"
 	"github.com/Is999/go-utils/errors"

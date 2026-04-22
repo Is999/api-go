@@ -1,11 +1,14 @@
 package handler
 
 import (
-	"net/http"
 	"strings"
 
-	"gozero_api/internal/middleware"
-	"gozero_api/internal/svc"
+	authhandler "api/internal/handler/auth"
+	confighandler "api/internal/handler/config"
+	healthhandler "api/internal/handler/health"
+	userhandler "api/internal/handler/user"
+	"api/internal/middleware"
+	"api/internal/svc"
 
 	"github.com/zeromicro/go-zero/rest"
 )
@@ -52,35 +55,35 @@ func BuiltinRouteModules() []RouteModule {
 		NewHealthRouteModule(),
 		NewAuthRouteModule(),
 		NewUserRouteModule(),
-		NewSystemRouteModule(),
+		NewConfigRouteModule(),
 	}
 }
 
 // NewHealthRouteModule 创建健康检查路由模块。
 func NewHealthRouteModule() RouteModule {
 	return NewRouteModuleFunc("health", func(scope *RouteScope) {
-		registerHealthRoutes(scope.Server, scope.ServiceContext)
+		healthhandler.RegisterRoutes(scope.Server, scope.ServiceContext)
 	})
 }
 
 // NewAuthRouteModule 创建前台认证路由模块。
 func NewAuthRouteModule() RouteModule {
 	return NewRouteModuleFunc("auth", func(scope *RouteScope) {
-		registerAuthRoutes(scope.Server, scope.ServiceContext, scope.AuthMiddleware)
+		authhandler.RegisterRoutes(scope.Server, scope.ServiceContext, scope.AuthMiddleware)
 	})
 }
 
 // NewUserRouteModule 创建前台用户路由模块。
 func NewUserRouteModule() RouteModule {
 	return NewRouteModuleFunc("user", func(scope *RouteScope) {
-		registerUserRoutes(scope.Server, scope.ServiceContext, scope.AuthMiddleware)
+		userhandler.RegisterRoutes(scope.Server, scope.ServiceContext, scope.AuthMiddleware)
 	})
 }
 
-// NewSystemRouteModule 创建框架运行态管理路由模块。
-func NewSystemRouteModule() RouteModule {
-	return NewRouteModuleFunc("system", func(scope *RouteScope) {
-		registerSystemRoutes(scope.Server, scope.ServiceContext, scope.AuthMiddleware)
+// NewConfigRouteModule 创建运行期配置管理路由模块。
+func NewConfigRouteModule() RouteModule {
+	return NewRouteModuleFunc("config", func(scope *RouteScope) {
+		confighandler.RegisterRoutes(scope.Server, scope.ServiceContext, scope.AuthMiddleware)
 	})
 }
 
@@ -111,13 +114,4 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext, module
 		}
 		module.Register(scope)
 	}
-}
-
-// addRoute 轻量包装 AddRoute，保持路由元数据和 Handler 绑定在同一处。
-func addRoute(server *rest.Server, method, path string, handler http.HandlerFunc) {
-	server.AddRoute(rest.Route{
-		Method:  method,
-		Path:    path,
-		Handler: handler,
-	})
 }

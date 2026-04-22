@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"gozero_api/internal/config"
-	"gozero_api/internal/infra/loggerx"
+	"api/internal/config"
+	"api/internal/infra/loggerx"
 
 	"github.com/Is999/go-utils/errors"
 	"github.com/redis/go-redis/v9"
@@ -23,7 +23,7 @@ const (
 	redisNoScriptPrefix   = "NOSCRIPT"   // Redis 脚本缓存未命中错误前缀
 )
 
-// New 创建 Redis 客户端，并注册统一的命令耗时/错误日志 hook。
+// New 创建 Redis 客户端，并注册统一的命令耗时观测 hook。
 func New(ctx context.Context, cfg config.RedisConfig, obs config.ObservabilityConfig) (redis.UniversalClient, error) {
 	addrs, err := resolveAddrs(cfg.Addrs)
 	if err != nil {
@@ -252,7 +252,7 @@ func rewriteClusterAddr(addr string, addrMap map[string]string) string {
 	return net.JoinHostPort(mappedHost, port)
 }
 
-// hook 负责把 go-redis 命令执行结果转成结构化日志。
+// hook 负责把 go-redis 命令耗时转成结构化日志。
 type hook struct {
 	slowThreshold time.Duration // 慢 Redis 命令阈值
 }
@@ -267,27 +267,24 @@ func (h hook) DialHook(next redis.DialHook) redis.DialHook {
 	return next
 }
 
-// ProcessHook 记录单条 Redis 命令耗时和错误。
+// ProcessHook 记录单条 Redis 命令耗时，错误原样交给调用方处理。
 func (h hook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 	return func(ctx context.Context, cmd redis.Cmder) error {
 		begin := time.Now()
 		err := next(ctx, cmd)
-		h.logProcess(ctx, time.Since(begin), err, cmd)
+		h.logSlowProcess(ctx, time.Since(begin), err, cmd)
+		// hook 只做观测，必须原样透传 redis.Nil 等哨兵错误。
 		return err
 	}
 }
 
-// ProcessPipelineHook 记录 Redis Pipeline 耗时和错误。
+// ProcessPipelineHook 记录 Redis Pipeline 耗时，错误原样交给调用方处理。
 func (h hook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
 	return func(ctx context.Context, cmds []redis.Cmder) error {
 		begin := time.Now()
 		err := next(ctx, cmds)
 		if err != nil {
-			fields := []logx.LogField{
-				logx.Field("latency_ms", time.Since(begin).Milliseconds()),
-				logx.Field("commands", pipelineNames(cmds)),
-			}
-			loggerx.Errorw(ctx, "缓存 管道执行失败", err, fields...)
+			// pipeline hook 不能改写底层错误语义，避免上层依赖的直接比较失效。
 			return err
 		}
 		if h.slowThreshold > 0 && time.Since(begin) > h.slowThreshold {
@@ -301,8 +298,8 @@ func (h hook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessP
 	}
 }
 
-// logProcess 按错误和慢阈值输出单条 Redis 命令日志。
-func (h hook) logProcess(ctx context.Context, duration time.Duration, err error, cmd redis.Cmder) {
+// logSlowProcess 按慢阈值输出单条 Redis 命令日志。
+func (h hook) logSlowProcess(ctx context.Context, duration time.Duration, err error, cmd redis.Cmder) {
 	fields := []logx.LogField{
 		logx.Field("latency_ms", duration.Milliseconds()),
 		logx.Field("cmd", cmd.FullName()),
@@ -311,8 +308,6 @@ func (h hook) logProcess(ctx context.Context, duration time.Duration, err error,
 	switch {
 	case isRedisScriptCacheMiss(err, cmd):
 		return
-	case err != nil && !errors.Is(err, redis.Nil):
-		loggerx.Errorw(ctx, "缓存 命令执行失败", err, fields...)
 	case h.slowThreshold > 0 && duration > h.slowThreshold:
 		loggerx.Sloww(ctx, "缓存 命令耗时较高", fields...)
 	}
@@ -331,7 +326,8 @@ func isRedisScriptCacheMiss(err error, cmd redis.Cmder) bool {
 	if errors.Is(err, redis.ErrNoScript) || redis.HasErrorPrefix(err, redisNoScriptPrefix) {
 		return true
 	}
-	return strings.HasPrefix(err.Error(), redisNoScriptPrefix)
+	message := err.Error()
+	return strings.HasPrefix(message, redisNoScriptPrefix)
 }
 
 // pipelineNames 提取 Pipeline 命令名称，避免日志记录完整参数。

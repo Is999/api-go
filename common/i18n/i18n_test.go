@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	codes "gozero_api/common/codes"
+	codes "api/common/codes"
 )
 
 // TestMessageByCodeUsesLocale 验证业务码按语言返回对应文案。

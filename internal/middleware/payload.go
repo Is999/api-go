@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"gozero_api/internal/security"
-	"gozero_api/internal/svc"
+	"api/internal/security"
+	"api/internal/svc"
 
 	"github.com/Is999/go-utils/errors"
 )

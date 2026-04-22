@@ -1,7 +1,7 @@
-# gozero-api DNMP 本地配置示例。
+# api DNMP 本地配置示例。
 
 # go-zero HTTP 基础配置。
-Name: "gozero_api"
+Name: "api"
 Host: "0.0.0.0"
 Port: 8890
 Mode: "dev"
@@ -33,7 +33,7 @@ auth:
   # 是否开放注册接口，本地默认开启。
   register_enabled: true
   # JWT issuer。
-  issuer: "gozero_api"
+  issuer: "api"
   # Redis 会话 TTL；<=0 或超过 jwt_expires_in 时使用 jwt_expires_in。
   session_ttl_seconds: 86400
   # 用户资料缓存 TTL。
@@ -61,7 +61,7 @@ log:
 
 # 可观测性配置。
 observability:
-  service_name: "gozero_api"
+  service_name: "api"
   environment: "dev"
   trace_enabled: true
   otlp_protocol: "grpc"
@@ -96,8 +96,9 @@ collector:
   transport: "auto"
   redis:
     enabled: false
-    stream: "gozero_api:collector:events"
-    consumer: "gozero_api-local"
+    # Redis Stream 业务名称，运行时自动转成 app:{app_id}:api:collector:events。
+    stream: "api:collector:events"
+    consumer: "api-local"
     max_len: 10000
 
 # 运维级接口保护；本地调试配置热加载接口只允许本机来源并携带 X-Ops-Token。
@@ -109,9 +110,9 @@ ops:
 
 # 本地 MySQL 读写分离配置。
 mysql:
-  write_data_source: "root:password@tcp(127.0.0.1:3307)/gozero_api?charset=utf8mb4&parseTime=true&loc=Local"
+  write_data_source: "root:password@tcp(127.0.0.1:3307)/api?charset=utf8mb4&parseTime=true&loc=Local"
   read_data_sources:
-    - "root:password@tcp(127.0.0.1:3308)/gozero_api?charset=utf8mb4&parseTime=true&loc=Local"
+    - "root:password@tcp(127.0.0.1:3308)/api?charset=utf8mb4&parseTime=true&loc=Local"
   max_open_conns: 20
   max_idle_conns: 10
   conn_max_lifetime: 300

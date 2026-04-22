@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"gozero_api/internal/bootstrap"
-	"gozero_api/internal/database"
-	mysqlx "gozero_api/internal/infra/mysql"
+	"api/internal/bootstrap"
+	"api/internal/database"
+	mysqlx "api/internal/infra/mysql"
 
 	"github.com/Is999/go-utils/errors"
 )
@@ -66,7 +66,7 @@ func run(configFile string, action string, allowBootstrap bool, allowDestructive
 		AllowDestructive: allowDestructive,
 	})
 	printResults(results)
-	return err
+	return errors.Tag(err)
 }
 
 func printResults(results []database.MigrationRunItem) {
