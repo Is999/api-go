@@ -5,8 +5,8 @@ import (
 	"database/sql"
 	"sort"
 
-	codes "gozero_api/common/codes"
-	"gozero_api/internal/svc"
+	codes "api/common/codes"
+	"api/internal/svc"
 
 	"github.com/Is999/go-utils/errors"
 	"github.com/redis/go-redis/v9"

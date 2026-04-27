@@ -4,11 +4,13 @@ import (
 	"net/netip"
 	"strings"
 
-	"gozero_api/internal/config"
+	keys "api/common/rediskeys"
+	"api/internal/config"
 
 	"github.com/Is999/go-utils/errors"
 )
 
+// 启动配置校验边界常量。
 const (
 	minJWTSecretLength            = 16    // JWT 密钥最小长度，避免明显弱配置启动
 	minOpsTokenLength             = 16    // 运维令牌生产环境最小长度
@@ -26,6 +28,9 @@ func validateConfig(c config.Config) error {
 	if len(strings.TrimSpace(c.JwtSecret)) < minJWTSecretLength {
 		return errors.Errorf("jwt_secret 长度不能小于 %d", minJWTSecretLength)
 	}
+	if strings.TrimSpace(c.AppID) == "" {
+		return errors.Errorf("app_id 不能为空")
+	}
 	if len(c.Redis.Addrs) == 0 {
 		return errors.Errorf("redis.addrs 不能为空")
 	}
@@ -41,7 +46,7 @@ func validateConfig(c config.Config) error {
 	if err := validateAuthRateLimitConfig("auth.register_rate_limit", c.Auth.RegisterRateLimit); err != nil {
 		return errors.Tag(err)
 	}
-	if err := validateCollectorConfig(c.Collector); err != nil {
+	if err := validateCollectorConfig(c); err != nil {
 		return errors.Tag(err)
 	}
 	if err := validateOpsConfig(c.Ops); err != nil {
@@ -74,10 +79,15 @@ func validateAuthRateLimitConfig(name string, cfg config.AuthRateLimitConfig) er
 }
 
 // validateCollectorConfig 校验 Collector 载体配置是否自洽。
-func validateCollectorConfig(cfg config.CollectorConfig) error {
+func validateCollectorConfig(c config.Config) error {
+	cfg := c.Collector
 	transport := strings.ToLower(strings.TrimSpace(cfg.Transport))
 	if cfg.Redis.Enabled && strings.TrimSpace(cfg.Redis.Stream) == "" {
 		return errors.Errorf("collector.redis.enabled=true 时必须配置 collector.redis.stream")
+	}
+	if keys.IsForeignAppScopedKey(c.AppID, cfg.Redis.Stream) {
+		ownerAppID, _ := keys.AppScopedAppID(cfg.Redis.Stream)
+		return errors.Errorf("collector.redis.stream 属于其它 app_id[%s]", ownerAppID)
 	}
 	switch transport {
 	case "", collectorTransportAuto, collectorTransportSync:

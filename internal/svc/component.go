@@ -71,5 +71,5 @@ func (r *ComponentRegistry) Close() error {
 			firstErr = errors.Tag(err)
 		}
 	}
-	return errors.Tag(firstErr)
+	return firstErr
 }

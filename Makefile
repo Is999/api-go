@@ -1,10 +1,10 @@
-APP := gozero-api
+APP := api
 BIN := bin/$(APP)
 VERSION ?= dev
 PACKAGE := dist/$(APP)-$(VERSION).tar.gz
 LDFLAGS ?= -s -w -X main.buildVersion=$(VERSION)
 DOCKER_COMPOSE ?= docker compose
-INTEGRATION_MYSQL_DSN ?= root:password@tcp(127.0.0.1:3311)/gozero_api?charset=utf8mb4&parseTime=true&loc=Local
+INTEGRATION_MYSQL_DSN ?= root:password@tcp(127.0.0.1:3311)/api?charset=utf8mb4&parseTime=true&loc=Local
 SECRET_SCAN_PATHS := $(wildcard etc/*.sample.yaml) deploy .gitlab-ci.yml Makefile README.md docs/site docs/prometheus docs/grafana
 PROMTOOL_IMAGE ?= prom/prometheus:v2.55.1
 PROMETHEUS_RULES := $(wildcard docs/prometheus/*.yml)
@@ -23,7 +23,7 @@ test:
 
 build:
 	mkdir -p bin
-	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) .
+	go build -trimpath -ldflags "$(LDFLAGS)" -o $(BIN) ./cmd/api
 
 build-tools:
 	mkdir -p bin

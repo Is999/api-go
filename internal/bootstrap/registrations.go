@@ -3,12 +3,13 @@ package bootstrap
 import (
 	"sort"
 
-	"gozero_api/internal/handler"
+	"api/internal/handler"
 
 	utils "github.com/Is999/go-utils"
 	"github.com/Is999/go-utils/errors"
 )
 
+// 默认注册清单使用的注册类型和运行时入口名称。
 const (
 	// registrationKindRoute 表示 HTTP 路由模块注册项。
 	registrationKindRoute = "route"
@@ -47,30 +48,30 @@ func DefaultRegistrationManifest() []RegistrationManifestItem {
 		{
 			Kind:        registrationKindRoute,
 			Name:        "health",
-			File:        "internal/handler/routes.go + internal/handler/routes_health.go",
-			Method:      "handler.NewHealthRouteModule / registerHealthRoutes",
+			File:        "internal/handler/routes.go + internal/handler/health/routes.go",
+			Method:      "handler.NewHealthRouteModule / health.RegisterRoutes",
 			Description: "注册健康检查路由",
 		},
 		{
 			Kind:        registrationKindRoute,
 			Name:        "auth",
-			File:        "internal/handler/routes.go + internal/handler/routes_auth.go",
-			Method:      "handler.NewAuthRouteModule / registerAuthRoutes",
+			File:        "internal/handler/routes.go + internal/handler/auth/routes.go",
+			Method:      "handler.NewAuthRouteModule / auth.RegisterRoutes",
 			Description: "注册前台认证路由",
 		},
 		{
 			Kind:        registrationKindRoute,
 			Name:        "user",
-			File:        "internal/handler/routes.go + internal/handler/routes_user.go",
-			Method:      "handler.NewUserRouteModule / registerUserRoutes",
+			File:        "internal/handler/routes.go + internal/handler/user/routes.go",
+			Method:      "handler.NewUserRouteModule / user.RegisterRoutes",
 			Description: "注册前台用户路由",
 		},
 		{
 			Kind:        registrationKindRoute,
-			Name:        "system",
-			File:        "internal/handler/routes.go + internal/handler/routes_system.go",
-			Method:      "handler.NewSystemRouteModule / registerSystemRoutes",
-			Description: "注册内网运行态系统管理路由",
+			Name:        "config",
+			File:        "internal/handler/routes.go + internal/handler/config/routes.go",
+			Method:      "handler.NewConfigRouteModule / config.RegisterRoutes",
+			Description: "注册内网运行期配置管理路由",
 		},
 		{
 			Kind:        registrationKindRuntimeRegistry,
@@ -82,43 +83,43 @@ func DefaultRegistrationManifest() []RegistrationManifestItem {
 		{
 			Kind:        registrationKindRuntimeRegistry,
 			Name:        runtimeRegistryCollectorProcessor,
-			File:        "internal/collector/manager.go",
-			Method:      "collector.Manager.RegisterProcessor / RegisterProcessorFunc",
+			File:        "internal/infra/collectorx/manager.go",
+			Method:      "collectorx.Manager.RegisterProcessor / RegisterProcessorFunc",
 			Description: "按 bizType 注册轻量 Collector Processor",
 		},
 		{
 			Kind:        registrationKindRuntimeRegistry,
 			Name:        runtimeRegistryAuthSecurityEvent,
-			File:        "internal/logic/auth_event.go",
-			Method:      "logic.AuthCollectorBizType / RecordAuthEvent",
+			File:        "internal/logic/auth/auth_event.go",
+			Method:      "auth.AuthCollectorBizType / RecordAuthEvent",
 			Description: "投递脱敏认证风控事件到轻量 Collector",
 		},
 		{
 			Kind:        registrationKindRuntimeRegistry,
 			Name:        runtimeRegistryAuthSecurityProcessor,
-			File:        "internal/collector/auth_security.go",
-			Method:      "collector.RegisterDefaultProcessors / NewAuthSecurityProcessor",
+			File:        "internal/infra/collectorx/auth_security.go",
+			Method:      "collectorx.RegisterDefaultProcessors / NewAuthSecurityProcessor",
 			Description: "默认汇总 auth.security 认证风控事件指标",
 		},
 		{
 			Kind:        registrationKindRuntimeRegistry,
 			Name:        runtimeRegistrySysConfigCache,
-			File:        "internal/logic/sys_config.go",
-			Method:      "logic.NewSysConfigLogic / GetCachedValue",
+			File:        "internal/logic/config/sys_config.go",
+			Method:      "config.NewSysConfigLogic / GetCachedValue",
 			Description: "读取 sys_config 运行期配置缓存",
 		},
 		{
 			Kind:        registrationKindRuntimeRegistry,
 			Name:        runtimeRegistrySysConfigKeyRegistry,
-			File:        "internal/logic/sys_config_key.go",
-			Method:      "logic.NewSysConfigKeyRegistry / SysConfigLogic.GetBool",
+			File:        "internal/logic/config/sys_config_key.go",
+			Method:      "config.NewSysConfigKeyRegistry / SysConfigLogic.GetBool",
 			Description: "按 key 声明类型化读取 sys_config 配置",
 		},
 		{
 			Kind:        registrationKindRuntimeRegistry,
 			Name:        runtimeRegistryCacheRebuildLock,
 			File:        "internal/infra/redsync/lock.go + internal/logic/cache_guard.go",
-			Method:      "redsync.WithLock / BaseLogic.tryRebuildCacheWithLock",
+			Method:      "RebuildCacheWithLock / TryRebuildCacheWithLock",
 			Description: "使用 redsync 保护缓存重建",
 		},
 	}
@@ -156,7 +157,7 @@ func defaultRouteModules() []handler.RouteModule {
 		handler.NewHealthRouteModule(), // 基础健康检查
 		handler.NewAuthRouteModule(),   // 前台认证模块
 		handler.NewUserRouteModule(),   // 前台用户模块
-		handler.NewSystemRouteModule(), // 运行态系统模块
+		handler.NewConfigRouteModule(), // 运行期配置模块
 	}
 }
 

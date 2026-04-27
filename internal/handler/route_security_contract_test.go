@@ -6,9 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"gozero_api/internal/config"
-	"gozero_api/internal/security"
-	"gozero_api/internal/svc"
+	"api/internal/config"
+	"api/internal/handler/shared"
+	"api/internal/security"
+	"api/internal/svc"
 
 	"github.com/zeromicro/go-zero/rest"
 )
@@ -40,15 +41,15 @@ func TestRouteSecurityContractsFollowAccessBoundary(t *testing.T) {
 			t.Fatalf("route security contract alias missing from route meta: %s", contract.Alias)
 		}
 		switch access {
-		case RouteAccessPublic:
+		case shared.RouteAccessPublic:
 			if contract.Chain != RouteSecurityNone && contract.Chain != RouteSecurityPublic {
 				t.Fatalf("public route %s chain = %s", contract.Alias, contract.Chain)
 			}
-		case RouteAccessAuth:
+		case shared.RouteAccessAuth:
 			if contract.Chain != RouteSecurityAuth {
 				t.Fatalf("auth route %s chain = %s", contract.Alias, contract.Chain)
 			}
-		case RouteAccessInternal:
+		case shared.RouteAccessInternal:
 			if contract.Chain != RouteSecurityInternal {
 				t.Fatalf("internal route %s chain = %s", contract.Alias, contract.Chain)
 			}

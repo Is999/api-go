@@ -4,19 +4,6 @@
     {
       "alias": "health.live",
       "method": "GET",
-      "path": "/api/health",
-      "access": "public",
-      "chain": "none",
-      "describe": "存活检查",
-      "requestSign": [],
-      "requestCipher": [],
-      "responseSign": [],
-      "responseCipher": [],
-      "documentPath": "docs/site/接口文档/前台系统/健康检查接口.md"
-    },
-    {
-      "alias": "health.live",
-      "method": "GET",
       "path": "/api/live",
       "access": "public",
       "chain": "none",

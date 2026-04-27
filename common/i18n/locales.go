@@ -14,6 +14,9 @@ const (
 	LocaleENUS = "en-US"
 )
 
+// supportedLocales 表示后端响应文案当前维护的语种。
+var supportedLocales = []string{LocaleZHCN, LocaleENUS}
+
 // NormalizeLocale 归一化请求语言，未知语言默认中文。
 func NormalizeLocale(locale string) string {
 	locale = strings.TrimSpace(locale)

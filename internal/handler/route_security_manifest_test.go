@@ -8,7 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"gozero_api/internal/security"
+	"api/internal/handler/shared"
+	"api/internal/security"
 )
 
 // TestDefaultRouteSecurityManifestValid 确保前后端同步清单可通过完整性校验。
@@ -97,7 +98,7 @@ type routeSecurityManifestSnapshotItem struct {
 	Alias          string             `json:"alias"`          // 路由别名
 	Method         string             `json:"method"`         // HTTP 方法
 	Path           string             `json:"path"`           // HTTP 路径
-	Access         RouteAccess        `json:"access"`         // 访问边界
+	Access         shared.RouteAccess `json:"access"`         // 访问边界
 	Chain          RouteSecurityChain `json:"chain"`          // 实际安全链路
 	Describe       string             `json:"describe"`       // 中文业务说明
 	RequestSign    []string           `json:"requestSign"`    // 请求签名字段

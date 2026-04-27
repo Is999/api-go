@@ -4,8 +4,8 @@ import (
 	"context"
 	"testing"
 
-	"gozero_api/internal/config"
-	"gozero_api/internal/svc"
+	"api/internal/config"
+	"api/internal/svc"
 )
 
 func TestCacheLockKeyUsesAppNamespace(t *testing.T) {

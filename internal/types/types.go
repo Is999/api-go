@@ -5,9 +5,9 @@ package types
 import (
 	"context"
 
-	codes "gozero_api/common/codes"
-	i18n "gozero_api/common/i18n"
-	"gozero_api/internal/requestctx"
+	codes "api/common/codes"
+	i18n "api/common/i18n"
+	"api/internal/requestctx"
 
 	"github.com/Is999/go-utils/errors"
 )
@@ -88,6 +88,23 @@ func (r *BizResult) WithData(data any) *BizResult {
 	}
 	r.Data = data
 	return r
+}
+
+// ParamErrorResultWithCode 统一构造参数错误响应，并挂上国际化模板消息。
+func ParamErrorResultWithCode(code int, err error) *BizResult {
+	if code <= 0 {
+		code = codes.ParamError
+	}
+	if err == nil {
+		return NewBizResult(code).WithError(Nil).SetI18nMessage(i18n.MsgKeyParamError)
+	}
+	message := err.Error()
+	return NewBizResult(code).WithError(Nil).SetI18nMessage(i18n.MsgKeyParamErrorFormat, message)
+}
+
+// ParamErrorResult 统一构造参数错误响应，并挂上国际化模板消息。
+func ParamErrorResult(err error) *BizResult {
+	return ParamErrorResultWithCode(codes.ParamError, err)
 }
 
 // ResolveMessage 按“MessageKey > Code 默认文案”的优先级解析最终响应文案。

@@ -9,6 +9,7 @@ import (
 // 前后端和 W3C trace 传递使用的 HTTP Header 名称。
 const (
 	HeaderTraceID     = "X-Trace-Id"  // HeaderTraceID 是前后端约定的请求追踪头。
+	HeaderTimestamp   = "X-Timestamp" // HeaderTimestamp 是秒级请求时间戳，参与签名并校验时间窗口。
 	HeaderSpanID      = "X-Span-Id"   // HeaderSpanID 是服务端当前处理片段标识。
 	HeaderTraceParent = "traceparent" // HeaderTraceParent 是 W3C Trace Context 标准头。
 )

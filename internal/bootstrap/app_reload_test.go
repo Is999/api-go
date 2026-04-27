@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"gozero_api/internal/config"
+	"api/internal/config"
 )
 
 func TestDetectHotReloadRestartImpact(t *testing.T) {

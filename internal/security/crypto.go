@@ -12,6 +12,7 @@ import (
 	"github.com/Is999/go-utils/errors"
 )
 
+// 安全算法请求头短码常量。
 const (
 	// SignatureTypeMD5 表示 MD5 签名方式，对应 X-Signature=M。
 	SignatureTypeMD5 = "M"

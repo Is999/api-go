@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	codes "gozero_api/common/codes"
-	i18n "gozero_api/common/i18n"
-	"gozero_api/internal/requestctx"
+	codes "api/common/codes"
+	i18n "api/common/i18n"
+	"api/internal/requestctx"
 
 	"github.com/zeromicro/go-zero/rest/httpx"
 )
@@ -187,5 +187,6 @@ func internalErrorSummary(err error) string {
 	if err == nil {
 		return ""
 	}
-	return strings.TrimSpace(err.Error())
+	summary := strings.TrimSpace(err.Error())
+	return summary
 }

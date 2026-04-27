@@ -5,11 +5,12 @@ import (
 	"reflect"
 	"strings"
 
-	"gozero_api/helper"
+	"api/helper"
 
 	"github.com/Is999/go-utils/errors"
 )
 
+// 安全链路轻量处理上限，防止签名和加密承载大对象。
 const (
 	// MaxSecurityFieldCount 是单个接口允许参与签名或加密的最大字段数。
 	MaxSecurityFieldCount = 8
@@ -62,6 +63,7 @@ func ValidateSecurityJSONValue(scope string, field string, value any) ([]byte, e
 	return body, nil
 }
 
+// isComplexSecurityValue 判断字段值是否为不允许参与普通签名的复杂结构。
 func isComplexSecurityValue(value any) bool {
 	if value == nil {
 		return false

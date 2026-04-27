@@ -3,7 +3,7 @@ package bootstrap
 import (
 	"testing"
 
-	"gozero_api/internal/handler"
+	"api/internal/handler"
 )
 
 // TestValidateDefaultRegistrationManifest 确保默认注册清单与真实内置注册集合保持一致。
@@ -101,7 +101,7 @@ func TestValidateNameListUniqueRejectsDuplicate(t *testing.T) {
 // TestDefaultRouteModulesPreservesOrder 确保 bootstrap 统一清单维护内置路由顺序。
 func TestDefaultRouteModulesPreservesOrder(t *testing.T) {
 	got := routeModuleNames(defaultRouteModules())
-	want := []string{"health", "auth", "user", "system"}
+	want := []string{"health", "auth", "user", "config"}
 	if len(got) != len(want) {
 		t.Fatalf("内置路由数量不符合预期: got=%v want=%v", got, want)
 	}

@@ -4,8 +4,8 @@ import (
 	"reflect"
 	"testing"
 
-	"gozero_api/internal/config"
-	"gozero_api/internal/svc"
+	"api/internal/config"
+	"api/internal/svc"
 
 	"gorm.io/gorm"
 )
@@ -28,5 +28,28 @@ func TestBuildDefaultComponentRegistryNames(t *testing.T) {
 	want := []string{"mysql", "mysql_archive", "mysql_user", "redis"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("component names = %v, want %v", got, want)
+	}
+}
+
+// TestCollectorConfigWithAppIDScopesRedisStream 确保 Collector Redis Stream 按 app_id 隔离。
+func TestCollectorConfigWithAppIDScopesRedisStream(t *testing.T) {
+	cfg := collectorConfigWithAppID(config.Config{
+		AppID: "site-1",
+		Collector: config.CollectorConfig{
+			Redis: config.CollectorRedisConfig{Stream: "collector:events"},
+		},
+	})
+	if got := cfg.Redis.Stream; got != "app:site-1:collector:events" {
+		t.Fatalf("期望 Collector Redis Stream 按 app_id 加前缀，实际为 %q", got)
+	}
+
+	cfg = collectorConfigWithAppID(config.Config{
+		AppID: "site-2",
+		Collector: config.CollectorConfig{
+			Redis: config.CollectorRedisConfig{Stream: "app:site-1:collector:events"},
+		},
+	})
+	if got := cfg.Redis.Stream; got != "app:site-1:collector:events" {
+		t.Fatalf("期望已带其它 app 前缀的 Collector Redis Stream 保持原样，实际为 %q", got)
 	}
 }

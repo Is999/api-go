@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"gozero_api/internal/config"
-	"gozero_api/internal/infra/loggerx"
-	"gozero_api/internal/svc"
+	"api/internal/config"
+	"api/internal/infra/loggerx"
+	"api/internal/svc"
 
 	utils "github.com/Is999/go-utils"
 	"github.com/Is999/go-utils/errors"
@@ -191,17 +191,17 @@ func (a *App) reloadConfigFile(ctx context.Context, source string, configFile st
 	}
 	configFile = strings.TrimSpace(configFile)
 	if configFile == "" {
-		err := errors.Errorf("未绑定配置文件路径")
-		a.markHotReloadFailure("配置热加载未绑定文件", err, "", source, "not_bound", configFile)
-		return "", err
+		notBoundErr := errors.Errorf("未绑定配置文件路径")
+		a.markHotReloadFailure("配置热加载未绑定文件", notBoundErr, "", source, "not_bound", configFile)
+		return "", notBoundErr
 	}
 	a.hotReload.execMu.Lock()
 	defer a.hotReload.execMu.Unlock()
 	select {
 	case <-ctx.Done():
-		err := errors.Tag(ctx.Err())
-		a.markHotReloadFailure("配置热加载已取消", err, "", source, "cancelled", configFile)
-		return "", err
+		cancelErr := errors.Tag(ctx.Err())
+		a.markHotReloadFailure("配置热加载已取消", cancelErr, "", source, "cancelled", configFile)
+		return "", cancelErr
 	default:
 	}
 

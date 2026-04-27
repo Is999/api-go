@@ -7,16 +7,17 @@ import (
 	"net/netip"
 	"strings"
 
-	codes "gozero_api/common/codes"
-	i18n "gozero_api/common/i18n"
-	"gozero_api/helper"
-	"gozero_api/internal/config"
-	"gozero_api/internal/svc"
+	codes "api/common/codes"
+	i18n "api/common/i18n"
+	"api/helper"
+	"api/internal/config"
+	"api/internal/svc"
 
 	utils "github.com/Is999/go-utils"
 	"github.com/Is999/go-utils/errors"
 )
 
+// 运维接口鉴权请求头常量。
 const (
 	// HeaderOpsToken 表示运维级接口保护令牌请求头。
 	HeaderOpsToken = "X-Ops-Token"

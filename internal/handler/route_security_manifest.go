@@ -3,8 +3,9 @@ package handler
 import (
 	"strings"
 
-	"gozero_api/internal/middleware"
-	"gozero_api/internal/security"
+	"api/internal/handler/shared"
+	"api/internal/middleware"
+	"api/internal/security"
 
 	"github.com/Is999/go-utils/errors"
 )
@@ -14,7 +15,7 @@ type RouteSecurityManifestItem struct {
 	Alias          middleware.RouteAlias `json:"alias"`          // 路由别名
 	Method         string                `json:"method"`         // HTTP 方法
 	Path           string                `json:"path"`           // HTTP 路径
-	Access         RouteAccess           `json:"access"`         // 访问边界
+	Access         shared.RouteAccess    `json:"access"`         // 访问边界
 	Chain          RouteSecurityChain    `json:"chain"`          // 实际安全链路
 	Describe       string                `json:"describe"`       // 中文业务说明
 	RequestSign    []string              `json:"requestSign"`    // 请求签名字段
@@ -89,6 +90,7 @@ func ValidateDefaultRouteSecurityManifest() error {
 	return nil
 }
 
+// validateRouteSecurityManifestItem 校验单条路由清单的安全链路与策略声明是否匹配。
 func validateRouteSecurityManifestItem(item RouteSecurityManifestItem) error {
 	alias := string(item.Alias)
 	hasPolicy := hasExplicitRouteSecurityPolicy(alias)
@@ -115,11 +117,12 @@ func validateRouteSecurityManifestItem(item RouteSecurityManifestItem) error {
 	return validateRouteSecurityManifestFields(item)
 }
 
+// validateRouteSecurityManifestFields 校验字段级签名和加密策略不使用全量处理且数量受控。
 func validateRouteSecurityManifestFields(item RouteSecurityManifestItem) error {
 	groups := []struct {
-		label     string
-		fields    []string
-		forbidden string
+		label     string   // 字段组名称，用于错误上下文
+		fields    []string // 当前字段组声明的字段路径
+		forbidden string   // 当前字段组禁止使用的全量处理标记
 	}{
 		{label: "request sign", fields: item.RequestSign, forbidden: security.SignFieldAll},
 		{label: "request cipher", fields: item.RequestCipher, forbidden: security.CipherWholeBody},
@@ -137,6 +140,7 @@ func validateRouteSecurityManifestFields(item RouteSecurityManifestItem) error {
 	return nil
 }
 
+// defaultRouteSecurityContractsByAlias 按路由别名索引默认安全链路契约。
 func defaultRouteSecurityContractsByAlias() map[string]RouteSecurityContract {
 	result := make(map[string]RouteSecurityContract, len(DefaultRouteSecurityContracts()))
 	for _, contract := range DefaultRouteSecurityContracts() {
@@ -145,6 +149,7 @@ func defaultRouteSecurityContractsByAlias() map[string]RouteSecurityContract {
 	return result
 }
 
+// cloneSecurityFields 复制字段级安全策略，避免调用方修改全局策略切片。
 func cloneSecurityFields(fields []string) []string {
 	if len(fields) == 0 {
 		return nil
@@ -154,11 +159,13 @@ func cloneSecurityFields(fields []string) []string {
 	return result
 }
 
+// hasExplicitRouteSecurityPolicy 判断路由是否在前台安全策略表中显式声明。
 func hasExplicitRouteSecurityPolicy(alias string) bool {
 	_, ok := security.RouteSecurityPolicies[alias]
 	return ok
 }
 
+// routeSecurityManifestPolicyEmpty 判断路由清单是否未声明任何前台签名或加密字段。
 func routeSecurityManifestPolicyEmpty(item RouteSecurityManifestItem) bool {
 	return len(item.RequestSign) == 0 &&
 		len(item.RequestCipher) == 0 &&
@@ -166,6 +173,7 @@ func routeSecurityManifestPolicyEmpty(item RouteSecurityManifestItem) bool {
 		len(item.ResponseCipher) == 0
 }
 
+// hasRouteSecurityManifestField 判断字段组是否包含指定保留标记。
 func hasRouteSecurityManifestField(fields []string, want string) bool {
 	for _, field := range fields {
 		if strings.EqualFold(strings.TrimSpace(field), want) {
@@ -175,6 +183,7 @@ func hasRouteSecurityManifestField(fields []string, want string) bool {
 	return false
 }
 
+// securityManifestRouteKey 生成方法和路径维度的唯一键，用于重复路由检测。
 func securityManifestRouteKey(method string, path string) string {
 	return strings.ToUpper(strings.TrimSpace(method)) + " " + strings.TrimSpace(path)
 }

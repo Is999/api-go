@@ -5,6 +5,7 @@
       "name": "login_request_fields",
       "appID": "demo-app",
       "traceID": "trace-demo-001",
+      "timestamp": "1700000000",
       "fields": ["username", "password"],
       "data": {
         "username": "demo",
@@ -12,12 +13,13 @@
         "nickname": "",
         "sign": "ignored"
       },
-      "expected": "password=P@ssw0rd!&username=demo&key=989e8f7f85fcb70b40c2c4131147d6c8"
+      "expected": "password=P@ssw0rd!&username=demo&key=5a68d419027120213277f2516ed87d4d"
     },
     {
       "name": "all_fields_stable_json",
       "appID": "demo-app",
       "traceID": "trace-demo-002",
+      "timestamp": "1700000000",
       "fields": ["*"],
       "data": {
         "b": 2,
@@ -30,7 +32,7 @@
           "age": 18
         }
       },
-      "expected": "a=1&b=2&profile={\"age\":18,\"name\":\"tom\"}&key=5381bbb89f55bd5e153f8856b33ffd73"
+      "expected": "a=1&b=2&profile={\"age\":18,\"name\":\"tom\"}&key=6f057939b4dab9d24dc26d88ba15d59b"
     }
   ],
   "cipherHeaderVectors": [
@@ -43,11 +45,6 @@
       "name": "response_cipher_json_field",
       "fields": ["token", "user.email", "json:profile"],
       "expected": "WyJ0b2tlbiIsInVzZXIuZW1haWwiLCJqc29uOnByb2ZpbGUiXQ=="
-    },
-    {
-      "name": "whole_body_compat",
-      "fields": ["cipher"],
-      "expected": "cipher"
     }
   ],
   "fieldLimitVectors": [

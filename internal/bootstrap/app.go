@@ -6,14 +6,15 @@ import (
 	"sort"
 	"strings"
 
-	"gozero_api/internal/collector"
-	"gozero_api/internal/config"
-	"gozero_api/internal/handler"
-	"gozero_api/internal/infra/loggerx"
-	mysqlx "gozero_api/internal/infra/mysql"
-	"gozero_api/internal/infra/redisx"
-	"gozero_api/internal/infra/tracing"
-	"gozero_api/internal/svc"
+	keys "api/common/rediskeys"
+	"api/internal/config"
+	"api/internal/handler"
+	"api/internal/infra/collectorx"
+	"api/internal/infra/loggerx"
+	mysqlx "api/internal/infra/mysql"
+	"api/internal/infra/redisx"
+	"api/internal/infra/tracing"
+	"api/internal/svc"
 
 	"github.com/Is999/go-utils/errors"
 	"github.com/zeromicro/go-zero/core/logx"
@@ -91,7 +92,7 @@ func BuildServiceContext(ctx context.Context, c config.Config, version string) (
 		SiteDBs: siteDBs,
 		Rds:     rdb,
 	})
-	collectorManager, err := collector.New(c.Collector, rdb)
+	collectorManager, err := collectorx.New(collectorConfigWithAppID(c), rdb)
 	if err != nil {
 		_ = closeServiceContextResources(svcCtx)
 		if shutdown != nil {
@@ -99,7 +100,7 @@ func BuildServiceContext(ctx context.Context, c config.Config, version string) (
 		}
 		return nil, nil, errors.Tag(err)
 	}
-	if err := collector.RegisterDefaultProcessors(collectorManager); err != nil {
+	if err := collectorx.RegisterDefaultProcessors(collectorManager); err != nil {
 		_ = closeServiceContextResources(svcCtx)
 		if shutdown != nil {
 			_ = shutdown(context.Background())
@@ -117,6 +118,13 @@ func BuildServiceContext(ctx context.Context, c config.Config, version string) (
 	}
 	svcCtx.SetComponentRegistry(componentRegistry)
 	return svcCtx, shutdown, nil
+}
+
+// collectorConfigWithAppID 把顶层 app_id 注入 Collector Redis Stream，避免多站点共用 Redis 时串流。
+func collectorConfigWithAppID(c config.Config) config.CollectorConfig {
+	cfg := c.Collector
+	cfg.Redis.Stream = keys.AppScopedKey(c.AppID, cfg.Redis.Stream)
+	return cfg
 }
 
 // Start 启动 HTTP 服务。
@@ -158,7 +166,7 @@ func (a *App) Stop(ctx context.Context) error {
 	if a.shutdown != nil {
 		recordErr(a.shutdown(ctx))
 	}
-	return errors.Tag(firstErr)
+	return firstErr
 }
 
 // buildSiteDatabases 初始化默认主库和命名扩展库连接。
@@ -230,7 +238,7 @@ func closeServiceContextResources(svcCtx *svc.ServiceContext) error {
 		recordErr(svcCtx.Rds.Close())
 	}
 	recordErr(closeSiteDatabases(svcCtx.SiteDBs))
-	return errors.Tag(firstErr)
+	return firstErr
 }
 
 // closeSiteDatabases 去重关闭站点数据库连接，避免同一连接池重复关闭。
@@ -266,5 +274,5 @@ func closeSiteDatabases(siteDBs svc.SiteDatabases) error {
 	for name, db := range siteDBs.NamedDBs {
 		closeOne("site_mysql."+string(name), db)
 	}
-	return errors.Tag(firstErr)
+	return firstErr
 }

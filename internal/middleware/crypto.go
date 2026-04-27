@@ -5,16 +5,18 @@ import (
 	"net/http"
 	"strings"
 
-	codes "gozero_api/common/codes"
-	"gozero_api/helper"
-	"gozero_api/internal/logic"
-	"gozero_api/internal/requestctx"
-	"gozero_api/internal/security"
-	"gozero_api/internal/svc"
+	codes "api/common/codes"
+	"api/helper"
+	authlogic "api/internal/logic/auth"
+	securitylogic "api/internal/logic/security"
+	"api/internal/requestctx"
+	"api/internal/security"
+	"api/internal/svc"
 
 	"github.com/Is999/go-utils/errors"
 )
 
+// 加密链路请求头和字段标记常量。
 const (
 	cipherWholeBody        = security.CipherWholeBody  // 整包加解密标记
 	cipherJSONPrefix       = security.CipherJSONPrefix // 字段值 JSON 编解码前缀
@@ -32,12 +34,12 @@ func NewCryptoMiddleware(svcCtx *svc.ServiceContext) *CryptoMiddleware {
 	return &CryptoMiddleware{svc: svcCtx}
 }
 
-// Handle 根据 X-Cipher/X-Crypto 请求头执行加解密，未配置秘钥时兼容普通请求。
+// Handle 根据 X-Cipher/X-Crypto 请求头执行加解密，未配置秘钥时走普通 JSON 链路。
 func (m *CryptoMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		policy := security.PolicyByRoute(requestRouteAlias(r))
 		requestCipher := strings.TrimSpace(r.Header.Get("X-Cipher"))
-		// 未配置秘钥且请求未声明加密时保持普通 JSON 链路，避免影响老客户端。
+		// 未配置秘钥且请求未声明加密时保持普通 JSON 链路。
 		if !securityConfigConfigured(m.svc) && requestCipher == "" {
 			next(w, r)
 			return
@@ -51,12 +53,12 @@ func (m *CryptoMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 		if requestCipher != "" || len(policy.ResponseCipher) > 0 {
 			appID, err = requestAppID(r)
 			if err != nil {
-				m.fail(w, r, codes.ParamError, logic.AuthEventReasonSecurityAppIDInvalid, err)
+				m.fail(w, r, codes.ParamError, authlogic.AuthEventReasonSecurityAppIDInvalid, err)
 				return
 			}
-			routeConfig, err := logic.NewSecretKeyLogic(r.Context(), m.svc).GetRouteConfig(appID)
+			routeConfig, err := securitylogic.NewSecretKeyLogic(r.Context(), m.svc).GetRouteConfig(appID)
 			if err != nil {
-				m.fail(w, r, codes.InternalError, logic.AuthEventReasonSecurityKeyUnavailable, err)
+				m.fail(w, r, codes.InternalError, authlogic.AuthEventReasonSecurityKeyUnavailable, err)
 				return
 			}
 			cryptoEnabled = routeConfig.CryptoEnabled()
@@ -64,7 +66,7 @@ func (m *CryptoMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 		// 加密链路关闭时拒绝已声明的密文请求，普通响应则清理加密响应头。
 		if !cryptoEnabled {
 			if requestCipher != "" {
-				m.fail(w, r, codes.AuthFailed, logic.AuthEventReasonCryptoDisabled, errors.New("当前应用已关闭加密解密链路"))
+				m.fail(w, r, codes.AuthFailed, authlogic.AuthEventReasonCryptoDisabled, errors.New("当前应用已关闭加密解密链路"))
 				return
 			}
 			r.Header.Del("X-Cipher")
@@ -73,17 +75,17 @@ func (m *CryptoMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 		if cryptoEnabled && requestCipher != "" {
 			requestCipherParams, err = decodeAndValidateCipherParams(requestCipher, policy.RequestCipher, "请求")
 			if err != nil {
-				m.fail(w, r, codes.AuthFailed, logic.AuthEventReasonRequestDecryptFailed, err)
+				m.fail(w, r, codes.AuthFailed, authlogic.AuthEventReasonRequestDecryptFailed, err)
 				return
 			}
 			cryptor, resolvedVersion, err := m.cryptor(r, appID, cryptoType, false)
 			if err != nil {
-				m.fail(w, r, codes.InternalError, logic.AuthEventReasonSecurityKeyUnavailable, err)
+				m.fail(w, r, codes.InternalError, authlogic.AuthEventReasonSecurityKeyUnavailable, err)
 				return
 			}
 			recordResolvedSecretKeyVersion(r, resolvedVersion)
 			if err := m.decryptRequest(r, requestCipherParams, cryptor); err != nil {
-				m.fail(w, r, codes.AuthFailed, logic.AuthEventReasonRequestDecryptFailed, err)
+				m.fail(w, r, codes.AuthFailed, authlogic.AuthEventReasonRequestDecryptFailed, err)
 				return
 			}
 		}
@@ -110,13 +112,13 @@ func (m *CryptoMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 			if appID == "" {
 				appID, err = requestAppID(r)
 				if err != nil {
-					m.fail(w, r, codes.ParamError, logic.AuthEventReasonSecurityAppIDInvalid, err)
+					m.fail(w, r, codes.ParamError, authlogic.AuthEventReasonSecurityAppIDInvalid, err)
 					return
 				}
 			}
 			cryptor, resolvedVersion, err := m.cryptor(r, appID, cryptoType, true)
 			if err != nil {
-				m.fail(w, r, codes.InternalError, logic.AuthEventReasonSecurityKeyUnavailable, err)
+				m.fail(w, r, codes.InternalError, authlogic.AuthEventReasonSecurityKeyUnavailable, err)
 				return
 			}
 			if resolvedVersion != "" {
@@ -124,11 +126,11 @@ func (m *CryptoMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 			}
 			responseCipherParams, err := decodeAndValidateCipherParams(responseCipher, policy.ResponseCipher, "响应")
 			if err != nil {
-				m.fail(w, r, codes.InternalError, logic.AuthEventReasonResponseEncryptFailed, err)
+				m.fail(w, r, codes.InternalError, authlogic.AuthEventReasonResponseEncryptFailed, err)
 				return
 			}
 			if err := m.encryptResponse(recorder, responseCipherParams, cryptor); err != nil {
-				m.fail(w, r, codes.InternalError, logic.AuthEventReasonResponseEncryptFailed, err)
+				m.fail(w, r, codes.InternalError, authlogic.AuthEventReasonResponseEncryptFailed, err)
 				return
 			}
 		}
@@ -291,6 +293,7 @@ func hasCipherWholeBody(fields []string) bool {
 	return false
 }
 
+// isEmptySecurityFieldValue 判断安全字段是否为空，空值不参与加密处理。
 func isEmptySecurityFieldValue(value any) bool {
 	if value == nil {
 		return true
@@ -362,7 +365,7 @@ func splitCipherFieldPath(fieldPath string) []string {
 
 // cryptor 根据 X-Crypto 获取加密或解密实现。
 func (m *CryptoMiddleware) cryptor(r *http.Request, appID string, cryptoType string, isEncrypt bool) (security.Cryptor, string, error) {
-	secretKeyLogic := logic.NewSecretKeyLogic(r.Context(), m.svc)
+	secretKeyLogic := securitylogic.NewSecretKeyLogic(r.Context(), m.svc)
 	versionHint := requestSecretKeyVersionHint(r)
 	grayKey := requestSecretKeyGrayKey(r)
 	switch cryptoType {
@@ -374,9 +377,9 @@ func (m *CryptoMiddleware) cryptor(r *http.Request, appID string, cryptoType str
 		cryptor, err := security.NewAESCipher(aesKey.Key, aesKey.IV)
 		return cryptor, resolvedVersion, errors.Tag(err)
 	case security.CryptoTypeRSA:
-		keyType := logic.RSAServerPrivateKey
+		keyType := securitylogic.RSAServerPrivateKey
 		if isEncrypt {
-			keyType = logic.RSAUserPublicKey
+			keyType = securitylogic.RSAUserPublicKey
 		}
 		pemText, resolvedVersion, err := secretKeyLogic.GetRSAKey(appID, versionHint, grayKey, keyType)
 		if err != nil {

@@ -5,16 +5,18 @@ import (
 	"strconv"
 	"strings"
 
-	"gozero_api/internal/config"
-	"gozero_api/internal/security"
+	"api/internal/config"
+	"api/internal/security"
 
 	"github.com/Is999/go-utils/errors"
 )
 
+// 安全配置校验边界常量。
 const (
 	maxSecurityKeyVersionLength = 64 // 秘钥版本号最大长度，保持请求头和配置一致
 )
 
+// securitySecretKeyVersionItem 绑定秘钥版本配置和来源路径，便于精准报错。
 type securitySecretKeyVersionItem struct {
 	source string                                // source 表示配置来源路径，便于启动报错定位
 	value  config.SecuritySecretKeyVersionConfig // value 表示待校验的单版本秘钥材料

@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"strings"
 
-	"gozero_api/internal/config"
+	"api/internal/config"
 
 	"github.com/Is999/go-utils/errors"
 	"github.com/zeromicro/go-zero/core/conf"
@@ -61,7 +61,7 @@ func normalizeConfig(c *config.Config) {
 		return
 	}
 	if c.Name == "" {
-		c.Name = "gozero_api"
+		c.Name = "api"
 	}
 	if c.Observability.ServiceName == "" {
 		c.Observability.ServiceName = c.Name

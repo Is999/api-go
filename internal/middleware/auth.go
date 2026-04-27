@@ -4,13 +4,14 @@ import (
 	"context"
 	"net/http"
 
-	codes "gozero_api/common/codes"
-	i18n "gozero_api/common/i18n"
-	"gozero_api/helper"
-	"gozero_api/internal/infra/loggerx"
-	"gozero_api/internal/logic"
-	"gozero_api/internal/requestctx"
-	"gozero_api/internal/svc"
+	codes "api/common/codes"
+	i18n "api/common/i18n"
+	"api/helper"
+	"api/internal/infra/loggerx"
+	authlogic "api/internal/logic/auth"
+	userlogic "api/internal/logic/user"
+	"api/internal/requestctx"
+	"api/internal/svc"
 
 	"github.com/Is999/go-utils"
 	"github.com/Is999/go-utils/errors"
@@ -78,28 +79,28 @@ func (m *AuthMiddleware) Handle(next http.HandlerFunc, alias RouteAlias) http.Ha
 		identity, err := VerifyUserTokenFromRequest(ctx, m.svc, r, true)
 		switch {
 		case errors.Is(err, errMissingBearerToken):
-			failUnauthorized(codes.Unauthorized, i18n.MsgKeyUnauthorizedText, err, logic.AuthEventReasonMissingBearer, nil)
+			failUnauthorized(codes.Unauthorized, i18n.MsgKeyUnauthorizedText, err, authlogic.AuthEventReasonMissingBearer, nil)
 			return
 		case errors.Is(err, errTokenExpired):
-			failUnauthorized(codes.TokenExpired, i18n.MsgKeyTokenExpired, err, logic.AuthEventReasonTokenExpired, identity)
+			failUnauthorized(codes.TokenExpired, i18n.MsgKeyTokenExpired, err, authlogic.AuthEventReasonTokenExpired, identity)
 			return
 		case errors.Is(err, errSessionExpired):
-			failUnauthorized(codes.SessionExpired, i18n.MsgKeySessionExpired, err, logic.AuthEventReasonSessionExpired, identity)
+			failUnauthorized(codes.SessionExpired, i18n.MsgKeySessionExpired, err, authlogic.AuthEventReasonSessionExpired, identity)
 			return
 		case err != nil:
-			failUnauthorized(codes.TokenInvalid, i18n.MsgKeyTokenInvalid, err, logic.AuthEventReasonTokenInvalid, identity)
+			failUnauthorized(codes.TokenInvalid, i18n.MsgKeyTokenInvalid, err, authlogic.AuthEventReasonTokenInvalid, identity)
 			return
 		}
 
-		user, err := logic.NewUserLogic(ctx, m.svc).GetActiveUserForAuth(identity.UserID)
+		user, err := userlogic.NewUserLogic(ctx, m.svc).GetActiveUserForAuth(identity.UserID)
 		if err != nil {
-			if errors.Is(err, logic.ErrAPIUserDisabled) {
-				failUnauthorized(codes.UserDisabled, i18n.MsgKeyUserDisabled, err, logic.AuthEventReasonUserDisabled, identity)
+			if errors.Is(err, userlogic.ErrAPIUserDisabled) {
+				failUnauthorized(codes.UserDisabled, i18n.MsgKeyUserDisabled, err, authlogic.AuthEventReasonUserDisabled, identity)
 				return
 			}
-			reason := logic.AuthEventReasonTokenInvalid
-			if errors.Is(err, logic.ErrAPIUserNotFound) {
-				reason = logic.AuthEventReasonUserNotFound
+			reason := authlogic.AuthEventReasonTokenInvalid
+			if errors.Is(err, userlogic.ErrAPIUserNotFound) {
+				reason = authlogic.AuthEventReasonUserNotFound
 			}
 			failUnauthorized(codes.TokenInvalid, i18n.MsgKeyTokenInvalid, err, reason, identity)
 			return
@@ -118,8 +119,8 @@ func (m *AuthMiddleware) emitAuthFailureEvent(ctx context.Context, reason string
 	if m == nil || m.svc == nil {
 		return
 	}
-	input := logic.AuthEventInput{
-		Action: logic.AuthEventActionAuthFailed,
+	input := authlogic.AuthEventInput{
+		Action: authlogic.AuthEventActionAuthFailed,
 		Reason: reason,
 	}
 	if identity != nil {
@@ -127,7 +128,7 @@ func (m *AuthMiddleware) emitAuthFailureEvent(ctx context.Context, reason string
 		input.Username = identity.UserName
 		input.JTI = identity.JTI
 	}
-	logic.RecordAuthEvent(ctx, m.svc, input)
+	authlogic.RecordAuthEvent(ctx, m.svc, input)
 }
 
 // bindRequestMeta 为公开路由补齐请求元数据和稳定路由别名。

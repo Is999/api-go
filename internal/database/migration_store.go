@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
+// insertSchemaMigrationSQL 登记已执行迁移版本，参数必须使用绑定值。
 const insertSchemaMigrationSQL = "INSERT INTO schema_migrations (`version`, `name`, `asset`, `checksum`) VALUES (?, ?, ?, ?)"
 
 // GormMigrationStore 使用 GORM 执行迁移 SQL 和版本登记。
@@ -83,6 +84,7 @@ func (s *GormMigrationStore) ExecuteMigration(ctx context.Context, migration Mig
 	})
 }
 
+// isMissingMigrationTableError 判断版本表不存在错误，首次初始化时按空迁移表处理。
 func isMissingMigrationTableError(err error) bool {
 	if err == nil {
 		return false
@@ -92,6 +94,7 @@ func isMissingMigrationTableError(err error) bool {
 		(strings.Contains(message, "doesn't exist") || strings.Contains(message, "no such table") || strings.Contains(message, "error 1146"))
 }
 
+// splitMigrationStatements 按分号拆分 SQL，同时保留字符串和注释中的分号。
 func splitMigrationStatements(sqlText string) []string {
 	statements := make([]string, 0)
 	var builder strings.Builder
@@ -202,6 +205,7 @@ func splitMigrationStatements(sqlText string) []string {
 	return statements
 }
 
+// shouldSkipMigrationStatement 跳过事务控制语句，迁移执行统一由 GORM 事务包裹。
 func shouldSkipMigrationStatement(statement string) bool {
 	normalized := strings.ToUpper(strings.TrimSpace(trimLeadingSQLComments(statement)))
 	return normalized == "BEGIN" ||
@@ -210,6 +214,7 @@ func shouldSkipMigrationStatement(statement string) bool {
 		normalized == "START TRANSACTION"
 }
 
+// trimLeadingSQLComments 删除语句开头注释，避免注释干扰安全判断。
 func trimLeadingSQLComments(statement string) string {
 	for {
 		statement = strings.TrimSpace(statement)

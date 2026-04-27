@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// Redis 分布式锁对外暴露的业务错误。
 var (
 	// ErrLockLost 表示锁在持有期间已经过期或续期失败，调用方应尽快停止受保护逻辑。
 	ErrLockLost = errors.New("Redis 锁已丢失")
@@ -21,6 +22,7 @@ var (
 	ErrLockTaken = errors.New("Redis 锁已被占用")
 )
 
+// Redis 分布式锁单次操作超时边界。
 const (
 	// minLockOperationTimeout 是单次 Redis 锁操作的最短超时时间。
 	minLockOperationTimeout = 50 * time.Millisecond
@@ -120,7 +122,8 @@ func isLockTakenError(err error) bool {
 	if err == nil {
 		return false
 	}
-	return strings.Contains(strings.ToLower(err.Error()), "lock already taken")
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "lock already taken")
 }
 
 // startRenewal 周期性续期当前锁；一旦续期失败，会通知锁丢失并停止续期。
@@ -276,7 +279,7 @@ func WithLock(ctx context.Context, redisClient redis.UniversalClient, key string
 	if fn == nil {
 		unlockErr := lock.Unlock()
 		<-watcherDone
-		return unlockErr
+		return errors.Tag(unlockErr)
 	}
 
 	err = fn(runCtx)

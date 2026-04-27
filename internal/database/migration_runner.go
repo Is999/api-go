@@ -7,6 +7,7 @@ import (
 	"github.com/Is999/go-utils/errors"
 )
 
+// 迁移状态常量用于命令行输出和测试断言。
 const (
 	// MigrationStatusApplied 表示迁移版本已登记且 checksum 匹配。
 	MigrationStatusApplied = "applied"
@@ -103,6 +104,7 @@ func RunMigrations(ctx context.Context, store MigrationStore, migrations []Migra
 	return results, nil
 }
 
+// newMigrationRunItem 从迁移定义生成本轮执行结果的基础信息。
 func newMigrationRunItem(migration Migration) MigrationRunItem {
 	return MigrationRunItem{
 		Version:  migration.Version,
@@ -112,6 +114,7 @@ func newMigrationRunItem(migration Migration) MigrationRunItem {
 	}
 }
 
+// blockMigrationReason 返回迁移被发布安全开关拦截的原因。
 func blockMigrationReason(migration Migration, options MigrationRunOptions) string {
 	if migration.BootstrapOnly && !options.AllowBootstrap {
 		return "bootstrap-only 迁移需要显式允许"
@@ -122,6 +125,7 @@ func blockMigrationReason(migration Migration, options MigrationRunOptions) stri
 	return ""
 }
 
+// validateMigrationList 校验迁移清单顺序、唯一性和破坏性标记。
 func validateMigrationList(migrations []Migration) error {
 	if len(migrations) == 0 {
 		return errors.Errorf("数据库迁移清单不能为空")
@@ -155,10 +159,12 @@ func validateMigrationList(migrations []Migration) error {
 	return nil
 }
 
+// sameChecksum 比较迁移 checksum，忽略大小写和首尾空白。
 func sameChecksum(left string, right string) bool {
 	return strings.EqualFold(strings.TrimSpace(left), strings.TrimSpace(right))
 }
 
+// containsDestructiveSQL 检测迁移 SQL 是否包含需显式放行的破坏性语句。
 func containsDestructiveSQL(sqlText string) bool {
 	for _, statement := range splitMigrationStatements(sqlText) {
 		normalized := normalizeMigrationStatement(statement)
@@ -177,11 +183,13 @@ func containsDestructiveSQL(sqlText string) bool {
 	return false
 }
 
+// normalizeMigrationStatement 归一化 SQL 语句，供破坏性关键字检测使用。
 func normalizeMigrationStatement(statement string) string {
 	statement = trimLeadingSQLComments(statement)
 	return strings.ToUpper(strings.Join(strings.Fields(statement), " "))
 }
 
+// destructiveMigrationSQLMarkers 定义必须标记 destructive 的高风险 SQL 片段。
 var destructiveMigrationSQLMarkers = []string{
 	"DROP TABLE",
 	"DROP DATABASE",

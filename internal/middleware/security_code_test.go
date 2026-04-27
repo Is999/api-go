@@ -3,9 +3,9 @@ package middleware
 import (
 	"testing"
 
-	codes "gozero_api/common/codes"
-	"gozero_api/internal/logic"
-	"gozero_api/internal/security"
+	codes "api/common/codes"
+	authlogic "api/internal/logic/auth"
+	"api/internal/security"
 
 	"github.com/Is999/go-utils/errors"
 )
@@ -20,31 +20,31 @@ func TestResolveSecurityFailureCodeMapsReasons(t *testing.T) {
 	}{
 		{
 			name:     "app id invalid",
-			reason:   logic.AuthEventReasonSecurityAppIDInvalid,
+			reason:   authlogic.AuthEventReasonSecurityAppIDInvalid,
 			fallback: codes.ParamError,
 			want:     codes.SecurityAppIDInvalid,
 		},
 		{
 			name:     "signature failed",
-			reason:   logic.AuthEventReasonSignatureFailed,
+			reason:   authlogic.AuthEventReasonSignatureFailed,
 			fallback: codes.AuthFailed,
 			want:     codes.SecuritySignatureFailed,
 		},
 		{
 			name:     "request decrypt failed",
-			reason:   logic.AuthEventReasonRequestDecryptFailed,
+			reason:   authlogic.AuthEventReasonRequestDecryptFailed,
 			fallback: codes.AuthFailed,
 			want:     codes.SecurityRequestDecryptFailed,
 		},
 		{
 			name:     "response sign failed",
-			reason:   logic.AuthEventReasonResponseSignFailed,
+			reason:   authlogic.AuthEventReasonResponseSignFailed,
 			fallback: codes.InternalError,
 			want:     codes.SecurityResponseSignFailed,
 		},
 		{
 			name:     "response encrypt failed",
-			reason:   logic.AuthEventReasonResponseEncryptFailed,
+			reason:   authlogic.AuthEventReasonResponseEncryptFailed,
 			fallback: codes.InternalError,
 			want:     codes.SecurityResponseEncryptFailed,
 		},
@@ -66,7 +66,7 @@ func TestResolveSecurityFailureCodeMapsReasons(t *testing.T) {
 
 func TestResolveSecurityFailureCodePrefersPayloadLimit(t *testing.T) {
 	err := errors.Wrapf(security.ErrSecurityPayloadTooLarge, "响应字段超过上限")
-	got := resolveSecurityFailureCode(logic.AuthEventReasonResponseSignFailed, codes.InternalError, err)
+	got := resolveSecurityFailureCode(authlogic.AuthEventReasonResponseSignFailed, codes.InternalError, err)
 	if got != codes.SecurityPayloadTooLarge {
 		t.Fatalf("resolveSecurityFailureCode() = %d, want %d", got, codes.SecurityPayloadTooLarge)
 	}
@@ -74,15 +74,15 @@ func TestResolveSecurityFailureCodePrefersPayloadLimit(t *testing.T) {
 
 func TestResolveSecurityFailureReasonPrefersPayloadLimit(t *testing.T) {
 	err := errors.Wrapf(security.ErrSecurityPayloadTooLarge, "请求字段超过上限")
-	got := resolveSecurityFailureReason(logic.AuthEventReasonSignatureFailed, err)
-	if got != logic.AuthEventReasonSecurityPayloadTooLarge {
-		t.Fatalf("resolveSecurityFailureReason() = %q, want %q", got, logic.AuthEventReasonSecurityPayloadTooLarge)
+	got := resolveSecurityFailureReason(authlogic.AuthEventReasonSignatureFailed, err)
+	if got != authlogic.AuthEventReasonSecurityPayloadTooLarge {
+		t.Fatalf("resolveSecurityFailureReason() = %q, want %q", got, authlogic.AuthEventReasonSecurityPayloadTooLarge)
 	}
 }
 
 func TestResolveSecurityFailureReasonFallback(t *testing.T) {
-	if got := resolveSecurityFailureReason("", nil); got != logic.AuthEventReasonSecurityFailed {
-		t.Fatalf("resolveSecurityFailureReason(empty) = %q, want %q", got, logic.AuthEventReasonSecurityFailed)
+	if got := resolveSecurityFailureReason("", nil); got != authlogic.AuthEventReasonSecurityFailed {
+		t.Fatalf("resolveSecurityFailureReason(empty) = %q, want %q", got, authlogic.AuthEventReasonSecurityFailed)
 	}
 	if got := resolveSecurityFailureReason(" custom_reason ", nil); got != "custom_reason" {
 		t.Fatalf("resolveSecurityFailureReason(custom) = %q, want custom_reason", got)

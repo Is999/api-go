@@ -8,8 +8,8 @@ import (
 
 	"github.com/Is999/go-utils/errors"
 
-	"gozero_api/internal/infra/loggerx"
-	"gozero_api/internal/requestctx"
+	"api/internal/infra/loggerx"
+	"api/internal/requestctx"
 
 	"github.com/zeromicro/go-zero/core/logx"
 	"go.opentelemetry.io/otel/attribute"
@@ -19,7 +19,6 @@ import (
 
 // accessLogIgnorePathSet 定义不输出访问日志的高频探针路径。
 var accessLogIgnorePathSet = map[string]struct{}{
-	"/api/health":  {},
 	"/api/live":    {},
 	"/api/ready":   {},
 	"/api/metrics": {},
@@ -67,7 +66,7 @@ func (m *AccessLogMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 					}
 				}
 				if meta.ErrorCause != nil {
-					fields = append(fields, logx.Field("error_chain", loggerx.ErrorChain(meta.ErrorCause)))
+					fields = append(fields, loggerx.ErrorFields(meta.ErrorCause)...)
 				}
 				loggerx.Infow(ctx, accessLogMessage(meta, recorder.status, success), fields...)
 			}

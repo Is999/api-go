@@ -1,16 +1,18 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
-	codes "gozero_api/common/codes"
-	"gozero_api/internal/config"
-	"gozero_api/internal/logic"
-	"gozero_api/internal/security"
-	"gozero_api/internal/svc"
+	codes "api/common/codes"
+	"api/internal/config"
+	authlogic "api/internal/logic/auth"
+	"api/internal/security"
+	"api/internal/svc"
 )
 
 func TestSignatureMiddlewareSkipsRouteWithoutSignPolicy(t *testing.T) {
@@ -66,7 +68,7 @@ func TestSignatureMiddlewareRejectsRequestSignAll(t *testing.T) {
 	middleware := NewSignatureMiddleware(svc.NewServiceContext(securityEnabledConfig(), "test-version", svc.Dependencies{}))
 	err := middleware.verifyRequest(httptest.NewRequest(http.MethodPost, "/api/demo", nil), security.RouteSecurityPolicy{
 		RequestSign: []string{security.SignFieldAll},
-	}, "demo-app", "trace", security.SignatureTypeMD5)
+	}, "demo-app", "trace", "1700000000", security.SignatureTypeMD5)
 	if err == nil || !strings.Contains(err.Error(), "全量字段") {
 		t.Fatalf("verifyRequest() error = %v, want full-field rejection", err)
 	}
@@ -77,11 +79,11 @@ func TestSignatureMiddlewareRejectsOversizeRequestSignField(t *testing.T) {
 	body := `{"username":"` + strings.Repeat("x", security.MaxSecurityFieldBytes+1) + `","sign":"demo"}`
 	err := middleware.verifyRequest(httptest.NewRequest(http.MethodPost, "/api/demo", strings.NewReader(body)), security.RouteSecurityPolicy{
 		RequestSign: []string{"username"},
-	}, "demo-app", "trace", security.SignatureTypeMD5)
+	}, "demo-app", "trace", "1700000000", security.SignatureTypeMD5)
 	if err == nil || !strings.Contains(err.Error(), "长度超过上限") {
 		t.Fatalf("verifyRequest() error = %v, want oversize field rejection", err)
 	}
-	if got := resolveSecurityFailureCode(logic.AuthEventReasonSignatureFailed, codes.AuthFailed, err); got != codes.SecurityPayloadTooLarge {
+	if got := resolveSecurityFailureCode(authlogic.AuthEventReasonSignatureFailed, codes.AuthFailed, err); got != codes.SecurityPayloadTooLarge {
 		t.Fatalf("resolveSecurityFailureCode() = %d, want %d", got, codes.SecurityPayloadTooLarge)
 	}
 }
@@ -91,7 +93,7 @@ func TestSignatureMiddlewareRejectsOversizeSignValue(t *testing.T) {
 	body := `{"username":"demo","sign":"` + strings.Repeat("x", security.MaxSecurityFieldBytes+1) + `"}`
 	err := middleware.verifyRequest(httptest.NewRequest(http.MethodPost, "/api/demo", strings.NewReader(body)), security.RouteSecurityPolicy{
 		RequestSign: []string{"username"},
-	}, "demo-app", "trace", security.SignatureTypeMD5)
+	}, "demo-app", "trace", "1700000000", security.SignatureTypeMD5)
 	if err == nil || !strings.Contains(err.Error(), "长度超过上限") {
 		t.Fatalf("verifyRequest() error = %v, want oversize sign rejection", err)
 	}
@@ -103,7 +105,7 @@ func TestSignatureMiddlewareRejectsResponseSignAll(t *testing.T) {
 	_, _ = recorder.body.WriteString(`{"status":true,"data":{"token":"t","items":[1,2,3]}}`)
 	_, err := middleware.signResponse(recorder, security.RouteSecurityPolicy{
 		ResponseSign: []string{security.SignFieldAll},
-	}, "demo-app", "trace", security.SignatureTypeMD5, httptest.NewRequest(http.MethodPost, "/api/demo", nil))
+	}, "demo-app", "trace", "1700000000", security.SignatureTypeMD5, httptest.NewRequest(http.MethodPost, "/api/demo", nil))
 	if err == nil || !strings.Contains(err.Error(), "全量字段") {
 		t.Fatalf("signResponse() error = %v, want full-field rejection", err)
 	}
@@ -115,9 +117,28 @@ func TestSignatureMiddlewareRejectsOversizeResponseSignField(t *testing.T) {
 	_, _ = recorder.body.WriteString(`{"status":true,"data":{"token":"` + strings.Repeat("x", security.MaxSecurityFieldBytes+1) + `"}}`)
 	_, err := middleware.signResponse(recorder, security.RouteSecurityPolicy{
 		ResponseSign: []string{"token"},
-	}, "demo-app", "trace", security.SignatureTypeMD5, httptest.NewRequest(http.MethodPost, "/api/demo", nil))
+	}, "demo-app", "trace", "1700000000", security.SignatureTypeMD5, httptest.NewRequest(http.MethodPost, "/api/demo", nil))
 	if err == nil || !strings.Contains(err.Error(), "长度超过上限") {
 		t.Fatalf("signResponse() error = %v, want oversize field rejection", err)
+	}
+}
+
+func TestRequestTimestampWindow(t *testing.T) {
+	now := time.Now().Unix()
+	req := httptest.NewRequest(http.MethodPost, "/api/demo", nil)
+	req.Header.Set("X-Timestamp", " "+fmt.Sprint(now)+" ")
+	got, err := requestTimestamp(req)
+	if err != nil {
+		t.Fatalf("requestTimestamp() error = %v", err)
+	}
+	if got != fmt.Sprint(now) {
+		t.Fatalf("requestTimestamp() = %q, want %d", got, now)
+	}
+
+	expired := httptest.NewRequest(http.MethodPost, "/api/demo", nil)
+	expired.Header.Set("X-Timestamp", fmt.Sprint(now-int64(signatureReplayTTL.Seconds())-1))
+	if _, err := requestTimestamp(expired); err == nil || !strings.Contains(err.Error(), "已过期") {
+		t.Fatalf("requestTimestamp(expired) error = %v, want expired", err)
 	}
 }
 

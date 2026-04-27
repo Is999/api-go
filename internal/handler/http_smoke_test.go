@@ -8,14 +8,15 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	codes "gozero_api/common/codes"
-	i18n "gozero_api/common/i18n"
-	"gozero_api/helper"
-	"gozero_api/internal/config"
-	"gozero_api/internal/middleware"
-	"gozero_api/internal/requestctx"
-	"gozero_api/internal/svc"
-	"gozero_api/internal/types"
+	codes "api/common/codes"
+	i18n "api/common/i18n"
+	"api/helper"
+	"api/internal/config"
+	"api/internal/handler/shared"
+	"api/internal/middleware"
+	"api/internal/requestctx"
+	"api/internal/svc"
+	"api/internal/types"
 )
 
 // httpSmokeEnvelope 是 handler 冒烟测试使用的统一响应包。
@@ -32,7 +33,7 @@ func TestWriteBizResponseUsesUnifiedEnvelope(t *testing.T) {
 	req := newSmokeRequest(http.MethodGet, "/api/user/profile", nil)
 	rec := httptest.NewRecorder()
 
-	writeBizResponse(rec, req, types.NewBizResult(codes.FetchSuccess).
+	shared.WriteBizResponse(rec, req, types.NewBizResult(codes.FetchSuccess).
 		SetI18nMessage(i18n.MsgKeyFetchSuccess).
 		WithData(map[string]any{"ok": true}))
 

@@ -35,7 +35,7 @@ func TestLoadConfigMergesRuntimeConfigFile(t *testing.T) {
 	mainFile := filepath.Join(dir, "config.yaml")
 	runtimeFile := filepath.Join(dir, "config.d", "runtime.yaml")
 	if err := os.WriteFile(mainFile, []byte(`
-Name: "gozero_api"
+Name: "api"
 Host: "0.0.0.0"
 Port: 8890
 Mode: "dev"
@@ -91,7 +91,7 @@ func TestConfigBundleFingerprintIncludesRuntimeFile(t *testing.T) {
 	mainFile := filepath.Join(dir, "config.yaml")
 	runtimeFile := filepath.Join(dir, "config.d", "runtime.yaml")
 	if err := os.WriteFile(mainFile, []byte(`
-Name: "gozero_api"
+Name: "api"
 Host: "0.0.0.0"
 Port: 8890
 Mode: "dev"
