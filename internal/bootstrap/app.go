@@ -92,8 +92,13 @@ func BuildServiceContext(ctx context.Context, c config.Config, version string) (
 		SiteDBs: siteDBs,
 		Rds:     rdb,
 	})
+	previousRuntime := publishRuntimeConfig(c)
+	rollbackRuntime := func() {
+		restoreRuntimeConfig(previousRuntime)
+	}
 	collectorManager, err := collectorx.New(collectorConfigWithAppID(c), rdb)
 	if err != nil {
+		rollbackRuntime()
 		_ = closeServiceContextResources(svcCtx)
 		if shutdown != nil {
 			_ = shutdown(context.Background())
@@ -101,6 +106,7 @@ func BuildServiceContext(ctx context.Context, c config.Config, version string) (
 		return nil, nil, errors.Tag(err)
 	}
 	if err := collectorx.RegisterDefaultProcessors(collectorManager); err != nil {
+		rollbackRuntime()
 		_ = closeServiceContextResources(svcCtx)
 		if shutdown != nil {
 			_ = shutdown(context.Background())
@@ -110,6 +116,7 @@ func BuildServiceContext(ctx context.Context, c config.Config, version string) (
 	svcCtx.Collector = collectorManager
 	componentRegistry, err := buildDefaultComponentRegistry(svcCtx)
 	if err != nil {
+		rollbackRuntime()
 		_ = closeServiceContextResources(svcCtx)
 		if shutdown != nil {
 			_ = shutdown(context.Background())
@@ -123,7 +130,7 @@ func BuildServiceContext(ctx context.Context, c config.Config, version string) (
 // collectorConfigWithAppID 把顶层 app_id 注入 Collector Redis Stream，避免多站点共用 Redis 时串流。
 func collectorConfigWithAppID(c config.Config) config.CollectorConfig {
 	cfg := c.Collector
-	cfg.Redis.Stream = keys.AppScopedKey(c.AppID, cfg.Redis.Stream)
+	cfg.Redis.Stream = keys.WithPrefix(cfg.Redis.Stream)
 	return cfg
 }
 

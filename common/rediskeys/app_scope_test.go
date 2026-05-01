@@ -1,17 +1,10 @@
 package keys
 
-import "testing"
+import (
+	"testing"
+)
 
-func TestNormalizeAppID(t *testing.T) {
-	if got := NormalizeAppID(" site-a "); got != "site-a" {
-		t.Fatalf("NormalizeAppID() = %q, want site-a", got)
-	}
-	if got := NormalizeAppID(""); got != "" {
-		t.Fatalf("NormalizeAppID(empty) = %q, want empty", got)
-	}
-}
-
-func TestAppScopedKey(t *testing.T) {
+func TestWithPrefix(t *testing.T) {
 	tests := []struct {
 		name  string
 		appID string
@@ -31,10 +24,10 @@ func TestAppScopedKey(t *testing.T) {
 			want:  "app:site-a:user:session:42:jti",
 		},
 		{
-			name:  "keeps other app scoped key unchanged",
+			name:  "rejects other app scoped key",
 			appID: "site-b",
 			key:   "app:site-a:user:session:42:jti",
-			want:  "app:site-a:user:session:42:jti",
+			want:  "",
 		},
 		{
 			name:  "scopes incomplete app prefix as logical key",
@@ -46,14 +39,15 @@ func TestAppScopedKey(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := AppScopedKey(tt.appID, tt.key); got != tt.want {
-				t.Fatalf("AppScopedKey() = %q, want %q", got, tt.want)
+			useAppID(t, tt.appID)
+			if got := WithPrefix(tt.key); got != tt.want {
+				t.Fatalf("WithPrefix() = %q, want %q", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestHasAppScopedPrefix(t *testing.T) {
+func TestHasPrefix(t *testing.T) {
 	tests := []struct {
 		name string
 		key  string
@@ -68,14 +62,14 @@ func TestHasAppScopedPrefix(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := HasAppScopedPrefix(tt.key); got != tt.want {
-				t.Fatalf("HasAppScopedPrefix() = %t, want %t", got, tt.want)
+			if got := HasPrefix(tt.key); got != tt.want {
+				t.Fatalf("HasPrefix() = %t, want %t", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestAppScopedAppID(t *testing.T) {
+func TestOwner(t *testing.T) {
 	tests := []struct {
 		name   string
 		key    string
@@ -91,15 +85,15 @@ func TestAppScopedAppID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, ok := AppScopedAppID(tt.key)
+			got, ok := Owner(tt.key)
 			if got != tt.want || ok != tt.wantOK {
-				t.Fatalf("AppScopedAppID() = %q, %t, want %q, %t", got, ok, tt.want, tt.wantOK)
+				t.Fatalf("Owner() = %q, %t, want %q, %t", got, ok, tt.want, tt.wantOK)
 			}
 		})
 	}
 }
 
-func TestIsForeignAppScopedKey(t *testing.T) {
+func TestIsForeignKey(t *testing.T) {
 	tests := []struct {
 		name  string
 		appID string
@@ -109,32 +103,34 @@ func TestIsForeignAppScopedKey(t *testing.T) {
 		{name: "current app key", appID: "site-a", key: "app:site-a:user:session:42:jti", want: false},
 		{name: "other app key", appID: "site-a", key: "app:site-b:user:session:42:jti", want: true},
 		{name: "logical key", appID: "site-a", key: "user:session:42:jti", want: false},
-		{name: "empty app id", appID: "", key: "app:site-a:user:session:42:jti", want: false},
+		{name: "empty app id", appID: "", key: "app:site-a:user:session:42:jti", want: true},
 		{name: "incomplete prefix", appID: "site-a", key: "app:site-b", want: false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := IsForeignAppScopedKey(tt.appID, tt.key); got != tt.want {
-				t.Fatalf("IsForeignAppScopedKey() = %t, want %t", got, tt.want)
+			useAppID(t, tt.appID)
+			if got := IsForeignKey(tt.key); got != tt.want {
+				t.Fatalf("IsForeignKey() = %t, want %t", got, tt.want)
 			}
 		})
 	}
 }
 
-func TestAppScopedKeyWithEmptyAppIDFailsClosed(t *testing.T) {
-	if got := AppScopedPrefix(""); got != "" {
-		t.Fatalf("AppScopedPrefix(empty) = %q, want empty", got)
+func TestWithPrefixWithEmptyAppIDFailsClosed(t *testing.T) {
+	useAppID(t, "")
+	if got := Prefix(); got != "" {
+		t.Fatalf("Prefix(empty) = %q, want empty", got)
 	}
-	if got := AppScopedKey("", "user:session:42:jti"); got != "" {
-		t.Fatalf("AppScopedKey(empty app, logical key) = %q, want empty", got)
+	if got := WithPrefix("user:session:42:jti"); got != "" {
+		t.Fatalf("WithPrefix(empty app, logical key) = %q, want empty", got)
 	}
-	if got := AppScopedKey("", "app:site-a:user:session:42:jti"); got != "app:site-a:user:session:42:jti" {
-		t.Fatalf("AppScopedKey(empty app, scoped key) = %q", got)
+	if got := WithPrefix("app:site-a:user:session:42:jti"); got != "" {
+		t.Fatalf("WithPrefix(empty app, scoped key) = %q, want empty", got)
 	}
 }
 
-func TestTrimAppScopedPrefix(t *testing.T) {
+func TestTrimPrefix(t *testing.T) {
 	tests := []struct {
 		name string
 		key  string
@@ -164,8 +160,8 @@ func TestTrimAppScopedPrefix(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := TrimAppScopedPrefix(tt.key); got != tt.want {
-				t.Fatalf("TrimAppScopedPrefix() = %q, want %q", got, tt.want)
+			if got := TrimPrefix(tt.key); got != tt.want {
+				t.Fatalf("TrimPrefix() = %q, want %q", got, tt.want)
 			}
 		})
 	}

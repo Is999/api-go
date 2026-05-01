@@ -7,6 +7,7 @@ import (
 	"time"
 
 	keys "api/common/rediskeys"
+	"api/common/runtimecfg"
 	"api/helper"
 	"api/internal/infra/loggerx"
 	"api/internal/requestctx"
@@ -52,7 +53,7 @@ func (l *BaseLogic) AppID() string {
 	if l == nil || l.Svc == nil {
 		return ""
 	}
-	return keys.NormalizeAppID(l.Svc.CurrentConfig().AppID)
+	return strings.TrimSpace(l.Svc.CurrentConfig().AppID)
 }
 
 // AppRedisKey 给业务 Redis key 追加当前 app_id 命名空间。
@@ -60,7 +61,11 @@ func (l *BaseLogic) AppRedisKey(key string) string {
 	if l == nil {
 		return ""
 	}
-	return keys.AppScopedKey(l.AppID(), key)
+	appID := l.AppID()
+	if appID == "" || appID != runtimecfg.AppID() {
+		return ""
+	}
+	return keys.WithPrefix(key)
 }
 
 // Meta 返回当前请求链路元数据。
@@ -99,6 +104,9 @@ func (l *BaseLogic) RdsGetJsonObj(key string, dest any) error {
 		return errors.New("Redis 未初始化")
 	}
 	key = l.AppRedisKey(key)
+	if key == "" {
+		return errors.New("Redis key 为空")
+	}
 	val, err := l.Svc.Rds.Get(l.Ctx, key).Result()
 	if err != nil {
 		return errors.Tag(err)
@@ -112,6 +120,9 @@ func (l *BaseLogic) RdsSetJSONValue(key string, value any, expireSec int64) erro
 		return errors.New("Redis 未初始化")
 	}
 	key = l.AppRedisKey(key)
+	if key == "" {
+		return errors.New("Redis key 为空")
+	}
 	data, err := json.Marshal(value)
 	if err != nil {
 		return errors.Tag(err)
@@ -121,6 +132,9 @@ func (l *BaseLogic) RdsSetJSONValue(key string, value any, expireSec int64) erro
 
 // RdsDelKeys 批量删除当前 app_id 命名空间下的 Redis 键。
 func (l *BaseLogic) RdsDelKeys(keys ...string) error {
+	if len(keys) == 0 {
+		return nil
+	}
 	if l == nil || l.Svc == nil || l.Svc.Rds == nil {
 		return errors.New("Redis 未初始化")
 	}
@@ -133,7 +147,7 @@ func (l *BaseLogic) RdsDelKeys(keys ...string) error {
 		normalized = append(normalized, key)
 	}
 	if len(normalized) == 0 {
-		return nil
+		return errors.New("Redis key 为空")
 	}
 	return errors.Tag(l.Svc.Rds.Del(l.Ctx, normalized...).Err())
 }

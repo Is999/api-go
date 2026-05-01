@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"api/common/runtimecfg"
 	"api/internal/config"
 	"api/internal/svc"
 
@@ -13,6 +14,16 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/redis/go-redis/v9"
 )
+
+// useTestAppID 为当前测试注入 Redis key 命名空间。
+func useTestAppID(t *testing.T, appID string) {
+	t.Helper()
+	prev := runtimecfg.Get()
+	runtimecfg.Set(config.Config{AppID: appID})
+	t.Cleanup(func() {
+		runtimecfg.Restore(prev)
+	})
+}
 
 // TestBearerToken 验证标准 Bearer token 提取。
 func TestBearerToken(t *testing.T) {
@@ -34,7 +45,8 @@ func TestBearerTokenMissing(t *testing.T) {
 
 // TestUserSessionKey 验证用户会话 Redis Key 模板。
 func TestUserSessionKey(t *testing.T) {
-	got := UserSessionKey("1", 42, "jti")
+	useTestAppID(t, "1")
+	got := UserSessionKey(42, "jti")
 	want := "app:1:user:session:42:jti"
 	if got != want {
 		t.Fatalf("UserSessionKey() = %q, want %q", got, want)
@@ -43,7 +55,8 @@ func TestUserSessionKey(t *testing.T) {
 
 // TestUserSessionIndexKey 验证用户会话 jti 索引 Redis Key 模板。
 func TestUserSessionIndexKey(t *testing.T) {
-	got := UserSessionIndexKey("1", 42)
+	useTestAppID(t, "1")
+	got := UserSessionIndexKey(42)
 	want := "app:1:user:session:index:42"
 	if got != want {
 		t.Fatalf("UserSessionIndexKey() = %q, want %q", got, want)
@@ -63,21 +76,36 @@ func TestVerifyUserTokenRejectsAppIDMismatch(t *testing.T) {
 	}
 }
 
+// TestVerifyUserTokenRejectsRuntimeAppIDMismatch 确保会话 key 只使用当前进程运行态命名空间。
+func TestVerifyUserTokenRejectsRuntimeAppIDMismatch(t *testing.T) {
+	useTestAppID(t, "site-b")
+	token := signedUserToken(t, "test-secret-please-change", "site-a")
+	svcCtx := svc.NewServiceContext(config.Config{
+		AppID:     "site-a",
+		JwtSecret: "test-secret-please-change",
+	}, "v1", svc.Dependencies{})
+
+	if _, err := VerifyUserToken(context.Background(), svcCtx, token, false); !errors.Is(err, errInvalidToken) {
+		t.Fatalf("VerifyUserToken() error = %v, want errInvalidToken", err)
+	}
+}
+
 // TestVerifyUserTokenBackfillsSessionIndex 确保已有 session 鉴权成功后补齐 jti 索引。
 func TestVerifyUserTokenBackfillsSessionIndex(t *testing.T) {
+	useTestAppID(t, "site-a")
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	defer client.Close()
 
 	token := signedUserToken(t, "test-secret-please-change", "site-a")
-	sessionKey := UserSessionKey("site-a", 42, "testjti")
-	if err := client.Set(context.Background(), sessionKey, token, time.Hour).Err(); err != nil {
-		t.Fatalf("Set(session) error = %v", err)
-	}
 	svcCtx := svc.NewServiceContext(config.Config{
 		AppID:     "site-a",
 		JwtSecret: "test-secret-please-change",
 	}, "v1", svc.Dependencies{Rds: client})
+	sessionKey := UserSessionKey(42, "testjti")
+	if err := client.Set(context.Background(), sessionKey, token, time.Hour).Err(); err != nil {
+		t.Fatalf("Set(session) error = %v", err)
+	}
 
 	identity, err := VerifyUserToken(context.Background(), svcCtx, token, true)
 	if err != nil {
@@ -86,20 +114,21 @@ func TestVerifyUserTokenBackfillsSessionIndex(t *testing.T) {
 	if identity.JTI != "testjti" {
 		t.Fatalf("identity.JTI = %q, want testjti", identity.JTI)
 	}
-	members, err := client.ZRange(context.Background(), UserSessionIndexKey("site-a", 42), 0, -1).Result()
+	members, err := client.ZRange(context.Background(), UserSessionIndexKey(42), 0, -1).Result()
 	if err != nil {
 		t.Fatalf("ZRange(index) error = %v", err)
 	}
 	if len(members) != 1 || members[0] != "testjti" {
 		t.Fatalf("index members = %v, want [testjti]", members)
 	}
-	if ttl := client.TTL(context.Background(), UserSessionIndexKey("site-a", 42)).Val(); ttl <= 0 {
+	if ttl := client.TTL(context.Background(), UserSessionIndexKey(42)).Val(); ttl <= 0 {
 		t.Fatalf("index ttl = %v, want positive", ttl)
 	}
 }
 
 // TestVerifyUserTokenReturnsIdentityOnSessionExpired 确保 session 失效时仍返回已校验 token 身份。
 func TestVerifyUserTokenReturnsIdentityOnSessionExpired(t *testing.T) {
+	useTestAppID(t, "site-a")
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	defer client.Close()

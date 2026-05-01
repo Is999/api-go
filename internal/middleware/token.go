@@ -8,6 +8,7 @@ import (
 	"time"
 
 	keys "api/common/rediskeys"
+	"api/common/runtimecfg"
 	"api/internal/config"
 	"api/internal/svc"
 
@@ -92,6 +93,9 @@ func VerifyUserToken(ctx context.Context, svcCtx *svc.ServiceContext, tokenStrin
 	if !tokenAppIDMatches(cfg.AppID, strings.TrimSpace(fmt.Sprint(claims["app_id"]))) {
 		return nil, errInvalidToken
 	}
+	if strings.TrimSpace(cfg.AppID) != runtimecfg.AppID() {
+		return nil, errInvalidToken
+	}
 	identity := &UserTokenIdentity{
 		UserID:    int64(userID),
 		UserName:  strings.TrimSpace(fmt.Sprint(claims["username"])),
@@ -105,7 +109,7 @@ func VerifyUserToken(ctx context.Context, svcCtx *svc.ServiceContext, tokenStrin
 	if svcCtx.Rds == nil {
 		return identity, errInvalidToken
 	}
-	sessionKey := UserSessionKey(cfg.AppID, identity.UserID, identity.JTI)
+	sessionKey := UserSessionKey(identity.UserID, identity.JTI)
 	savedToken, err := svcCtx.Rds.Get(ctx, sessionKey).Result()
 	if errors.Is(err, redis.Nil) {
 		return identity, errSessionExpired
@@ -116,7 +120,7 @@ func VerifyUserToken(ctx context.Context, svcCtx *svc.ServiceContext, tokenStrin
 	if strings.TrimSpace(savedToken) != tokenString {
 		return identity, errInvalidToken
 	}
-	_ = syncUserSessionIndex(ctx, svcCtx.Rds, cfg.AppID, identity.UserID, identity.JTI, identity.ExpiresAt, sessionKey)
+	_ = syncUserSessionIndex(ctx, svcCtx.Rds, identity.UserID, identity.JTI, identity.ExpiresAt, sessionKey)
 	return identity, nil
 }
 
@@ -130,17 +134,17 @@ func VerifyUserTokenFromRequest(ctx context.Context, svcCtx *svc.ServiceContext,
 }
 
 // UserSessionKey 生成前台用户会话缓存键。
-func UserSessionKey(appID string, userID int64, jti string) string {
-	return keys.AppScopedKey(strings.TrimSpace(appID), fmt.Sprintf(keys.UserSession, userID, strings.TrimSpace(jti)))
+func UserSessionKey(userID int64, jti string) string {
+	return keys.WithPrefix(fmt.Sprintf(keys.UserSession, userID, strings.TrimSpace(jti)))
 }
 
 // UserSessionIndexKey 生成前台用户会话 jti 索引键。
-func UserSessionIndexKey(appID string, userID int64) string {
-	return keys.AppScopedKey(strings.TrimSpace(appID), fmt.Sprintf(keys.UserSessionIndex, userID))
+func UserSessionIndexKey(userID int64) string {
+	return keys.WithPrefix(fmt.Sprintf(keys.UserSessionIndex, userID))
 }
 
 // syncUserSessionIndex 在鉴权成功后补齐用户 jti 索引，保证会话批量失效可精确命中。
-func syncUserSessionIndex(ctx context.Context, rds redis.UniversalClient, appID string, userID int64, jti string, expiresAt int64, sessionKey string) error {
+func syncUserSessionIndex(ctx context.Context, rds redis.UniversalClient, userID int64, jti string, expiresAt int64, sessionKey string) error {
 	jti = strings.TrimSpace(jti)
 	if rds == nil || userID <= 0 || jti == "" {
 		return nil
@@ -156,7 +160,7 @@ func syncUserSessionIndex(ctx context.Context, rds redis.UniversalClient, appID 
 	if ttl <= 0 {
 		return nil
 	}
-	indexKey := UserSessionIndexKey(appID, userID)
+	indexKey := UserSessionIndexKey(userID)
 	_ = rds.ZRemRangeByScore(ctx, indexKey, "-inf", fmt.Sprintf("%d", now.Unix())).Err()
 	if err := rds.ZAdd(ctx, indexKey, redis.Z{
 		Score:  float64(expiresAt),

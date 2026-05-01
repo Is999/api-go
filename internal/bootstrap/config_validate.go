@@ -85,8 +85,7 @@ func validateCollectorConfig(c config.Config) error {
 	if cfg.Redis.Enabled && strings.TrimSpace(cfg.Redis.Stream) == "" {
 		return errors.Errorf("collector.redis.enabled=true 时必须配置 collector.redis.stream")
 	}
-	if keys.IsForeignAppScopedKey(c.AppID, cfg.Redis.Stream) {
-		ownerAppID, _ := keys.AppScopedAppID(cfg.Redis.Stream)
+	if ownerAppID, ok := keys.Owner(cfg.Redis.Stream); ok && strings.TrimSpace(c.AppID) != ownerAppID {
 		return errors.Errorf("collector.redis.stream 属于其它 app_id[%s]", ownerAppID)
 	}
 	switch transport {

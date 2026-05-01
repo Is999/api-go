@@ -217,11 +217,16 @@ func (a *App) reloadConfigFile(ctx context.Context, source string, configFile st
 		a.markHotReloadFailure("配置热加载失败", err, currentFingerprint, source, "load", configFile)
 		return "", errors.Tag(err)
 	}
+	if previousVersion != "" && version == previousVersion {
+		a.markHotReloadUnchanged(configFile, source, version)
+		return currentFingerprint, nil
+	}
 	restartRequired, restartReason := detectHotReloadRestartImpact(beforeCfg, cfg)
 	effectiveCfg := cfg
 	if restartRequired {
 		effectiveCfg = buildHotReloadEffectiveConfig(beforeCfg, cfg)
 	}
+	publishRuntimeConfig(effectiveCfg)
 	a.ServiceContext.UpdateConfig(effectiveCfg)
 	a.ServiceContext.UpdateVersion(version)
 	now := time.Now()
@@ -264,6 +269,25 @@ func (a *App) reloadConfigFile(ctx context.Context, source string, configFile st
 		a.stopConfigHotReload()
 	}
 	return currentFingerprint, nil
+}
+
+// markHotReloadUnchanged 记录一次无配置变更的热加载检查，不刷新运行配置快照。
+func (a *App) markHotReloadUnchanged(configFile, source, version string) {
+	if a == nil || a.ServiceContext == nil {
+		return
+	}
+	now := time.Now()
+	a.refreshHotReloadStatus(func(status svc.HotReloadStatus) svc.HotReloadStatus {
+		status.ConfigFile = strings.TrimSpace(configFile)
+		status.ConfigVersion = strings.TrimSpace(version)
+		status.ConfigSummary = buildHotReloadConfigSummary(a.ServiceContext.CurrentConfig())
+		status.LastStatus = "success"
+		status.LastMessage = "配置无变化"
+		status.LastTriggerSource = normalizeHotReloadSource(source)
+		status.LastFailureCategory = ""
+		status.LastCheckedAt = now
+		return status
+	})
 }
 
 // boundConfigFile 返回当前 App 绑定的配置文件路径。

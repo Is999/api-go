@@ -80,10 +80,12 @@ func (s *ServiceContext) ScopedWithContext(ctx context.Context) *ServiceContext 
 	if s == nil {
 		return nil
 	}
-	scoped := NewServiceContext(s.CurrentConfig(), s.CurrentVersion(), Dependencies{
+	scoped := &ServiceContext{
 		SiteDBs: s.SiteDBs.WithContext(ctx),
 		Rds:     s.Rds,
-	})
+	}
+	scoped.configValue.Store(s.CurrentConfig())
+	scoped.version.Store(s.CurrentVersion())
 	scoped.ConfigReload = s.ConfigReload
 	scoped.Collector = s.Collector
 	scoped.components = s.components
