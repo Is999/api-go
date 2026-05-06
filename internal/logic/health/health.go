@@ -17,9 +17,9 @@ import (
 
 // 健康检查固定状态和超时阈值。
 const (
-	healthCheckTimeout = 2 * time.Second
-	healthStatusOK     = "ok"
-	healthStatusError  = "error"
+	healthCheckTimeout = 2 * time.Second // 健康检查单项依赖超时时间
+	healthStatusOK     = "ok"            // 健康检查成功状态
+	healthStatusError  = "error"         // 健康检查失败状态
 )
 
 // HealthLogic 负责 live/ready 健康检查。

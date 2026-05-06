@@ -68,41 +68,41 @@ const (
 var (
 	// authSecurityActions 是认证事件动作指标标签白名单。
 	authSecurityActions = map[string]struct{}{
-		authSecurityActionRegisterSuccess:      {},
-		authSecurityActionLoginSuccess:         {},
-		authSecurityActionLoginFailed:          {},
-		authSecurityActionRateLimited:          {},
-		authSecurityActionAuthFailed:           {},
-		authSecurityActionSecurityFailed:       {},
-		authSecurityActionRefreshSuccess:       {},
-		authSecurityActionLogoutSuccess:        {},
-		authSecurityActionSessionInvalidateAll: {},
+		authSecurityActionRegisterSuccess:      {}, // 注册成功允许作为动作指标标签。
+		authSecurityActionLoginSuccess:         {}, // 登录成功允许作为动作指标标签。
+		authSecurityActionLoginFailed:          {}, // 登录失败允许作为动作指标标签。
+		authSecurityActionRateLimited:          {}, // 认证入口触发限流允许作为动作指标标签。
+		authSecurityActionAuthFailed:           {}, // 登录态鉴权失败允许作为动作指标标签。
+		authSecurityActionSecurityFailed:       {}, // 签名或加密链路失败允许作为动作指标标签。
+		authSecurityActionRefreshSuccess:       {}, // 刷新 token 成功允许作为动作指标标签。
+		authSecurityActionLogoutSuccess:        {}, // 退出登录成功允许作为动作指标标签。
+		authSecurityActionSessionInvalidateAll: {}, // 用户全部 session 失效允许作为动作指标标签。
 	}
 	// authSecurityReasons 是认证事件原因指标标签白名单。
 	authSecurityReasons = map[string]struct{}{
-		authSecurityReasonInvalidPassword:          {},
-		authSecurityReasonUserDisabled:             {},
-		authSecurityReasonUserNotFound:             {},
-		authSecurityReasonMissingBearer:            {},
-		authSecurityReasonTokenExpired:             {},
-		authSecurityReasonSessionExpired:           {},
-		authSecurityReasonTokenInvalid:             {},
-		authSecurityReasonSecurityFailed:           {},
-		authSecurityReasonSecurityAppIDInvalid:     {},
-		authSecurityReasonSecurityKeyUnavailable:   {},
-		authSecurityReasonSignatureFailed:          {},
-		authSecurityReasonSecurityPayloadTooLarge:  {},
-		authSecurityReasonResponseSignFailed:       {},
-		authSecurityReasonCryptoDisabled:           {},
-		authSecurityReasonRequestDecryptFailed:     {},
-		authSecurityReasonResponseEncryptFailed:    {},
-		authSecurityReasonLoginIPRateLimited:       {},
-		authSecurityReasonLoginUsernameRateLimited: {},
-		authSecurityReasonRegisterIPRateLimited:    {},
-		authSecurityReasonSessionCreated:           {},
-		authSecurityReasonSessionRotated:           {},
-		authSecurityReasonCurrentSessionDeleted:    {},
-		authSecurityReasonUserSessionsInvalidated:  {},
+		authSecurityReasonInvalidPassword:          {}, // 账号或密码错误允许作为原因指标标签。
+		authSecurityReasonUserDisabled:             {}, // 用户被禁用允许作为原因指标标签。
+		authSecurityReasonUserNotFound:             {}, // 用户不存在允许作为原因指标标签。
+		authSecurityReasonMissingBearer:            {}, // 缺少 Bearer token允许作为原因指标标签。
+		authSecurityReasonTokenExpired:             {}, // token 已过期允许作为原因指标标签。
+		authSecurityReasonSessionExpired:           {}, // Redis session 已失效允许作为原因指标标签。
+		authSecurityReasonTokenInvalid:             {}, // token 无效允许作为原因指标标签。
+		authSecurityReasonSecurityFailed:           {}, // 签名或加密链路失败允许作为原因指标标签。
+		authSecurityReasonSecurityAppIDInvalid:     {}, // 安全链路 AppID 无效允许作为原因指标标签。
+		authSecurityReasonSecurityKeyUnavailable:   {}, // 安全链路秘钥不可用允许作为原因指标标签。
+		authSecurityReasonSignatureFailed:          {}, // 请求验签失败允许作为原因指标标签。
+		authSecurityReasonSecurityPayloadTooLarge:  {}, // 安全字段或请求体超过上限允许作为原因指标标签。
+		authSecurityReasonResponseSignFailed:       {}, // 响应回签失败允许作为原因指标标签。
+		authSecurityReasonCryptoDisabled:           {}, // 加解密链路关闭允许作为原因指标标签。
+		authSecurityReasonRequestDecryptFailed:     {}, // 请求解密失败允许作为原因指标标签。
+		authSecurityReasonResponseEncryptFailed:    {}, // 响应加密失败允许作为原因指标标签。
+		authSecurityReasonLoginIPRateLimited:       {}, // 登录 IP 限流允许作为原因指标标签。
+		authSecurityReasonLoginUsernameRateLimited: {}, // 登录用户名限流允许作为原因指标标签。
+		authSecurityReasonRegisterIPRateLimited:    {}, // 注册 IP 限流允许作为原因指标标签。
+		authSecurityReasonSessionCreated:           {}, // 新会话已创建允许作为原因指标标签。
+		authSecurityReasonSessionRotated:           {}, // 会话已轮换允许作为原因指标标签。
+		authSecurityReasonCurrentSessionDeleted:    {}, // 当前会话已删除允许作为原因指标标签。
+		authSecurityReasonUserSessionsInvalidated:  {}, // 用户会话已全部失效允许作为原因指标标签。
 	}
 )
 

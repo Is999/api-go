@@ -12,15 +12,15 @@ import (
 
 // 启动配置校验边界常量。
 const (
-	minJWTSecretLength            = 16    // JWT 密钥最小长度，避免明显弱配置启动
-	minOpsTokenLength             = 16    // 运维令牌生产环境最小长度
-	minPasswordLength             = 6     // 前台密码最小允许长度下限
-	maxAuthRateLimitWindowSeconds = 3600  // 认证限流最大统计窗口
-	maxAuthRateLimitLockSeconds   = 86400 // 认证限流最大锁定时长
-	maxAuthRateLimitAttempts      = 1000  // 认证限流最大尝试次数
-	collectorTransportAuto        = "auto"
-	collectorTransportRedis       = "redis"
-	collectorTransportSync        = "sync"
+	minJWTSecretLength            = 16      // JWT 密钥最小长度，避免明显弱配置启动
+	minOpsTokenLength             = 16      // 运维令牌生产环境最小长度
+	minPasswordLength             = 6       // 前台密码最小允许长度下限
+	maxAuthRateLimitWindowSeconds = 3600    // 认证限流最大统计窗口
+	maxAuthRateLimitLockSeconds   = 86400   // 认证限流最大锁定时长
+	maxAuthRateLimitAttempts      = 1000    // 认证限流最大尝试次数
+	collectorTransportAuto        = "auto"  // 自动选择可用的 Collector 载体
+	collectorTransportRedis       = "redis" // 强制使用 Redis Stream 作为 Collector 载体
+	collectorTransportSync        = "sync"  // 强制使用进程内同步处理作为 Collector 载体
 )
 
 // validateConfig 校验启动必填配置，避免服务以明显错误状态启动。

@@ -19,9 +19,9 @@ import (
 
 // accessLogIgnorePathSet 定义不输出访问日志的高频探针路径。
 var accessLogIgnorePathSet = map[string]struct{}{
-	"/api/live":    {},
-	"/api/ready":   {},
-	"/api/metrics": {},
+	"/api/live":    {}, // 存活探针高频访问，默认不写访问日志。
+	"/api/ready":   {}, // 就绪探针高频访问，异常由 ready 链路暴露。
+	"/api/metrics": {}, // Prometheus 抓取入口高频访问，避免污染业务访问日志。
 }
 
 // AccessLogMiddleware 在请求结束时统一输出访问日志并更新 span 状态。

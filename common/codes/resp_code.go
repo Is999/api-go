@@ -95,48 +95,48 @@ const (
 
 // successCodeSet 定义统一响应可识别为成功的业务码集合。
 var successCodeSet = map[int]struct{}{
-	Success:       {},
-	OK:            {},
-	CreateSuccess: {},
-	SaveSuccess:   {},
-	UpdateSuccess: {},
-	DeleteSuccess: {},
-	FetchSuccess:  {},
+	Success:       {}, // 成功纳入成功码集合。
+	OK:            {}, // 请求成功纳入成功码集合。
+	CreateSuccess: {}, // 创建成功纳入成功码集合。
+	SaveSuccess:   {}, // 保存成功纳入成功码集合。
+	UpdateSuccess: {}, // 更新成功纳入成功码集合。
+	DeleteSuccess: {}, // 删除成功纳入成功码集合。
+	FetchSuccess:  {}, // 获取成功纳入成功码集合。
 }
 
 // codeHTTPStatusMap 定义业务码到 HTTP 状态码的建议映射。
 var codeHTTPStatusMap = map[int]int{
-	BadRequest:                    BadRequest,
-	Unauthorized:                  Unauthorized,
-	Forbidden:                     Forbidden,
-	NotFound:                      NotFound,
-	ServerError:                   ServerError,
-	ServiceBusy:                   ServiceBusy,
-	Timeout:                       Timeout,
-	ParamError:                    BadRequest,
-	AuthFailed:                    Unauthorized,
-	RateLimit:                     429,
-	InternalError:                 ServerError,
-	DBError:                       ServerError,
-	InvalidPassword:               BadRequest,
-	TokenExpired:                  Unauthorized,
-	TokenInvalid:                  Unauthorized,
-	SessionExpired:                Unauthorized,
-	RegisterDisabled:              Forbidden,
-	SecurityAppIDInvalid:          BadRequest,
-	SecurityKeyUnavailable:        ServerError,
-	SecuritySignatureFailed:       Unauthorized,
-	SecurityPayloadTooLarge:       413,
-	SecurityCryptoDisabled:        Forbidden,
-	SecurityRequestDecryptFailed:  Unauthorized,
-	SecurityResponseSignFailed:    ServerError,
-	SecurityResponseEncryptFailed: ServerError,
-	UserNotFound:                  NotFound,
-	UserAlreadyExists:             BadRequest,
-	UserDisabled:                  Unauthorized,
-	DependencyUnavailable:         ServiceBusy,
-	MySQLUnavailable:              ServiceBusy,
-	RedisUnavailable:              ServiceBusy,
+	BadRequest:                    BadRequest,   // 错误请求返回 HTTP 错误请求。
+	Unauthorized:                  Unauthorized, // 未授权返回 HTTP 未授权。
+	Forbidden:                     Forbidden,    // 禁止访问返回 HTTP 禁止访问。
+	NotFound:                      NotFound,     // 未找到返回 HTTP 未找到。
+	ServerError:                   ServerError,  // 服务器错误返回 HTTP 服务器错误。
+	ServiceBusy:                   ServiceBusy,  // 服务繁忙返回 HTTP 服务繁忙。
+	Timeout:                       Timeout,      // 请求超时返回 HTTP 请求超时。
+	ParamError:                    BadRequest,   // 参数错误返回 HTTP 错误请求。
+	AuthFailed:                    Unauthorized, // 验证失败返回 HTTP 未授权。
+	RateLimit:                     429,          // 请求过多返回 HTTP 429。
+	InternalError:                 ServerError,  // 内部错误返回 HTTP 服务器错误。
+	DBError:                       ServerError,  // 数据库错误返回 HTTP 服务器错误。
+	InvalidPassword:               BadRequest,   // 账号或密码错误返回 HTTP 错误请求。
+	TokenExpired:                  Unauthorized, // 访问令牌已过期返回 HTTP 未授权。
+	TokenInvalid:                  Unauthorized, // 访问令牌无效返回 HTTP 未授权。
+	SessionExpired:                Unauthorized, // 服务端会话已失效返回 HTTP 未授权。
+	RegisterDisabled:              Forbidden,    // 当前站点未开放注册返回 HTTP 禁止访问。
+	SecurityAppIDInvalid:          BadRequest,   // 安全链路 AppID 无效返回 HTTP 错误请求。
+	SecurityKeyUnavailable:        ServerError,  // 安全链路秘钥不可用返回 HTTP 服务器错误。
+	SecuritySignatureFailed:       Unauthorized, // 请求签名校验失败返回 HTTP 未授权。
+	SecurityPayloadTooLarge:       413,          // 签名或加密字段超过安全链路上限返回 HTTP 413。
+	SecurityCryptoDisabled:        Forbidden,    // 加解密链路未启用返回 HTTP 禁止访问。
+	SecurityRequestDecryptFailed:  Unauthorized, // 请求解密失败返回 HTTP 未授权。
+	SecurityResponseSignFailed:    ServerError,  // 响应回签失败返回 HTTP 服务器错误。
+	SecurityResponseEncryptFailed: ServerError,  // 响应加密失败返回 HTTP 服务器错误。
+	UserNotFound:                  NotFound,     // 用户不存在返回 HTTP 未找到。
+	UserAlreadyExists:             BadRequest,   // 用户名已存在返回 HTTP 错误请求。
+	UserDisabled:                  Unauthorized, // 账号被禁用返回 HTTP 未授权。
+	DependencyUnavailable:         ServiceBusy,  // ready 检查发现外部依赖不可用返回 HTTP 服务繁忙。
+	MySQLUnavailable:              ServiceBusy,  // MySQL 连接不可用返回 HTTP 服务繁忙。
+	RedisUnavailable:              ServiceBusy,  // Redis 连接不可用返回 HTTP 服务繁忙。
 }
 
 // IsSuccess 判断业务码是否代表成功结果。

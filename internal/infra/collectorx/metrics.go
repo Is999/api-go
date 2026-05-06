@@ -16,7 +16,8 @@ const (
 
 // Collector Prometheus 指标和动态标签保护状态。
 var (
-	collectorMetricsOnce        sync.Once
+	collectorMetricsOnce sync.Once // 保证 Collector 指标只注册一次
+	// collectorMetricBizTypeGuard 保护 Collector biz_type 指标标签白名单。
 	collectorMetricBizTypeGuard = struct {
 		mu      sync.RWMutex        // 保护 biz_type label 集合
 		allowed map[string]struct{} // 已明确放行的业务类型标签
@@ -24,6 +25,7 @@ var (
 		allowed: make(map[string]struct{}),
 	}
 
+	// collectorEnqueueEventsTotal 统计 Collector 入队结果次数。
 	collectorEnqueueEventsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "api",
@@ -33,6 +35,7 @@ var (
 		},
 		[]string{"transport", "result"},
 	)
+	// collectorProcessorBatchDuration 统计 Collector Processor 单批处理耗时。
 	collectorProcessorBatchDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
 			Namespace: "api",
@@ -43,6 +46,7 @@ var (
 		},
 		[]string{"biz_type", "result"},
 	)
+	// authSecurityEventsTotal 统计认证风控事件数量。
 	authSecurityEventsTotal = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Namespace: "api",

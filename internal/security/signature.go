@@ -34,28 +34,35 @@ type RouteSecurityPolicy struct {
 
 // RouteSecurityPolicies 定义前台 API 的推荐安全策略。
 var RouteSecurityPolicies = map[string]RouteSecurityPolicy{
+	// auth.register 保护注册账号、密码、联系方式和新会话 token。
 	"auth.register": {
 		RequestSign:    []string{"username", "password", "nickname", "email", "phone"},
 		RequestCipher:  []string{"password", "email", "phone"},
 		ResponseSign:   []string{"token", "expiresAt"},
 		ResponseCipher: []string{"token", "user.email", "user.phone"},
 	},
+	// auth.login 保护登录密码和响应 token。
 	"auth.login": {
 		RequestSign:    []string{"username", "password"},
 		RequestCipher:  []string{"password"},
 		ResponseSign:   []string{"token", "expiresAt"},
 		ResponseCipher: []string{"token", "user.email", "user.phone"},
 	},
+	// auth.refresh 保护刷新后的访问 token。
 	"auth.refresh": {
 		ResponseSign:   []string{"token", "expiresAt"},
 		ResponseCipher: []string{"token"},
 	},
+	// auth.logout 只依赖登录态和服务端 session 校验，不额外声明字段级安全策略。
 	"auth.logout": {},
+	// user.profile 只加密当前用户联系方式。
 	"user.profile": {
 		ResponseCipher: []string{"email", "phone"},
 	},
+	// system.config_reload.status 走内网运维链路，不参与前台签名加密。
 	"system.config_reload.status": {},
-	"system.config_reload.run":    {},
+	// system.config_reload.run 走内网运维链路，不参与前台签名加密。
+	"system.config_reload.run": {},
 }
 
 // PolicyByRoute 根据路由别名读取统一安全策略。
