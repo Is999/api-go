@@ -10,28 +10,57 @@ import (
 	"github.com/zeromicro/go-zero/rest"
 )
 
+// RouteSpecs 返回前台认证路由规格。
+func RouteSpecs() []shared.RouteSpec {
+	return []shared.RouteSpec{
+		// POST /api/auth/register：前台用户注册，创建登录态前不校验 token。
+		{
+			Method:       http.MethodPost,
+			Path:         "/api/auth/register",
+			Meta:         shared.AuthRegister,
+			DocumentPath: shared.RouteDocAuth,
+			Chain:        shared.RouteSecurityPublic,
+			Handler: func(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware) http.HandlerFunc {
+				return authMw.PublicHandle(RegisterHandler(svcCtx), shared.AuthRegister.Alias)
+			},
+		},
+		// POST /api/auth/login：前台用户登录，创建登录态前不校验 token。
+		{
+			Method:       http.MethodPost,
+			Path:         "/api/auth/login",
+			Meta:         shared.AuthLogin,
+			DocumentPath: shared.RouteDocAuth,
+			Chain:        shared.RouteSecurityPublic,
+			Handler: func(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware) http.HandlerFunc {
+				return authMw.PublicHandle(LoginHandler(svcCtx), shared.AuthLogin.Alias)
+			},
+		},
+		// POST /api/auth/refresh：刷新访问令牌，必须校验当前 JWT 与 Redis session。
+		{
+			Method:       http.MethodPost,
+			Path:         "/api/auth/refresh",
+			Meta:         shared.AuthRefresh,
+			DocumentPath: shared.RouteDocAuth,
+			Chain:        shared.RouteSecurityAuth,
+			Handler: func(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware) http.HandlerFunc {
+				return authMw.Handle(RefreshHandler(svcCtx), shared.AuthRefresh.Alias)
+			},
+		},
+		// POST /api/auth/logout：退出当前登录态，必须校验当前 JWT 与 Redis session。
+		{
+			Method:       http.MethodPost,
+			Path:         "/api/auth/logout",
+			Meta:         shared.AuthLogout,
+			DocumentPath: shared.RouteDocAuth,
+			Chain:        shared.RouteSecurityAuth,
+			Handler: func(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware) http.HandlerFunc {
+				return authMw.Handle(LogoutHandler(svcCtx), shared.AuthLogout.Alias)
+			},
+		},
+	}
+}
+
 // RegisterRoutes 注册前台认证路由。
 func RegisterRoutes(server *rest.Server, serverCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware) {
-	// 注册和登录是登录态创建入口，仅补 route alias，不做 token 校验。
-	server.AddRoute(rest.Route{
-		Method:  http.MethodPost,
-		Path:    "/api/auth/register",
-		Handler: authMw.PublicHandle(RegisterHandler(serverCtx), shared.AuthRegister.Alias),
-	})
-	server.AddRoute(rest.Route{
-		Method:  http.MethodPost,
-		Path:    "/api/auth/login",
-		Handler: authMw.PublicHandle(LoginHandler(serverCtx), shared.AuthLogin.Alias),
-	})
-	// 刷新和退出必须校验 JWT 与 Redis session，避免失效 token 继续换取登录态。
-	server.AddRoute(rest.Route{
-		Method:  http.MethodPost,
-		Path:    "/api/auth/refresh",
-		Handler: authMw.Handle(RefreshHandler(serverCtx), shared.AuthRefresh.Alias),
-	})
-	server.AddRoute(rest.Route{
-		Method:  http.MethodPost,
-		Path:    "/api/auth/logout",
-		Handler: authMw.Handle(LogoutHandler(serverCtx), shared.AuthLogout.Alias),
-	})
+	shared.AddRouteSpecs(server, serverCtx, authMw, RouteSpecs())
 }

@@ -43,6 +43,12 @@ app_id: "1"
 jwt_secret: "test-secret-please-change"
 auth:
   password_min_length: 8
+hot_reload:
+  enabled: false
+security:
+  secret_key:
+    sign_status: 1
+    crypto_status: 1
 config_files:
   runtime: "config.d/runtime.yaml"
 redis:
@@ -57,6 +63,14 @@ redis:
 	if err := os.WriteFile(runtimeFile, []byte(`
 auth:
   password_min_length: 12
+hot_reload:
+  enabled: true
+  check_interval_seconds: 9
+security:
+  secret_key:
+    sign_status: 0
+    crypto_status: 0
+    gray_percent: 7
 collector:
   enabled: true
   transport: "sync"
@@ -75,11 +89,44 @@ unknown_block:
 	if cfg.Auth.PasswordMinLength != 12 {
 		t.Fatalf("password_min_length = %d, want 12", cfg.Auth.PasswordMinLength)
 	}
+	if !cfg.HotReload.Enabled || cfg.HotReload.CheckIntervalSeconds != 9 {
+		t.Fatalf("hot_reload config not merged: %+v", cfg.HotReload)
+	}
+	if cfg.Security.SecretKey.SignStatus != 0 || cfg.Security.SecretKey.CryptoStatus != 0 || cfg.Security.SecretKey.GrayPercent != 7 {
+		t.Fatalf("security config not merged: %+v", cfg.Security)
+	}
 	if !cfg.Collector.Enabled || cfg.Collector.Transport != "sync" {
 		t.Fatalf("collector config not merged: %+v", cfg.Collector)
 	}
 	if cfg.Ops.ConfigReloadToken != "runtime-token" {
 		t.Fatalf("ops config not merged: %+v", cfg.Ops)
+	}
+}
+
+func TestRuntimeConfigSectionSpecsValid(t *testing.T) {
+	specs := runtimeConfigSectionSpecs()
+	if len(specs) == 0 {
+		t.Fatal("runtime config section specs should not be empty")
+	}
+	keys := runtimeConfigSectionKeys()
+	if len(keys) != len(specs) {
+		t.Fatalf("runtime config section key count = %d, spec count = %d", len(keys), len(specs))
+	}
+	seen := make(map[string]struct{}, len(specs))
+	for _, spec := range specs {
+		if spec.Key == "" {
+			t.Fatal("runtime config section spec has empty key")
+		}
+		if spec.apply == nil {
+			t.Fatalf("runtime config section %s missing apply function", spec.Key)
+		}
+		if _, ok := seen[spec.Key]; ok {
+			t.Fatalf("runtime config section duplicate key=%s", spec.Key)
+		}
+		if _, ok := keys[spec.Key]; !ok {
+			t.Fatalf("runtime config section key %s missing from key set", spec.Key)
+		}
+		seen[spec.Key] = struct{}{}
 	}
 }
 

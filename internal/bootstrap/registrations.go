@@ -41,88 +41,100 @@ type RegistrationManifestItem struct {
 	Description string // 注册项中文说明
 }
 
+// runtimeRegistrySpec 描述一个内置轻量运行时扩展入口。
+type runtimeRegistrySpec struct {
+	Name        string // 注册名称，必须在运行时扩展内保持唯一
+	File        string // 注册实现所在文件
+	Method      string // 注册入口方法或构造方法
+	Description string // 注册项中文说明
+}
+
 // DefaultRegistrationManifest 返回项目前台 API 默认注册清单。
 // 该清单只描述内置注册项，不包含业务方后续注册的 Collector Processor。
 func DefaultRegistrationManifest() []RegistrationManifestItem {
-	return []RegistrationManifestItem{
-		{
+	items := routeRegistrationManifestItems()
+	items = append(items, runtimeRegistrationManifestItems()...)
+	return items
+}
+
+// routeRegistrationManifestItems 从内置路由模块规格派生路由注册清单。
+func routeRegistrationManifestItems() []RegistrationManifestItem {
+	specs := handler.BuiltinRouteModuleSpecs()
+	items := make([]RegistrationManifestItem, 0, len(specs))
+	for _, spec := range specs {
+		items = append(items, RegistrationManifestItem{
 			Kind:        registrationKindRoute,
-			Name:        "health",
-			File:        "internal/handler/routes.go + internal/handler/health/routes.go",
-			Method:      "handler.NewHealthRouteModule / health.RegisterRoutes",
-			Description: "注册健康检查路由",
-		},
+			Name:        spec.Name,
+			File:        spec.File,
+			Method:      spec.Method,
+			Description: spec.Description,
+		})
+	}
+	return items
+}
+
+// defaultRuntimeRegistrySpecs 返回轻量运行时扩展入口规格。
+func defaultRuntimeRegistrySpecs() []runtimeRegistrySpec {
+	return []runtimeRegistrySpec{
 		{
-			Kind:        registrationKindRoute,
-			Name:        "auth",
-			File:        "internal/handler/routes.go + internal/handler/auth/routes.go",
-			Method:      "handler.NewAuthRouteModule / auth.RegisterRoutes",
-			Description: "注册前台认证路由",
-		},
-		{
-			Kind:        registrationKindRoute,
-			Name:        "user",
-			File:        "internal/handler/routes.go + internal/handler/user/routes.go",
-			Method:      "handler.NewUserRouteModule / user.RegisterRoutes",
-			Description: "注册前台用户路由",
-		},
-		{
-			Kind:        registrationKindRoute,
-			Name:        "config",
-			File:        "internal/handler/routes.go + internal/handler/config/routes.go",
-			Method:      "handler.NewConfigRouteModule / config.RegisterRoutes",
-			Description: "注册内网运行期配置管理路由",
-		},
-		{
-			Kind:        registrationKindRuntimeRegistry,
 			Name:        runtimeRegistryComponentLifecycle,
 			File:        "internal/bootstrap/components.go + internal/svc/component.go",
-			Method:      "buildDefaultComponentRegistry / svc.NewComponentRegistry",
+			Method:      "defaultComponentSpecs / buildDefaultComponentRegistry / svc.NewComponentRegistry",
 			Description: "统一注册核心组件健康探测和关闭入口",
 		},
 		{
-			Kind:        registrationKindRuntimeRegistry,
 			Name:        runtimeRegistryCollectorProcessor,
 			File:        "internal/infra/collectorx/manager.go",
 			Method:      "collectorx.Manager.RegisterProcessor / RegisterProcessorFunc",
 			Description: "按 bizType 注册轻量 Collector Processor",
 		},
 		{
-			Kind:        registrationKindRuntimeRegistry,
 			Name:        runtimeRegistryAuthSecurityEvent,
 			File:        "internal/logic/auth/auth_event.go",
 			Method:      "auth.AuthCollectorBizType / RecordAuthEvent",
 			Description: "投递脱敏认证风控事件到轻量 Collector",
 		},
 		{
-			Kind:        registrationKindRuntimeRegistry,
 			Name:        runtimeRegistryAuthSecurityProcessor,
 			File:        "internal/infra/collectorx/auth_security.go",
 			Method:      "collectorx.RegisterDefaultProcessors / NewAuthSecurityProcessor",
 			Description: "默认汇总 auth.security 认证风控事件指标",
 		},
 		{
-			Kind:        registrationKindRuntimeRegistry,
 			Name:        runtimeRegistrySysConfigCache,
 			File:        "internal/logic/config/sys_config.go",
 			Method:      "config.NewSysConfigLogic / GetCachedValue",
 			Description: "读取 sys_config 运行期配置缓存",
 		},
 		{
-			Kind:        registrationKindRuntimeRegistry,
 			Name:        runtimeRegistrySysConfigKeyRegistry,
 			File:        "internal/logic/config/sys_config_key.go",
 			Method:      "config.NewSysConfigKeyRegistry / SysConfigLogic.GetBool",
 			Description: "按 key 声明类型化读取 sys_config 配置",
 		},
 		{
-			Kind:        registrationKindRuntimeRegistry,
 			Name:        runtimeRegistryCacheRebuildLock,
 			File:        "internal/infra/redsync/lock.go + internal/logic/cache_guard.go",
 			Method:      "RebuildCacheWithLock / TryRebuildCacheWithLock",
 			Description: "使用 redsync 保护缓存重建",
 		},
 	}
+}
+
+// runtimeRegistrationManifestItems 从运行时扩展规格派生注册清单。
+func runtimeRegistrationManifestItems() []RegistrationManifestItem {
+	specs := defaultRuntimeRegistrySpecs()
+	items := make([]RegistrationManifestItem, 0, len(specs))
+	for _, spec := range specs {
+		items = append(items, RegistrationManifestItem{
+			Kind:        registrationKindRuntimeRegistry,
+			Name:        spec.Name,
+			File:        spec.File,
+			Method:      spec.Method,
+			Description: spec.Description,
+		})
+	}
+	return items
 }
 
 // ValidateDefaultRegistrationManifest 校验默认注册清单与真实内置注册集合是否一致。
@@ -153,25 +165,17 @@ func ValidateDefaultRegistrationManifest() error {
 
 // defaultRouteModules 返回项目前台 API 内置 HTTP 路由模块集合。
 func defaultRouteModules() []handler.RouteModule {
-	return []handler.RouteModule{
-		handler.NewHealthRouteModule(), // 基础健康检查
-		handler.NewAuthRouteModule(),   // 前台认证模块
-		handler.NewUserRouteModule(),   // 前台用户模块
-		handler.NewConfigRouteModule(), // 运行期配置模块
-	}
+	return handler.BuiltinRouteModules()
 }
 
-// defaultRuntimeRegistryNames 返回清单需要覆盖的轻量运行时扩展入口。
+// defaultRuntimeRegistryNames 从运行时扩展规格派生校验名称。
 func defaultRuntimeRegistryNames() []string {
-	return []string{
-		runtimeRegistryComponentLifecycle,
-		runtimeRegistryCollectorProcessor,
-		runtimeRegistryAuthSecurityEvent,
-		runtimeRegistryAuthSecurityProcessor,
-		runtimeRegistrySysConfigCache,
-		runtimeRegistrySysConfigKeyRegistry,
-		runtimeRegistryCacheRebuildLock,
+	specs := defaultRuntimeRegistrySpecs()
+	names := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		names = append(names, spec.Name)
 	}
+	return names
 }
 
 // validateManifestItems 校验注册清单项本身的结构完整性和唯一性。

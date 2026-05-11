@@ -24,42 +24,42 @@ const (
 
 // 认证风控事件动作。
 const (
-	AuthEventActionRegisterSuccess      = "register_success"       // 注册成功
-	AuthEventActionLoginSuccess         = "login_success"          // 登录成功
-	AuthEventActionLoginFailed          = "login_failed"           // 登录失败
-	AuthEventActionRateLimited          = "rate_limited"           // 认证入口触发限流
-	AuthEventActionAuthFailed           = "auth_failed"            // 登录态鉴权失败
-	AuthEventActionSecurityFailed       = "security_failed"        // 签名或加密链路失败
-	AuthEventActionRefreshSuccess       = "refresh_success"        // 刷新 token 成功
-	AuthEventActionLogoutSuccess        = "logout_success"         // 退出登录成功
-	AuthEventActionSessionInvalidateAll = "session_invalidate_all" // 用户全部 session 失效
+	AuthEventActionRegisterSuccess      = collectorx.AuthSecurityActionRegisterSuccess      // 注册成功
+	AuthEventActionLoginSuccess         = collectorx.AuthSecurityActionLoginSuccess         // 登录成功
+	AuthEventActionLoginFailed          = collectorx.AuthSecurityActionLoginFailed          // 登录失败
+	AuthEventActionRateLimited          = collectorx.AuthSecurityActionRateLimited          // 认证入口触发限流
+	AuthEventActionAuthFailed           = collectorx.AuthSecurityActionAuthFailed           // 登录态鉴权失败
+	AuthEventActionSecurityFailed       = collectorx.AuthSecurityActionSecurityFailed       // 签名或加密链路失败
+	AuthEventActionRefreshSuccess       = collectorx.AuthSecurityActionRefreshSuccess       // 刷新 token 成功
+	AuthEventActionLogoutSuccess        = collectorx.AuthSecurityActionLogoutSuccess        // 退出登录成功
+	AuthEventActionSessionInvalidateAll = collectorx.AuthSecurityActionSessionInvalidateAll // 用户全部 session 失效
 )
 
 // 认证风控事件原因。
 const (
-	AuthEventReasonInvalidPassword          = "invalid_password"            // 账号或密码错误
-	AuthEventReasonUserDisabled             = "user_disabled"               // 用户被禁用
-	AuthEventReasonUserNotFound             = "user_not_found"              // 用户不存在
-	AuthEventReasonMissingBearer            = "missing_bearer"              // 缺少 Bearer token
-	AuthEventReasonTokenExpired             = "token_expired"               // token 已过期
-	AuthEventReasonSessionExpired           = "session_expired"             // Redis session 已失效
-	AuthEventReasonTokenInvalid             = "token_invalid"               // token 无效
-	AuthEventReasonSecurityFailed           = "security_failed"             // 签名或加密链路失败
-	AuthEventReasonSecurityAppIDInvalid     = "security_app_id_invalid"     // 安全链路 AppID 无效
-	AuthEventReasonSecurityKeyUnavailable   = "security_key_unavailable"    // 安全链路秘钥不可用
-	AuthEventReasonSignatureFailed          = "signature_failed"            // 请求验签失败
-	AuthEventReasonSecurityPayloadTooLarge  = "security_payload_too_large"  // 安全字段或请求体超过上限
-	AuthEventReasonResponseSignFailed       = "response_sign_failed"        // 响应回签失败
-	AuthEventReasonCryptoDisabled           = "crypto_disabled"             // 加解密链路关闭
-	AuthEventReasonRequestDecryptFailed     = "request_decrypt_failed"      // 请求解密失败
-	AuthEventReasonResponseEncryptFailed    = "response_encrypt_failed"     // 响应加密失败
-	AuthEventReasonLoginIPRateLimited       = "login_ip_rate_limited"       // 登录 IP 限流
-	AuthEventReasonLoginUsernameRateLimited = "login_username_rate_limited" // 登录用户名限流
-	AuthEventReasonRegisterIPRateLimited    = "register_ip_rate_limited"    // 注册 IP 限流
-	AuthEventReasonSessionCreated           = "session_created"             // 新会话已创建
-	AuthEventReasonSessionRotated           = "session_rotated"             // 会话已轮换
-	AuthEventReasonCurrentSessionDeleted    = "current_session_deleted"     // 当前会话已删除
-	AuthEventReasonUserSessionsInvalidated  = "user_sessions_invalidated"   // 用户会话已全部失效
+	AuthEventReasonInvalidPassword          = collectorx.AuthSecurityReasonInvalidPassword          // 账号或密码错误
+	AuthEventReasonUserDisabled             = collectorx.AuthSecurityReasonUserDisabled             // 用户被禁用
+	AuthEventReasonUserNotFound             = collectorx.AuthSecurityReasonUserNotFound             // 用户不存在
+	AuthEventReasonMissingBearer            = collectorx.AuthSecurityReasonMissingBearer            // 缺少 Bearer token
+	AuthEventReasonTokenExpired             = collectorx.AuthSecurityReasonTokenExpired             // token 已过期
+	AuthEventReasonSessionExpired           = collectorx.AuthSecurityReasonSessionExpired           // Redis session 已失效
+	AuthEventReasonTokenInvalid             = collectorx.AuthSecurityReasonTokenInvalid             // token 无效
+	AuthEventReasonSecurityFailed           = collectorx.AuthSecurityReasonSecurityFailed           // 签名或加密链路失败
+	AuthEventReasonSecurityAppIDInvalid     = collectorx.AuthSecurityReasonSecurityAppIDInvalid     // 安全链路 AppID 无效
+	AuthEventReasonSecurityKeyUnavailable   = collectorx.AuthSecurityReasonSecurityKeyUnavailable   // 安全链路秘钥不可用
+	AuthEventReasonSignatureFailed          = collectorx.AuthSecurityReasonSignatureFailed          // 请求验签失败
+	AuthEventReasonSecurityPayloadTooLarge  = collectorx.AuthSecurityReasonSecurityPayloadTooLarge  // 安全字段或请求体超过上限
+	AuthEventReasonResponseSignFailed       = collectorx.AuthSecurityReasonResponseSignFailed       // 响应回签失败
+	AuthEventReasonCryptoDisabled           = collectorx.AuthSecurityReasonCryptoDisabled           // 加解密链路关闭
+	AuthEventReasonRequestDecryptFailed     = collectorx.AuthSecurityReasonRequestDecryptFailed     // 请求解密失败
+	AuthEventReasonResponseEncryptFailed    = collectorx.AuthSecurityReasonResponseEncryptFailed    // 响应加密失败
+	AuthEventReasonLoginIPRateLimited       = collectorx.AuthSecurityReasonLoginIPRateLimited       // 登录 IP 限流
+	AuthEventReasonLoginUsernameRateLimited = collectorx.AuthSecurityReasonLoginUsernameRateLimited // 登录用户名限流
+	AuthEventReasonRegisterIPRateLimited    = collectorx.AuthSecurityReasonRegisterIPRateLimited    // 注册 IP 限流
+	AuthEventReasonSessionCreated           = collectorx.AuthSecurityReasonSessionCreated           // 新会话已创建
+	AuthEventReasonSessionRotated           = collectorx.AuthSecurityReasonSessionRotated           // 会话已轮换
+	AuthEventReasonCurrentSessionDeleted    = collectorx.AuthSecurityReasonCurrentSessionDeleted    // 当前会话已删除
+	AuthEventReasonUserSessionsInvalidated  = collectorx.AuthSecurityReasonUserSessionsInvalidated  // 用户会话已全部失效
 )
 
 // AuthEventInput 表示认证流程内待投递的轻量风控事件。

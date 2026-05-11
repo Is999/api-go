@@ -18,17 +18,37 @@ const (
 	InternalConfigReloadRunPath = "/internal/system/config-reload/run"
 )
 
+// RouteSpecs 返回内网配置热加载路由规格。
+func RouteSpecs() []shared.RouteSpec {
+	return []shared.RouteSpec{
+		// GET /internal/system/config-reload/status：内网查询配置热加载状态。
+		{
+			Method:       http.MethodGet,
+			Path:         InternalConfigReloadStatusPath,
+			Meta:         shared.SystemConfigReloadStatus,
+			DocumentPath: shared.RouteDocSystem,
+			Chain:        shared.RouteSecurityInternal,
+			Handler: func(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware) http.HandlerFunc {
+				opsMw := middleware.NewOpsMiddleware(svcCtx)
+				return authMw.Handle(opsMw.Handle(ConfigReloadStatusHandler(svcCtx)), shared.SystemConfigReloadStatus.Alias)
+			},
+		},
+		// POST /internal/system/config-reload/run：内网手动触发配置热加载。
+		{
+			Method:       http.MethodPost,
+			Path:         InternalConfigReloadRunPath,
+			Meta:         shared.SystemConfigReloadRun,
+			DocumentPath: shared.RouteDocSystem,
+			Chain:        shared.RouteSecurityInternal,
+			Handler: func(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware) http.HandlerFunc {
+				opsMw := middleware.NewOpsMiddleware(svcCtx)
+				return authMw.Handle(opsMw.Handle(RunConfigReloadHandler(svcCtx)), shared.SystemConfigReloadRun.Alias)
+			},
+		},
+	}
+}
+
 // RegisterRoutes 注册运行期配置管理路由。
 func RegisterRoutes(server *rest.Server, serverCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware) {
-	opsMw := middleware.NewOpsMiddleware(serverCtx)
-	server.AddRoute(rest.Route{
-		Method:  http.MethodGet,
-		Path:    InternalConfigReloadStatusPath,
-		Handler: authMw.Handle(opsMw.Handle(ConfigReloadStatusHandler(serverCtx)), shared.SystemConfigReloadStatus.Alias),
-	})
-	server.AddRoute(rest.Route{
-		Method:  http.MethodPost,
-		Path:    InternalConfigReloadRunPath,
-		Handler: authMw.Handle(opsMw.Handle(RunConfigReloadHandler(serverCtx)), shared.SystemConfigReloadRun.Alias),
-	})
+	shared.AddRouteSpecs(server, serverCtx, authMw, RouteSpecs())
 }

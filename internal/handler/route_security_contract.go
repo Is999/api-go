@@ -6,18 +6,18 @@ import (
 )
 
 // RouteSecurityChain 表示路由实际挂载的安全链路。
-type RouteSecurityChain string
+type RouteSecurityChain = shared.RouteSecurityChain
 
 // 路由安全链路枚举常量。
 const (
 	// RouteSecurityNone 表示路由不经过前台签名、加密或 JWT 链路。
-	RouteSecurityNone RouteSecurityChain = "none"
+	RouteSecurityNone = shared.RouteSecurityNone
 	// RouteSecurityPublic 表示路由经过签名和加密链路，但不校验 JWT。
-	RouteSecurityPublic RouteSecurityChain = "public"
+	RouteSecurityPublic = shared.RouteSecurityPublic
 	// RouteSecurityAuth 表示路由必须校验 JWT 与 Redis session。
-	RouteSecurityAuth RouteSecurityChain = "auth"
+	RouteSecurityAuth = shared.RouteSecurityAuth
 	// RouteSecurityInternal 表示路由必须校验 JWT、Redis session 和内网 Ops 令牌。
-	RouteSecurityInternal RouteSecurityChain = "internal"
+	RouteSecurityInternal = shared.RouteSecurityInternal
 )
 
 // RouteSecurityContract 描述内置路由别名对应的安全链路契约。
@@ -28,16 +28,13 @@ type RouteSecurityContract struct {
 
 // DefaultRouteSecurityContracts 返回内置路由安全链路契约集合。
 func DefaultRouteSecurityContracts() []RouteSecurityContract {
-	return []RouteSecurityContract{
-		{Alias: shared.HealthLive.Alias, Chain: RouteSecurityNone},
-		{Alias: shared.HealthReady.Alias, Chain: RouteSecurityNone},
-		{Alias: shared.HealthMetrics.Alias, Chain: RouteSecurityNone},
-		{Alias: shared.AuthRegister.Alias, Chain: RouteSecurityPublic},
-		{Alias: shared.AuthLogin.Alias, Chain: RouteSecurityPublic},
-		{Alias: shared.AuthRefresh.Alias, Chain: RouteSecurityAuth},
-		{Alias: shared.AuthLogout.Alias, Chain: RouteSecurityAuth},
-		{Alias: shared.UserProfile.Alias, Chain: RouteSecurityAuth},
-		{Alias: shared.SystemConfigReloadStatus.Alias, Chain: RouteSecurityInternal},
-		{Alias: shared.SystemConfigReloadRun.Alias, Chain: RouteSecurityInternal},
+	specs := DefaultRouteSpecs()
+	contracts := make([]RouteSecurityContract, 0, len(specs))
+	for _, spec := range specs {
+		contracts = append(contracts, RouteSecurityContract{
+			Alias: spec.Meta.Alias,
+			Chain: spec.Chain,
+		})
 	}
+	return contracts
 }

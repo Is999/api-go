@@ -13,38 +13,113 @@ import (
 	"gorm.io/gorm"
 )
 
+// 默认组件生命周期名称。
+const (
+	componentNameServiceContext = "service_context" // ServiceContext 为空时的兜底组件
+	componentNameMySQL          = "mysql"           // 默认主库组件
+	componentNameRedis          = "redis"           // 默认 Redis 组件
+	componentSourceSiteMySQL    = "site_mysql"      // 命名扩展库组件来源
+)
+
 // gormDBCloseGuard 避免同一 GORM 连接池被重复关闭。
 type gormDBCloseGuard struct {
 	closed map[*gorm.DB]struct{} // 已关闭的连接池
 }
 
+// componentBuildContext 表示构造默认组件时需要的共享依赖。
+type componentBuildContext struct {
+	ServiceContext *svc.ServiceContext // 全局服务上下文
+	CloseGuard     *gormDBCloseGuard   // MySQL 连接池关闭去重器
+}
+
+// componentSpec 描述一个默认组件来源及其构造逻辑。
+type componentSpec struct {
+	Name  string                                      // 组件来源名称，必须在规格内唯一
+	Build func(componentBuildContext) []svc.Component // 构造该来源下的实际组件
+}
+
 // buildDefaultComponentRegistry 构造启动期核心组件注册表。
 func buildDefaultComponentRegistry(svcCtx *svc.ServiceContext) (*svc.ComponentRegistry, error) {
 	if svcCtx == nil {
-		return svc.NewComponentRegistry(svc.Component{
-			Name:      "service_context",
-			ErrorCode: codes.DependencyUnavailable,
-			Check: func(context.Context) error {
-				return errors.Errorf("ServiceContext未初始化")
-			},
-		})
+		return svc.NewComponentRegistry(serviceContextComponent())
 	}
 
 	closeGuard := &gormDBCloseGuard{closed: make(map[*gorm.DB]struct{}, 4)}
-	components := make([]svc.Component, 0, len(svcCtx.SiteDBs.NamedDBs)+2)
-	components = append(components, mysqlComponent("mysql", svcCtx.SiteDBs.MainDB, closeGuard))
+	components := defaultComponents(componentBuildContext{
+		ServiceContext: svcCtx,
+		CloseGuard:     closeGuard,
+	})
+	return svc.NewComponentRegistry(components...)
+}
 
-	names := make([]string, 0, len(svcCtx.SiteDBs.NamedDBs))
-	for name := range svcCtx.SiteDBs.NamedDBs {
+// defaultComponentSpecs 返回默认组件生命周期来源，顺序即注册和关闭顺序。
+func defaultComponentSpecs() []componentSpec {
+	return []componentSpec{
+		{
+			Name: componentNameMySQL,
+			Build: func(ctx componentBuildContext) []svc.Component {
+				if ctx.ServiceContext == nil {
+					return nil
+				}
+				return []svc.Component{mysqlComponent(componentNameMySQL, ctx.ServiceContext.SiteDBs.MainDB, ctx.CloseGuard)}
+			},
+		},
+		{
+			Name:  componentSourceSiteMySQL,
+			Build: siteMySQLComponents,
+		},
+		{
+			Name: componentNameRedis,
+			Build: func(ctx componentBuildContext) []svc.Component {
+				if ctx.ServiceContext == nil {
+					return nil
+				}
+				return []svc.Component{redisComponent(ctx.ServiceContext.Rds)}
+			},
+		},
+	}
+}
+
+// defaultComponents 从默认组件规格派生组件生命周期清单。
+func defaultComponents(ctx componentBuildContext) []svc.Component {
+	specs := defaultComponentSpecs()
+	components := make([]svc.Component, 0, len(specs))
+	for _, spec := range specs {
+		if spec.Build == nil {
+			continue
+		}
+		components = append(components, spec.Build(ctx)...)
+	}
+	return components
+}
+
+// siteMySQLComponents 按名称排序生成扩展库组件，保证启动与关闭顺序稳定。
+func siteMySQLComponents(ctx componentBuildContext) []svc.Component {
+	if ctx.ServiceContext == nil {
+		return nil
+	}
+	names := make([]string, 0, len(ctx.ServiceContext.SiteDBs.NamedDBs))
+	for name := range ctx.ServiceContext.SiteDBs.NamedDBs {
 		names = append(names, string(name))
 	}
 	sort.Strings(names)
+	components := make([]svc.Component, 0, len(names))
 	for _, name := range names {
-		db := svcCtx.SiteDBs.NamedDBs[svc.DbName(name)]
-		components = append(components, mysqlComponent("mysql_"+name, db, closeGuard))
+		db := ctx.ServiceContext.SiteDBs.NamedDBs[svc.DbName(name)]
+		components = append(components, mysqlComponent("mysql_"+name, db, ctx.CloseGuard))
 	}
-	components = append(components, redisComponent(svcCtx.Rds))
-	return svc.NewComponentRegistry(components...)
+	return components
+}
+
+// serviceContextComponent 返回 ServiceContext 缺失时的启动健康兜底组件。
+func serviceContextComponent() svc.Component {
+	return svc.Component{
+		Name:      componentNameServiceContext,
+		ErrorCode: codes.DependencyUnavailable,
+		Check: func(context.Context) error {
+			return errors.Errorf("ServiceContext未初始化")
+		},
+	}
 }
 
 // mysqlComponent 创建 MySQL 组件探测和释放入口。
@@ -64,7 +139,7 @@ func mysqlComponent(name string, db *gorm.DB, closeGuard *gormDBCloseGuard) svc.
 // redisComponent 创建 Redis 组件探测和释放入口。
 func redisComponent(rds redis.UniversalClient) svc.Component {
 	return svc.Component{
-		Name:      "redis",
+		Name:      componentNameRedis,
 		ErrorCode: codes.RedisUnavailable,
 		Check: func(ctx context.Context) error {
 			if rds == nil {
@@ -124,15 +199,4 @@ func (g *gormDBCloseGuard) close(name string, db *gorm.DB) error {
 		return errors.Wrapf(err, "关闭 MySQL[%s]连接池失败", name)
 	}
 	return nil
-}
-
-// componentNames 提取组件名称，供注册清单和测试复用。
-func componentNames(registry *svc.ComponentRegistry) []string {
-	items := registry.Items()
-	names := make([]string, 0, len(items))
-	for _, item := range items {
-		names = append(names, item.Name)
-	}
-	sort.Strings(names)
-	return names
 }

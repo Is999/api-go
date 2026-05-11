@@ -6,6 +6,7 @@ import (
 	authhandler "api/internal/handler/auth"
 	confighandler "api/internal/handler/config"
 	healthhandler "api/internal/handler/health"
+	"api/internal/handler/shared"
 	userhandler "api/internal/handler/user"
 	"api/internal/middleware"
 	"api/internal/svc"
@@ -32,6 +33,15 @@ type RouteModuleFunc struct {
 	register func(*RouteScope) // 路由注册逻辑
 }
 
+// RouteModuleSpec 描述内置 HTTP 路由模块的注册、文档和路由规格来源。
+type RouteModuleSpec struct {
+	Name        string                    // 模块名称，必须在内置模块中唯一
+	File        string                    // 模块注册和路由规格所在文件
+	Method      string                    // 模块构造和路由规格入口
+	Description string                    // 模块中文说明
+	Routes      func() []shared.RouteSpec // 模块内置路由规格
+}
+
 // NewRouteModuleFunc 创建函数式路由模块。
 func NewRouteModuleFunc(name string, register func(*RouteScope)) RouteModule {
 	return RouteModuleFunc{name: strings.TrimSpace(name), register: register}
@@ -51,40 +61,116 @@ func (m RouteModuleFunc) Register(scope *RouteScope) {
 
 // BuiltinRouteModules 返回当前进程默认启用的路由模块集合。
 func BuiltinRouteModules() []RouteModule {
-	return []RouteModule{
-		NewHealthRouteModule(),
-		NewAuthRouteModule(),
-		NewUserRouteModule(),
-		NewConfigRouteModule(),
+	specs := BuiltinRouteModuleSpecs()
+	modules := make([]RouteModule, 0, len(specs))
+	for _, spec := range specs {
+		modules = append(modules, newRouteModule(spec))
 	}
+	return modules
+}
+
+// BuiltinRouteModuleSpecs 返回内置 HTTP 路由模块规格，供启动装配和注册清单复用。
+func BuiltinRouteModuleSpecs() []RouteModuleSpec {
+	return []RouteModuleSpec{
+		healthRouteModuleSpec(),
+		authRouteModuleSpec(),
+		userRouteModuleSpec(),
+		configRouteModuleSpec(),
+	}
+}
+
+// DefaultRouteSpecs 返回内置 HTTP 路由规格，顺序与内置模块注册顺序保持一致。
+func DefaultRouteSpecs() []shared.RouteSpec {
+	moduleSpecs := BuiltinRouteModuleSpecs()
+	groups := make([][]shared.RouteSpec, 0, len(moduleSpecs))
+	total := 0
+	for _, moduleSpec := range moduleSpecs {
+		if moduleSpec.Routes == nil {
+			continue
+		}
+		group := moduleSpec.Routes()
+		total += len(group)
+		groups = append(groups, group)
+	}
+	specs := make([]shared.RouteSpec, 0, total)
+	for _, group := range groups {
+		specs = append(specs, group...)
+	}
+	return specs
 }
 
 // NewHealthRouteModule 创建健康检查路由模块。
 func NewHealthRouteModule() RouteModule {
-	return NewRouteModuleFunc("health", func(scope *RouteScope) {
-		healthhandler.RegisterRoutes(scope.Server, scope.ServiceContext)
-	})
+	return newRouteModule(healthRouteModuleSpec())
 }
 
 // NewAuthRouteModule 创建前台认证路由模块。
 func NewAuthRouteModule() RouteModule {
-	return NewRouteModuleFunc("auth", func(scope *RouteScope) {
-		authhandler.RegisterRoutes(scope.Server, scope.ServiceContext, scope.AuthMiddleware)
-	})
+	return newRouteModule(authRouteModuleSpec())
 }
 
 // NewUserRouteModule 创建前台用户路由模块。
 func NewUserRouteModule() RouteModule {
-	return NewRouteModuleFunc("user", func(scope *RouteScope) {
-		userhandler.RegisterRoutes(scope.Server, scope.ServiceContext, scope.AuthMiddleware)
-	})
+	return newRouteModule(userRouteModuleSpec())
 }
 
 // NewConfigRouteModule 创建运行期配置管理路由模块。
 func NewConfigRouteModule() RouteModule {
-	return NewRouteModuleFunc("config", func(scope *RouteScope) {
-		confighandler.RegisterRoutes(scope.Server, scope.ServiceContext, scope.AuthMiddleware)
+	return newRouteModule(configRouteModuleSpec())
+}
+
+// newRouteModule 根据模块规格构造可注册模块。
+func newRouteModule(spec RouteModuleSpec) RouteModule {
+	return NewRouteModuleFunc(spec.Name, func(scope *RouteScope) {
+		if spec.Routes == nil {
+			return
+		}
+		shared.AddRouteSpecs(scope.Server, scope.ServiceContext, scope.AuthMiddleware, spec.Routes())
 	})
+}
+
+// healthRouteModuleSpec 返回健康检查模块规格。
+func healthRouteModuleSpec() RouteModuleSpec {
+	return RouteModuleSpec{
+		Name:        "health",
+		File:        "internal/handler/routes.go + internal/handler/health/routes.go",
+		Method:      "handler.NewHealthRouteModule / health.RouteSpecs",
+		Description: "注册健康检查路由",
+		Routes:      healthhandler.RouteSpecs,
+	}
+}
+
+// authRouteModuleSpec 返回前台认证模块规格。
+func authRouteModuleSpec() RouteModuleSpec {
+	return RouteModuleSpec{
+		Name:        "auth",
+		File:        "internal/handler/routes.go + internal/handler/auth/routes.go",
+		Method:      "handler.NewAuthRouteModule / auth.RouteSpecs",
+		Description: "注册前台认证路由",
+		Routes:      authhandler.RouteSpecs,
+	}
+}
+
+// userRouteModuleSpec 返回前台用户模块规格。
+func userRouteModuleSpec() RouteModuleSpec {
+	return RouteModuleSpec{
+		Name:        "user",
+		File:        "internal/handler/routes.go + internal/handler/user/routes.go",
+		Method:      "handler.NewUserRouteModule / user.RouteSpecs",
+		Description: "注册前台用户路由",
+		Routes:      userhandler.RouteSpecs,
+	}
+}
+
+// configRouteModuleSpec 返回运行期配置模块规格。
+func configRouteModuleSpec() RouteModuleSpec {
+	return RouteModuleSpec{
+		Name:        "config",
+		File:        "internal/handler/routes.go + internal/handler/config/routes.go",
+		Method:      "handler.NewConfigRouteModule / config.RouteSpecs",
+		Description: "注册内网运行期配置管理路由",
+		Routes:      confighandler.RouteSpecs,
+	}
 }
 
 // RegisterHandlers 统一注册全局中间件和各领域路由模块。

@@ -25,11 +25,42 @@ func TestBuildDefaultComponentRegistryNames(t *testing.T) {
 	if err != nil {
 		t.Fatalf("buildDefaultComponentRegistry() error = %v", err)
 	}
-	got := componentNames(registry)
-	want := []string{"mysql", "mysql_archive", "mysql_user", "redis"}
+	got := componentItemNames(registry.Items())
+	want := []string{componentNameMySQL, "mysql_archive", "mysql_user", componentNameRedis}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("component names = %v, want %v", got, want)
 	}
+}
+
+// TestDefaultComponentSpecsValid 确保组件生命周期来源规格完整且顺序稳定。
+func TestDefaultComponentSpecsValid(t *testing.T) {
+	specs := defaultComponentSpecs()
+	want := []string{componentNameMySQL, componentSourceSiteMySQL, componentNameRedis}
+	if len(specs) != len(want) {
+		t.Fatalf("默认组件规格数量不符合预期: got=%d want=%d", len(specs), len(want))
+	}
+	seen := make(map[string]struct{}, len(specs))
+	for index, spec := range specs {
+		if spec.Name != want[index] {
+			t.Fatalf("默认组件规格顺序不符合预期: index=%d got=%s want=%s", index, spec.Name, want[index])
+		}
+		if spec.Build == nil {
+			t.Fatalf("默认组件规格缺少构造函数: %s", spec.Name)
+		}
+		if _, ok := seen[spec.Name]; ok {
+			t.Fatalf("默认组件规格名称重复: %s", spec.Name)
+		}
+		seen[spec.Name] = struct{}{}
+	}
+}
+
+// componentItemNames 保留组件注册顺序提取名称，便于校验生命周期顺序。
+func componentItemNames(items []svc.Component) []string {
+	names := make([]string, 0, len(items))
+	for _, item := range items {
+		names = append(names, item.Name)
+	}
+	return names
 }
 
 // TestCollectorConfigWithAppIDScopesRedisStream 确保 Collector Redis Stream 按 app_id 隔离。

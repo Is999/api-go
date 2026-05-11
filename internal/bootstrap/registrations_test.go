@@ -31,24 +31,46 @@ func TestDefaultRegistrationManifestHasBuiltinEntries(t *testing.T) {
 	}
 }
 
-// TestDefaultRuntimeRegistryNamesCoversBuiltinEntries 确保默认运行时扩展入口都被清单覆盖。
-func TestDefaultRuntimeRegistryNamesCoversBuiltinEntries(t *testing.T) {
+// TestDefaultRuntimeRegistryNamesDeriveFromSpecs 确保运行时扩展名称从规格派生。
+func TestDefaultRuntimeRegistryNamesDeriveFromSpecs(t *testing.T) {
 	names := defaultRuntimeRegistryNames()
-	nameSet := make(map[string]struct{}, len(names))
-	for _, name := range names {
-		nameSet[name] = struct{}{}
+	specs := defaultRuntimeRegistrySpecs()
+	if len(names) != len(specs) {
+		t.Fatalf("runtime names count = %d, spec count = %d", len(names), len(specs))
 	}
-	for _, want := range []string{
-		runtimeRegistryComponentLifecycle,
-		runtimeRegistryCollectorProcessor,
-		runtimeRegistryAuthSecurityEvent,
-		runtimeRegistryAuthSecurityProcessor,
-		runtimeRegistrySysConfigCache,
-		runtimeRegistrySysConfigKeyRegistry,
-		runtimeRegistryCacheRebuildLock,
-	} {
-		if _, ok := nameSet[want]; !ok {
-			t.Fatalf("默认运行时注册集合缺少 %s: %v", want, names)
+	for index, spec := range specs {
+		if names[index] != spec.Name {
+			t.Fatalf("runtime name mismatch index=%d names=%v specs=%+v", index, names, specs)
+		}
+	}
+}
+
+// TestRouteRegistrationManifestMatchesModuleSpecs 确保路由注册清单由内置模块规格派生。
+func TestRouteRegistrationManifestMatchesModuleSpecs(t *testing.T) {
+	routeItems := manifestItemsByKind(DefaultRegistrationManifest(), registrationKindRoute)
+	specs := handler.BuiltinRouteModuleSpecs()
+	if len(routeItems) != len(specs) {
+		t.Fatalf("route manifest count = %d, spec count = %d", len(routeItems), len(specs))
+	}
+	for index, spec := range specs {
+		item := routeItems[index]
+		if item.Name != spec.Name || item.File != spec.File || item.Method != spec.Method || item.Description != spec.Description {
+			t.Fatalf("route manifest mismatch index=%d item=%+v spec=%+v", index, item, spec)
+		}
+	}
+}
+
+// TestRuntimeRegistrationManifestMatchesSpecs 确保运行时注册清单由扩展规格派生。
+func TestRuntimeRegistrationManifestMatchesSpecs(t *testing.T) {
+	runtimeItems := manifestItemsByKind(DefaultRegistrationManifest(), registrationKindRuntimeRegistry)
+	specs := defaultRuntimeRegistrySpecs()
+	if len(runtimeItems) != len(specs) {
+		t.Fatalf("runtime manifest count = %d, spec count = %d", len(runtimeItems), len(specs))
+	}
+	for index, spec := range specs {
+		item := runtimeItems[index]
+		if item.Name != spec.Name || item.File != spec.File || item.Method != spec.Method || item.Description != spec.Description {
+			t.Fatalf("runtime manifest mismatch index=%d item=%+v spec=%+v", index, item, spec)
 		}
 	}
 }
@@ -66,6 +88,17 @@ func TestValidateManifestItemsRejectsIncomplete(t *testing.T) {
 	if err == nil {
 		t.Fatal("期望清单字段缺失返回错误，实际为 nil")
 	}
+}
+
+// manifestItemsByKind 按注册类型筛选默认注册清单。
+func manifestItemsByKind(items []RegistrationManifestItem, kind string) []RegistrationManifestItem {
+	result := make([]RegistrationManifestItem, 0, len(items))
+	for _, item := range items {
+		if item.Kind == kind {
+			result = append(result, item)
+		}
+	}
+	return result
 }
 
 // TestValidateManifestItemsRejectsDuplicate 确保清单重复项会被校验拦截。

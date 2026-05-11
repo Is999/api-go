@@ -26,85 +26,109 @@ const (
 
 // 认证风控事件动作枚举。
 const (
-	authSecurityActionRegisterSuccess      = "register_success"       // 注册成功
-	authSecurityActionLoginSuccess         = "login_success"          // 登录成功
-	authSecurityActionLoginFailed          = "login_failed"           // 登录失败
-	authSecurityActionRateLimited          = "rate_limited"           // 认证入口触发限流
-	authSecurityActionAuthFailed           = "auth_failed"            // 登录态鉴权失败
-	authSecurityActionSecurityFailed       = "security_failed"        // 签名或加密链路失败
-	authSecurityActionRefreshSuccess       = "refresh_success"        // 刷新 token 成功
-	authSecurityActionLogoutSuccess        = "logout_success"         // 退出登录成功
-	authSecurityActionSessionInvalidateAll = "session_invalidate_all" // 用户全部 session 失效
+	AuthSecurityActionRegisterSuccess      = "register_success"       // 注册成功
+	AuthSecurityActionLoginSuccess         = "login_success"          // 登录成功
+	AuthSecurityActionLoginFailed          = "login_failed"           // 登录失败
+	AuthSecurityActionRateLimited          = "rate_limited"           // 认证入口触发限流
+	AuthSecurityActionAuthFailed           = "auth_failed"            // 登录态鉴权失败
+	AuthSecurityActionSecurityFailed       = "security_failed"        // 签名或加密链路失败
+	AuthSecurityActionRefreshSuccess       = "refresh_success"        // 刷新 token 成功
+	AuthSecurityActionLogoutSuccess        = "logout_success"         // 退出登录成功
+	AuthSecurityActionSessionInvalidateAll = "session_invalidate_all" // 用户全部 session 失效
 )
 
 // 认证风控事件原因枚举。
 const (
-	authSecurityReasonInvalidPassword          = "invalid_password"            // 账号或密码错误
-	authSecurityReasonUserDisabled             = "user_disabled"               // 用户被禁用
-	authSecurityReasonUserNotFound             = "user_not_found"              // 用户不存在
-	authSecurityReasonMissingBearer            = "missing_bearer"              // 缺少 Bearer token
-	authSecurityReasonTokenExpired             = "token_expired"               // token 已过期
-	authSecurityReasonSessionExpired           = "session_expired"             // Redis session 已失效
-	authSecurityReasonTokenInvalid             = "token_invalid"               // token 无效
-	authSecurityReasonSecurityFailed           = "security_failed"             // 签名或加密链路失败
-	authSecurityReasonSecurityAppIDInvalid     = "security_app_id_invalid"     // 安全链路 AppID 无效
-	authSecurityReasonSecurityKeyUnavailable   = "security_key_unavailable"    // 安全链路秘钥不可用
-	authSecurityReasonSignatureFailed          = "signature_failed"            // 请求验签失败
-	authSecurityReasonSecurityPayloadTooLarge  = "security_payload_too_large"  // 安全字段或请求体超过上限
-	authSecurityReasonResponseSignFailed       = "response_sign_failed"        // 响应回签失败
-	authSecurityReasonCryptoDisabled           = "crypto_disabled"             // 加解密链路关闭
-	authSecurityReasonRequestDecryptFailed     = "request_decrypt_failed"      // 请求解密失败
-	authSecurityReasonResponseEncryptFailed    = "response_encrypt_failed"     // 响应加密失败
-	authSecurityReasonLoginIPRateLimited       = "login_ip_rate_limited"       // 登录 IP 限流
-	authSecurityReasonLoginUsernameRateLimited = "login_username_rate_limited" // 登录用户名限流
-	authSecurityReasonRegisterIPRateLimited    = "register_ip_rate_limited"    // 注册 IP 限流
-	authSecurityReasonSessionCreated           = "session_created"             // 新会话已创建
-	authSecurityReasonSessionRotated           = "session_rotated"             // 会话已轮换
-	authSecurityReasonCurrentSessionDeleted    = "current_session_deleted"     // 当前会话已删除
-	authSecurityReasonUserSessionsInvalidated  = "user_sessions_invalidated"   // 用户会话已全部失效
+	AuthSecurityReasonInvalidPassword          = "invalid_password"            // 账号或密码错误
+	AuthSecurityReasonUserDisabled             = "user_disabled"               // 用户被禁用
+	AuthSecurityReasonUserNotFound             = "user_not_found"              // 用户不存在
+	AuthSecurityReasonMissingBearer            = "missing_bearer"              // 缺少 Bearer token
+	AuthSecurityReasonTokenExpired             = "token_expired"               // token 已过期
+	AuthSecurityReasonSessionExpired           = "session_expired"             // Redis session 已失效
+	AuthSecurityReasonTokenInvalid             = "token_invalid"               // token 无效
+	AuthSecurityReasonSecurityFailed           = "security_failed"             // 签名或加密链路失败
+	AuthSecurityReasonSecurityAppIDInvalid     = "security_app_id_invalid"     // 安全链路 AppID 无效
+	AuthSecurityReasonSecurityKeyUnavailable   = "security_key_unavailable"    // 安全链路秘钥不可用
+	AuthSecurityReasonSignatureFailed          = "signature_failed"            // 请求验签失败
+	AuthSecurityReasonSecurityPayloadTooLarge  = "security_payload_too_large"  // 安全字段或请求体超过上限
+	AuthSecurityReasonResponseSignFailed       = "response_sign_failed"        // 响应回签失败
+	AuthSecurityReasonCryptoDisabled           = "crypto_disabled"             // 加解密链路关闭
+	AuthSecurityReasonRequestDecryptFailed     = "request_decrypt_failed"      // 请求解密失败
+	AuthSecurityReasonResponseEncryptFailed    = "response_encrypt_failed"     // 响应加密失败
+	AuthSecurityReasonLoginIPRateLimited       = "login_ip_rate_limited"       // 登录 IP 限流
+	AuthSecurityReasonLoginUsernameRateLimited = "login_username_rate_limited" // 登录用户名限流
+	AuthSecurityReasonRegisterIPRateLimited    = "register_ip_rate_limited"    // 注册 IP 限流
+	AuthSecurityReasonSessionCreated           = "session_created"             // 新会话已创建
+	AuthSecurityReasonSessionRotated           = "session_rotated"             // 会话已轮换
+	AuthSecurityReasonCurrentSessionDeleted    = "current_session_deleted"     // 当前会话已删除
+	AuthSecurityReasonUserSessionsInvalidated  = "user_sessions_invalidated"   // 用户会话已全部失效
 )
 
-// 认证风控事件指标标签白名单，未知值会归并为 other。
+// AuthSecurityReasonContract 描述认证风控原因到低基数告警分类的契约。
+type AuthSecurityReasonContract struct {
+	Reason   string // Reason 是允许作为指标标签暴露的细分原因。
+	Category string // Category 是该原因归并后的低基数告警分类。
+}
+
+// defaultAuthSecurityActions 是认证事件动作指标标签契约源，元素为允许暴露的 action 值。
+var defaultAuthSecurityActions = []string{
+	AuthSecurityActionRegisterSuccess,      // 注册成功允许作为动作指标标签。
+	AuthSecurityActionLoginSuccess,         // 登录成功允许作为动作指标标签。
+	AuthSecurityActionLoginFailed,          // 登录失败允许作为动作指标标签。
+	AuthSecurityActionRateLimited,          // 认证入口触发限流允许作为动作指标标签。
+	AuthSecurityActionAuthFailed,           // 登录态鉴权失败允许作为动作指标标签。
+	AuthSecurityActionSecurityFailed,       // 签名或加密链路失败允许作为动作指标标签。
+	AuthSecurityActionRefreshSuccess,       // 刷新 token 成功允许作为动作指标标签。
+	AuthSecurityActionLogoutSuccess,        // 退出登录成功允许作为动作指标标签。
+	AuthSecurityActionSessionInvalidateAll, // 用户全部 session 失效允许作为动作指标标签。
+}
+
+// defaultAuthSecurityReasonContracts 是认证事件原因指标标签契约源，元素声明 reason 与告警分类。
+var defaultAuthSecurityReasonContracts = []AuthSecurityReasonContract{
+	{Reason: AuthSecurityReasonInvalidPassword, Category: authSecurityCategoryAuth},                         // 账号或密码错误归并到账号认证类。
+	{Reason: AuthSecurityReasonUserDisabled, Category: authSecurityCategoryAuth},                            // 用户被禁用归并到账号认证类。
+	{Reason: AuthSecurityReasonUserNotFound, Category: authSecurityCategoryAuth},                            // 用户不存在归并到账号认证类。
+	{Reason: AuthSecurityReasonMissingBearer, Category: authSecurityCategoryToken},                          // 缺少 Bearer token 归并到登录态类。
+	{Reason: AuthSecurityReasonTokenExpired, Category: authSecurityCategoryToken},                           // token 过期归并到登录态类。
+	{Reason: AuthSecurityReasonSessionExpired, Category: authSecurityCategoryToken},                         // Redis session 失效归并到登录态类。
+	{Reason: AuthSecurityReasonTokenInvalid, Category: authSecurityCategoryToken},                           // token 无效归并到登录态类。
+	{Reason: AuthSecurityReasonSecurityFailed, Category: authSecurityCategorySecurityClient},                // 通用安全链路失败归并到客户端安全类。
+	{Reason: AuthSecurityReasonSecurityAppIDInvalid, Category: authSecurityCategorySecurityClient},          // AppID 无效归并到客户端安全类。
+	{Reason: AuthSecurityReasonSecurityKeyUnavailable, Category: authSecurityCategorySecurityConfig},        // 秘钥不可用归并到服务端配置类。
+	{Reason: AuthSecurityReasonSignatureFailed, Category: authSecurityCategorySecurityClient},               // 请求验签失败归并到客户端安全类。
+	{Reason: AuthSecurityReasonSecurityPayloadTooLarge, Category: authSecurityCategorySecurityPayloadLimit}, // 安全字段超限归并到体积限制类。
+	{Reason: AuthSecurityReasonResponseSignFailed, Category: authSecurityCategorySecurityResponse},          // 响应签名失败归并到响应安全类。
+	{Reason: AuthSecurityReasonCryptoDisabled, Category: authSecurityCategorySecurityClient},                // 加解密关闭归并到客户端安全类。
+	{Reason: AuthSecurityReasonRequestDecryptFailed, Category: authSecurityCategorySecurityClient},          // 请求解密失败归并到客户端安全类。
+	{Reason: AuthSecurityReasonResponseEncryptFailed, Category: authSecurityCategorySecurityResponse},       // 响应加密失败归并到响应安全类。
+	{Reason: AuthSecurityReasonLoginIPRateLimited, Category: authSecurityCategoryRateLimit},                 // 登录 IP 限流归并到限流类。
+	{Reason: AuthSecurityReasonLoginUsernameRateLimited, Category: authSecurityCategoryRateLimit},           // 登录用户名限流归并到限流类。
+	{Reason: AuthSecurityReasonRegisterIPRateLimited, Category: authSecurityCategoryRateLimit},              // 注册 IP 限流归并到限流类。
+	{Reason: AuthSecurityReasonSessionCreated, Category: authSecurityCategorySessionLifecycle},              // 新会话创建归并到 session 生命周期类。
+	{Reason: AuthSecurityReasonSessionRotated, Category: authSecurityCategorySessionLifecycle},              // 会话轮换归并到 session 生命周期类。
+	{Reason: AuthSecurityReasonCurrentSessionDeleted, Category: authSecurityCategorySessionLifecycle},       // 当前会话删除归并到 session 生命周期类。
+	{Reason: AuthSecurityReasonUserSessionsInvalidated, Category: authSecurityCategorySessionLifecycle},     // 用户会话批量失效归并到 session 生命周期类。
+}
+
+// 认证风控事件指标标签索引，未知值会归并为 other。
 var (
-	// authSecurityActions 是认证事件动作指标标签白名单。
-	authSecurityActions = map[string]struct{}{
-		authSecurityActionRegisterSuccess:      {}, // 注册成功允许作为动作指标标签。
-		authSecurityActionLoginSuccess:         {}, // 登录成功允许作为动作指标标签。
-		authSecurityActionLoginFailed:          {}, // 登录失败允许作为动作指标标签。
-		authSecurityActionRateLimited:          {}, // 认证入口触发限流允许作为动作指标标签。
-		authSecurityActionAuthFailed:           {}, // 登录态鉴权失败允许作为动作指标标签。
-		authSecurityActionSecurityFailed:       {}, // 签名或加密链路失败允许作为动作指标标签。
-		authSecurityActionRefreshSuccess:       {}, // 刷新 token 成功允许作为动作指标标签。
-		authSecurityActionLogoutSuccess:        {}, // 退出登录成功允许作为动作指标标签。
-		authSecurityActionSessionInvalidateAll: {}, // 用户全部 session 失效允许作为动作指标标签。
-	}
-	// authSecurityReasons 是认证事件原因指标标签白名单。
-	authSecurityReasons = map[string]struct{}{
-		authSecurityReasonInvalidPassword:          {}, // 账号或密码错误允许作为原因指标标签。
-		authSecurityReasonUserDisabled:             {}, // 用户被禁用允许作为原因指标标签。
-		authSecurityReasonUserNotFound:             {}, // 用户不存在允许作为原因指标标签。
-		authSecurityReasonMissingBearer:            {}, // 缺少 Bearer token允许作为原因指标标签。
-		authSecurityReasonTokenExpired:             {}, // token 已过期允许作为原因指标标签。
-		authSecurityReasonSessionExpired:           {}, // Redis session 已失效允许作为原因指标标签。
-		authSecurityReasonTokenInvalid:             {}, // token 无效允许作为原因指标标签。
-		authSecurityReasonSecurityFailed:           {}, // 签名或加密链路失败允许作为原因指标标签。
-		authSecurityReasonSecurityAppIDInvalid:     {}, // 安全链路 AppID 无效允许作为原因指标标签。
-		authSecurityReasonSecurityKeyUnavailable:   {}, // 安全链路秘钥不可用允许作为原因指标标签。
-		authSecurityReasonSignatureFailed:          {}, // 请求验签失败允许作为原因指标标签。
-		authSecurityReasonSecurityPayloadTooLarge:  {}, // 安全字段或请求体超过上限允许作为原因指标标签。
-		authSecurityReasonResponseSignFailed:       {}, // 响应回签失败允许作为原因指标标签。
-		authSecurityReasonCryptoDisabled:           {}, // 加解密链路关闭允许作为原因指标标签。
-		authSecurityReasonRequestDecryptFailed:     {}, // 请求解密失败允许作为原因指标标签。
-		authSecurityReasonResponseEncryptFailed:    {}, // 响应加密失败允许作为原因指标标签。
-		authSecurityReasonLoginIPRateLimited:       {}, // 登录 IP 限流允许作为原因指标标签。
-		authSecurityReasonLoginUsernameRateLimited: {}, // 登录用户名限流允许作为原因指标标签。
-		authSecurityReasonRegisterIPRateLimited:    {}, // 注册 IP 限流允许作为原因指标标签。
-		authSecurityReasonSessionCreated:           {}, // 新会话已创建允许作为原因指标标签。
-		authSecurityReasonSessionRotated:           {}, // 会话已轮换允许作为原因指标标签。
-		authSecurityReasonCurrentSessionDeleted:    {}, // 当前会话已删除允许作为原因指标标签。
-		authSecurityReasonUserSessionsInvalidated:  {}, // 用户会话已全部失效允许作为原因指标标签。
-	}
+	// authSecurityActions 由 defaultAuthSecurityActions 派生，key 是允许暴露的 action 标签值。
+	authSecurityActions = buildStringSet(defaultAuthSecurityActions)
+	// authSecurityReasons 由 defaultAuthSecurityReasonContracts 派生，key 是允许暴露的 reason 标签值。
+	authSecurityReasons = buildAuthSecurityReasonSet(defaultAuthSecurityReasonContracts)
+	// authSecurityReasonCategories 由 defaultAuthSecurityReasonContracts 派生，key 为 reason，value 为低基数 category。
+	authSecurityReasonCategories = buildAuthSecurityReasonCategoryMap(defaultAuthSecurityReasonContracts)
 )
+
+// DefaultAuthSecurityActions 返回认证风控事件动作契约快照。
+func DefaultAuthSecurityActions() []string {
+	return append([]string(nil), defaultAuthSecurityActions...)
+}
+
+// DefaultAuthSecurityReasonContracts 返回认证风控事件原因分类契约快照。
+func DefaultAuthSecurityReasonContracts() []AuthSecurityReasonContract {
+	return append([]AuthSecurityReasonContract(nil), defaultAuthSecurityReasonContracts...)
+}
 
 // AuthSecurityProcessor 汇总认证风控事件的轻量指标。
 type AuthSecurityProcessor struct{}
@@ -178,43 +202,14 @@ func normalizeAuthSecurityReason(reason string) string {
 
 // normalizeAuthSecurityCategory 将细分原因归并为低基数告警分类。
 func normalizeAuthSecurityCategory(reason string) string {
-	switch normalizeAuthSecurityReason(reason) {
-	case authSecurityReasonInvalidPassword,
-		authSecurityReasonUserDisabled,
-		authSecurityReasonUserNotFound:
-		return authSecurityCategoryAuth
-	case authSecurityReasonMissingBearer,
-		authSecurityReasonTokenExpired,
-		authSecurityReasonSessionExpired,
-		authSecurityReasonTokenInvalid:
-		return authSecurityCategoryToken
-	case authSecurityReasonLoginIPRateLimited,
-		authSecurityReasonLoginUsernameRateLimited,
-		authSecurityReasonRegisterIPRateLimited:
-		return authSecurityCategoryRateLimit
-	case authSecurityReasonSecurityFailed,
-		authSecurityReasonSecurityAppIDInvalid,
-		authSecurityReasonSignatureFailed,
-		authSecurityReasonCryptoDisabled,
-		authSecurityReasonRequestDecryptFailed:
-		return authSecurityCategorySecurityClient
-	case authSecurityReasonSecurityKeyUnavailable:
-		return authSecurityCategorySecurityConfig
-	case authSecurityReasonSecurityPayloadTooLarge:
-		return authSecurityCategorySecurityPayloadLimit
-	case authSecurityReasonResponseSignFailed,
-		authSecurityReasonResponseEncryptFailed:
-		return authSecurityCategorySecurityResponse
-	case authSecurityReasonSessionCreated,
-		authSecurityReasonSessionRotated,
-		authSecurityReasonCurrentSessionDeleted,
-		authSecurityReasonUserSessionsInvalidated:
-		return authSecurityCategorySessionLifecycle
-	case authSecurityLabelUnknown:
+	normalizedReason := normalizeAuthSecurityReason(reason)
+	if normalizedReason == authSecurityLabelUnknown {
 		return authSecurityLabelUnknown
-	default:
-		return authSecurityLabelOther
 	}
+	if category, ok := authSecurityReasonCategories[normalizedReason]; ok {
+		return category
+	}
+	return authSecurityLabelOther
 }
 
 // normalizeAuthSecurityAppID 归一化站点标签，避免异常值扩大指标维度。
@@ -233,4 +228,44 @@ func normalizeAuthSecurityAppID(appID string) string {
 		return authSecurityLabelOther
 	}
 	return appID
+}
+
+// buildStringSet 构造字符串白名单集合，空字符串会被忽略。
+func buildStringSet(values []string) map[string]struct{} {
+	result := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		result[value] = struct{}{}
+	}
+	return result
+}
+
+// buildAuthSecurityReasonSet 从原因契约派生原因白名单集合。
+func buildAuthSecurityReasonSet(contracts []AuthSecurityReasonContract) map[string]struct{} {
+	result := make(map[string]struct{}, len(contracts))
+	for _, contract := range contracts {
+		reason := strings.TrimSpace(contract.Reason)
+		if reason == "" {
+			continue
+		}
+		result[reason] = struct{}{}
+	}
+	return result
+}
+
+// buildAuthSecurityReasonCategoryMap 从原因契约派生 reason 到 category 的映射。
+func buildAuthSecurityReasonCategoryMap(contracts []AuthSecurityReasonContract) map[string]string {
+	result := make(map[string]string, len(contracts))
+	for _, contract := range contracts {
+		reason := strings.TrimSpace(contract.Reason)
+		category := strings.TrimSpace(contract.Category)
+		if reason == "" || category == "" {
+			continue
+		}
+		result[reason] = category
+	}
+	return result
 }

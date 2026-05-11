@@ -17,12 +17,28 @@ type Migration struct {
 	Destructive   bool   // 是否包含 DROP/种子数据等不适合在线执行的语句
 }
 
+// migrationSpec 描述内置迁移资产元数据。
+type migrationSpec struct {
+	version       string // 迁移版本号
+	name          string // 迁移名称
+	asset         string // SQL 模板资产文件名
+	bootstrapOnly bool   // 是否仅用于新库初始化
+	destructive   bool   // 是否含破坏性语句
+}
+
+// defaultMigrationSpecs 定义内置迁移清单，顺序即执行顺序。
+var defaultMigrationSpecs = []migrationSpec{
+	{version: "202606050001", name: "create_api_user", asset: apiUserSchemaAsset},
+	{version: "202606050002", name: "create_sys_config", asset: sysConfigSchemaAsset},
+}
+
 // DefaultMigrations 返回内置数据库迁移清单。
 func DefaultMigrations() []Migration {
-	return []Migration{
-		newMigration("202606050001", "create_api_user", "api_user_schema.sql.tmpl", APIUserSchemaSQL()),
-		newMigration("202606050002", "create_sys_config", "sys_config_schema.sql.tmpl", SysConfigSchemaSQL()),
+	items := make([]Migration, 0, len(defaultMigrationSpecs))
+	for _, spec := range defaultMigrationSpecs {
+		items = append(items, newMigrationFromSpec(spec))
 	}
+	return items
 }
 
 // PendingMigrations 返回尚未在版本表中登记的迁移。
@@ -53,6 +69,14 @@ func newMigration(version string, name string, asset string, sqlText string) Mig
 		SQL:      sqlText,
 		Checksum: sha256Hex(sqlText),
 	}
+}
+
+// newMigrationFromSpec 从迁移规格生成带摘要的迁移项。
+func newMigrationFromSpec(spec migrationSpec) Migration {
+	item := newMigration(spec.version, spec.name, spec.asset, readMigrationSQL(spec.asset))
+	item.BootstrapOnly = spec.bootstrapOnly
+	item.Destructive = spec.destructive
+	return item
 }
 
 // sha256Hex 返回文本 SHA256 十六进制摘要。

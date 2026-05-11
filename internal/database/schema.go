@@ -1,37 +1,70 @@
 package database
 
 import (
-	_ "embed"
+	"embed"
+	"io/fs"
+	"sort"
+	"strings"
 
 	"api/common/embedasset"
+
+	"github.com/Is999/go-utils/errors"
 )
 
-// apiUserSchemaSQL 保存前台用户表 DDL 模板。
-//
-//go:embed assets/api_user_schema.sql.tmpl
-var apiUserSchemaSQL string
+// 迁移 SQL 资产文件名。
+const (
+	apiUserSchemaAsset        = "api_user_schema.sql.tmpl"   // 前台用户表 DDL 资产
+	sysConfigSchemaAsset      = "sys_config_schema.sql.tmpl" // 系统配置表 DDL 资产
+	schemaMigrationsAsset     = "schema_migrations.sql.tmpl" // 迁移版本表 DDL 资产
+	databaseMigrationAssetDir = "assets"                     // go:embed 中的迁移资产目录
+)
 
-// sysConfigSchemaSQL 保存系统配置表 DDL 模板。
+// databaseMigrationAssets 嵌入数据库迁移 SQL 资产。
 //
-//go:embed assets/sys_config_schema.sql.tmpl
-var sysConfigSchemaSQL string
-
-// schemaMigrationsSQL 保存数据库迁移版本表 DDL 模板。
-//
-//go:embed assets/schema_migrations.sql.tmpl
-var schemaMigrationsSQL string
+//go:embed assets/*.sql.tmpl
+var databaseMigrationAssets embed.FS
 
 // APIUserSchemaSQL 返回剥离文件头说明后的前台用户表 DDL。
 func APIUserSchemaSQL() string {
-	return embedasset.StripLeadingLineComments(apiUserSchemaSQL, "--")
+	return readMigrationSQL(apiUserSchemaAsset)
 }
 
 // SysConfigSchemaSQL 返回剥离文件头说明后的系统配置表 DDL。
 func SysConfigSchemaSQL() string {
-	return embedasset.StripLeadingLineComments(sysConfigSchemaSQL, "--")
+	return readMigrationSQL(sysConfigSchemaAsset)
 }
 
 // SchemaMigrationsSQL 返回剥离文件头说明后的迁移版本表 DDL。
 func SchemaMigrationsSQL() string {
-	return embedasset.StripLeadingLineComments(schemaMigrationsSQL, "--")
+	return readMigrationSQL(schemaMigrationsAsset)
+}
+
+// MigrationAssetNames 返回仓库内 database/assets 目录的一层 SQL 模板资产名。
+func MigrationAssetNames() ([]string, error) {
+	matches, err := fs.Glob(databaseMigrationAssets, migrationAssetPath("*.sql.tmpl"))
+	if err != nil {
+		return nil, errors.Tag(err)
+	}
+	for index, item := range matches {
+		matches[index] = strings.TrimPrefix(item, databaseMigrationAssetDir+"/")
+	}
+	sort.Strings(matches)
+	return matches, nil
+}
+
+// readMigrationSQL 读取指定迁移 SQL 资产并剥离文件头说明。
+func readMigrationSQL(asset string) string {
+	data, err := databaseMigrationAssets.ReadFile(migrationAssetPath(asset))
+	if err != nil {
+		return ""
+	}
+	return embedasset.StripLeadingLineComments(string(data), "--")
+}
+
+// migrationAssetPath 返回 go:embed 文件系统内的资产路径，迁移记录仍保留短文件名。
+func migrationAssetPath(asset string) string {
+	if strings.HasPrefix(asset, databaseMigrationAssetDir+"/") {
+		return asset
+	}
+	return databaseMigrationAssetDir + "/" + asset
 }

@@ -14,6 +14,61 @@ import (
 	"github.com/zeromicro/go-zero/rest"
 )
 
+// TestBuiltinRouteModuleSpecsValid 确保内置路由模块规格字段完整且顺序可用于注册。
+func TestBuiltinRouteModuleSpecsValid(t *testing.T) {
+	specs := BuiltinRouteModuleSpecs()
+	modules := BuiltinRouteModules()
+	if len(specs) == 0 {
+		t.Fatal("builtin route module specs must not be empty")
+	}
+	if len(modules) != len(specs) {
+		t.Fatalf("module count = %d, spec count = %d", len(modules), len(specs))
+	}
+	seenNames := make(map[string]struct{}, len(specs))
+	for index, spec := range specs {
+		if strings.TrimSpace(spec.Name) == "" || spec.File == "" || spec.Method == "" || spec.Description == "" {
+			t.Fatalf("route module spec has empty field: %+v", spec)
+		}
+		if spec.Routes == nil {
+			t.Fatalf("route module spec routes missing: %+v", spec)
+		}
+		if len(spec.Routes()) == 0 {
+			t.Fatalf("route module spec routes empty: %+v", spec)
+		}
+		if _, ok := seenNames[spec.Name]; ok {
+			t.Fatalf("duplicate route module spec name: %s", spec.Name)
+		}
+		seenNames[spec.Name] = struct{}{}
+		if modules[index].Name() != spec.Name {
+			t.Fatalf("module name mismatch index=%d got=%s want=%s", index, modules[index].Name(), spec.Name)
+		}
+	}
+}
+
+// TestDefaultRouteSpecsValid 确保路由规格作为单一来源时字段完整且路由不重复。
+func TestDefaultRouteSpecsValid(t *testing.T) {
+	seenRoutes := make(map[string]struct{}, len(DefaultRouteSpecs()))
+	for _, spec := range DefaultRouteSpecs() {
+		if spec.Method == "" || spec.Path == "" || spec.DocumentPath == "" {
+			t.Fatalf("route spec has empty field: %+v", spec)
+		}
+		if spec.Meta.Alias == "" || spec.Meta.Access == "" || spec.Meta.Describe == "" {
+			t.Fatalf("route spec meta incomplete: %+v", spec)
+		}
+		if spec.Chain == "" {
+			t.Fatalf("route spec chain missing: %+v", spec)
+		}
+		if spec.Handler == nil {
+			t.Fatalf("route spec handler missing: %+v", spec)
+		}
+		key := routeKey(spec.Method, spec.Path)
+		if _, ok := seenRoutes[key]; ok {
+			t.Fatalf("duplicate route spec: %s", key)
+		}
+		seenRoutes[key] = struct{}{}
+	}
+}
+
 // TestDefaultRouteContractsMatchRegisteredRoutes 确保契约表与真实注册路由一致。
 func TestDefaultRouteContractsMatchRegisteredRoutes(t *testing.T) {
 	server := rest.MustNewServer(rest.RestConf{Host: "127.0.0.1", Port: 0})

@@ -12,14 +12,14 @@ import (
 	yaml "go.yaml.in/yaml/v2"
 )
 
-// runtimeConfigKnownKeys 定义前台 API 允许从外部运行期配置读取的顶层键。
-var runtimeConfigKnownKeys = map[string]struct{}{
-	"auth":       {}, // 前台认证运行参数
-	"hot_reload": {}, // 配置热加载运行参数
-	"security":   {}, // 签名验签和加解密配置
-	"collector":  {}, // 通用收集器配置
-	"ops":        {}, // 运维级接口保护配置
-}
+// 运行期外部配置支持的顶层配置段。
+const (
+	runtimeConfigSectionAuth      = "auth"       // 前台认证运行参数
+	runtimeConfigSectionHotReload = "hot_reload" // 配置热加载运行参数
+	runtimeConfigSectionSecurity  = "security"   // 签名验签和加解密配置
+	runtimeConfigSectionCollector = "collector"  // 通用收集器配置
+	runtimeConfigSectionOps       = "ops"        // 运维级接口保护配置
+)
 
 // runtimeConfigFile 描述外部运行期配置文件。
 type runtimeConfigFile struct {
@@ -28,6 +28,58 @@ type runtimeConfigFile struct {
 	Security  config.SecurityConfig  `json:"security,optional"`   // 签名验签和加解密配置
 	Collector config.CollectorConfig `json:"collector,optional"`  // 通用收集器配置
 	Ops       config.OpsConfig       `json:"ops,optional"`        // 运维级接口保护配置
+}
+
+// runtimeConfigSectionSpec 描述一个允许运行期外置的配置段。
+type runtimeConfigSectionSpec struct {
+	Key   string                                          // 外部运行期配置文件中的顶层键
+	apply func(cfg *config.Config, ext runtimeConfigFile) // 将该配置段合并到主配置
+}
+
+// runtimeConfigSectionSpecs 返回运行期外部配置段规格。
+func runtimeConfigSectionSpecs() []runtimeConfigSectionSpec {
+	return []runtimeConfigSectionSpec{
+		{
+			Key: runtimeConfigSectionAuth,
+			apply: func(cfg *config.Config, ext runtimeConfigFile) {
+				cfg.Auth = ext.Auth
+			},
+		},
+		{
+			Key: runtimeConfigSectionHotReload,
+			apply: func(cfg *config.Config, ext runtimeConfigFile) {
+				cfg.HotReload = ext.HotReload
+			},
+		},
+		{
+			Key: runtimeConfigSectionSecurity,
+			apply: func(cfg *config.Config, ext runtimeConfigFile) {
+				cfg.Security = ext.Security
+			},
+		},
+		{
+			Key: runtimeConfigSectionCollector,
+			apply: func(cfg *config.Config, ext runtimeConfigFile) {
+				cfg.Collector = ext.Collector
+			},
+		},
+		{
+			Key: runtimeConfigSectionOps,
+			apply: func(cfg *config.Config, ext runtimeConfigFile) {
+				cfg.Ops = ext.Ops
+			},
+		},
+	}
+}
+
+// runtimeConfigSectionKeys 返回运行期外部配置段白名单。
+func runtimeConfigSectionKeys() map[string]struct{} {
+	specs := runtimeConfigSectionSpecs()
+	keys := make(map[string]struct{}, len(specs))
+	for _, spec := range specs {
+		keys[spec.Key] = struct{}{}
+	}
+	return keys
 }
 
 // applyExternalConfigFiles 按主配置 config_files 声明合并外部运行期配置。
@@ -60,20 +112,11 @@ func applyRuntimeConfigFile(path string, cfg *config.Config) error {
 	if err = conf.LoadFromYamlBytes(content, &ext); err != nil {
 		return errors.Wrapf(err, "加载运行期外部配置失败 file=%s", path)
 	}
-	if _, ok := keys["auth"]; ok {
-		cfg.Auth = ext.Auth
-	}
-	if _, ok := keys["hot_reload"]; ok {
-		cfg.HotReload = ext.HotReload
-	}
-	if _, ok := keys["security"]; ok {
-		cfg.Security = ext.Security
-	}
-	if _, ok := keys["collector"]; ok {
-		cfg.Collector = ext.Collector
-	}
-	if _, ok := keys["ops"]; ok {
-		cfg.Ops = ext.Ops
+	for _, spec := range runtimeConfigSectionSpecs() {
+		if _, ok := keys[spec.Key]; !ok {
+			continue
+		}
+		spec.apply(cfg, ext)
 	}
 	return nil
 }
@@ -102,6 +145,7 @@ func runtimeConfigContent(path string) ([]byte, map[string]struct{}, error) {
 	if err = yaml.Unmarshal(data, &root); err != nil {
 		return nil, nil, errors.Wrapf(err, "解析运行期外部配置失败 file=%s", path)
 	}
+	knownKeys := runtimeConfigSectionKeys()
 	filtered := yaml.MapSlice{}
 	for _, item := range root {
 		key, ok := item.Key.(string)
@@ -109,7 +153,7 @@ func runtimeConfigContent(path string) ([]byte, map[string]struct{}, error) {
 			continue
 		}
 		key = strings.TrimSpace(key)
-		if _, known := runtimeConfigKnownKeys[key]; known {
+		if _, known := knownKeys[key]; known {
 			keys[key] = struct{}{}
 			filtered = append(filtered, item)
 		}

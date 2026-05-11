@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -428,20 +429,83 @@ func buildHotReloadConfigSummary(cfg config.Config) string {
 	return fmt.Sprintf("mode=%s app_id=%s sign=%d crypto=%d collector=%t", cfg.Mode, strings.TrimSpace(cfg.AppID), cfg.Security.SecretKey.SignStatus, cfg.Security.SecretKey.CryptoStatus, cfg.Collector.Enabled)
 }
 
+// hotReloadRestartChanged 判断一个配置边界是否发生变化。
+type hotReloadRestartChanged func(oldCfg, newCfg config.Config) bool
+
+// hotReloadRestartPreserve 保留当前进程仍在使用的旧配置。
+type hotReloadRestartPreserve func(effective *config.Config, oldCfg config.Config, newCfg config.Config)
+
+// hotReloadRestartSpec 描述一个热加载后仍需重启才能完全生效的配置边界。
+type hotReloadRestartSpec struct {
+	Reason   string                   // 展示给接口和日志的重启原因
+	Changed  hotReloadRestartChanged  // 判断该边界是否发生变化
+	Preserve hotReloadRestartPreserve // 保留当前进程仍在使用的旧配置
+}
+
+// hotReloadRestartSpecs 返回热加载不可在线重建的配置边界，顺序即 restartReason 展示顺序。
+func hotReloadRestartSpecs() []hotReloadRestartSpec {
+	return []hotReloadRestartSpec{
+		{
+			Reason: "HTTP监听地址变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return oldCfg.Host != newCfg.Host || oldCfg.Port != newCfg.Port
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
+				effective.RestConf = oldCfg.RestConf
+			},
+		},
+		{
+			Reason: "MySQL连接配置变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return !reflect.DeepEqual(oldCfg.MySQL, newCfg.MySQL) || !reflect.DeepEqual(oldCfg.SiteMySQL, newCfg.SiteMySQL)
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
+				effective.MySQL = oldCfg.MySQL
+				effective.SiteMySQL = oldCfg.SiteMySQL
+			},
+		},
+		{
+			Reason: "Redis连接配置变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return !reflect.DeepEqual(oldCfg.Redis, newCfg.Redis)
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
+				effective.Redis = oldCfg.Redis
+			},
+		},
+		{
+			Reason: "OTLP导出配置变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return oldCfg.Observability.OTLPEndpoint != newCfg.Observability.OTLPEndpoint ||
+					oldCfg.Observability.OTLPProtocol != newCfg.Observability.OTLPProtocol
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
+				effective.Observability.OTLPEndpoint = oldCfg.Observability.OTLPEndpoint
+				effective.Observability.OTLPProtocol = oldCfg.Observability.OTLPProtocol
+			},
+		},
+	}
+}
+
+// changedHotReloadRestartSpecs 返回本次热加载实际命中的重启边界。
+func changedHotReloadRestartSpecs(oldCfg, newCfg config.Config) []hotReloadRestartSpec {
+	specs := hotReloadRestartSpecs()
+	changed := make([]hotReloadRestartSpec, 0, len(specs))
+	for _, spec := range specs {
+		if spec.Changed == nil || !spec.Changed(oldCfg, newCfg) {
+			continue
+		}
+		changed = append(changed, spec)
+	}
+	return changed
+}
+
 // detectHotReloadRestartImpact 判断新配置是否包含启动期依赖变化。
 func detectHotReloadRestartImpact(oldCfg config.Config, newCfg config.Config) (bool, string) {
-	reasons := make([]string, 0, 4)
-	if oldCfg.Host != newCfg.Host || oldCfg.Port != newCfg.Port {
-		reasons = append(reasons, "HTTP监听地址变更")
-	}
-	if fmt.Sprint(oldCfg.MySQL) != fmt.Sprint(newCfg.MySQL) || fmt.Sprint(oldCfg.SiteMySQL) != fmt.Sprint(newCfg.SiteMySQL) {
-		reasons = append(reasons, "MySQL连接配置变更")
-	}
-	if fmt.Sprint(oldCfg.Redis) != fmt.Sprint(newCfg.Redis) {
-		reasons = append(reasons, "Redis连接配置变更")
-	}
-	if oldCfg.Observability.OTLPEndpoint != newCfg.Observability.OTLPEndpoint || oldCfg.Observability.OTLPProtocol != newCfg.Observability.OTLPProtocol {
-		reasons = append(reasons, "OTLP导出配置变更")
+	changedSpecs := changedHotReloadRestartSpecs(oldCfg, newCfg)
+	reasons := make([]string, 0, len(changedSpecs))
+	for _, spec := range changedSpecs {
+		reasons = append(reasons, spec.Reason)
 	}
 	if len(reasons) == 0 {
 		return false, ""
@@ -451,11 +515,12 @@ func detectHotReloadRestartImpact(oldCfg config.Config, newCfg config.Config) (b
 
 // buildHotReloadEffectiveConfig 保留启动期依赖配置，运行期配置仍按新文件刷新。
 func buildHotReloadEffectiveConfig(oldCfg config.Config, newCfg config.Config) config.Config {
-	newCfg.RestConf = oldCfg.RestConf
-	newCfg.MySQL = oldCfg.MySQL
-	newCfg.SiteMySQL = oldCfg.SiteMySQL
-	newCfg.Redis = oldCfg.Redis
-	newCfg.Observability.OTLPEndpoint = oldCfg.Observability.OTLPEndpoint
-	newCfg.Observability.OTLPProtocol = oldCfg.Observability.OTLPProtocol
-	return newCfg
+	effective := newCfg
+	for _, spec := range changedHotReloadRestartSpecs(oldCfg, newCfg) {
+		if spec.Preserve == nil {
+			continue
+		}
+		spec.Preserve(&effective, oldCfg, newCfg)
+	}
+	return effective
 }

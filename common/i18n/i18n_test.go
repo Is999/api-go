@@ -21,6 +21,16 @@ func TestMessageByCodeUsesLocale(t *testing.T) {
 	if got := MessageByCode(codes.SecurityPayloadTooLarge, LocaleZHCN); !strings.Contains(got, "限制") {
 		t.Fatalf("MessageByCode(SecurityPayloadTooLarge,zh-CN)=%q, want 中文限制文案", got)
 	}
+	if got := MessageByCode(codes.CreateFail, LocaleZHCN); !strings.Contains(got, "创建失败") {
+		t.Fatalf("MessageByCode(CreateFail,zh-CN)=%q, want 创建失败文案", got)
+	}
+}
+
+// TestMessageByCodeUnknownUsesFail 验证未知业务码回退到通用失败文案。
+func TestMessageByCodeUnknownUsesFail(t *testing.T) {
+	if got := MessageByCode(999999, LocaleENUS); !strings.Contains(strings.ToLower(got), "failed") {
+		t.Fatalf("MessageByCode(unknown,en-US)=%q, want generic fail text", got)
+	}
 }
 
 // TestNormalizeLocale 验证语言标签归一化和默认回退。
@@ -55,12 +65,13 @@ func TestCatalogLocalesHaveSameKeys(t *testing.T) {
 	}
 }
 
-// TestCodeToMessageKeyCoveredByCatalog 确保业务码映射到的消息 key 都有语言包文案。
-func TestCodeToMessageKeyCoveredByCatalog(t *testing.T) {
-	for code, key := range codeToMessageKey {
+// TestCodeContractsCoveredByCatalog 确保业务码契约声明的消息 key 都有语言包文案。
+func TestCodeContractsCoveredByCatalog(t *testing.T) {
+	for _, contract := range codes.DefaultCodeContracts() {
+		key := contract.MessageKey
 		for locale, catalog := range messageCatalog {
 			if catalog[key] == "" {
-				t.Fatalf("catalog locale=%s missing code=%d key=%s", locale, code, key)
+				t.Fatalf("catalog locale=%s missing code=%d key=%s", locale, contract.Code, key)
 			}
 		}
 	}

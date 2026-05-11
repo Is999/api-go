@@ -22,12 +22,16 @@ type RouteMeta struct {
 	Describe string                // 中文业务说明
 }
 
-// newRouteMeta 创建路由元数据，保持别名和中文说明同步声明。
+// defaultRouteMetas 按声明顺序登记内置路由元数据。
+var defaultRouteMetas []RouteMeta
+
+// newRouteMeta 创建并登记路由元数据，避免 RouteMeta 变量和默认清单双份维护。
 func newRouteMeta(alias middleware.RouteAlias, access RouteAccess, describe string) RouteMeta {
-	return RouteMeta{Alias: alias, Access: access, Describe: describe}
+	meta := RouteMeta{Alias: alias, Access: access, Describe: describe}
+	defaultRouteMetas = append(defaultRouteMetas, meta)
+	return meta
 }
 
-// RouteMeta 按模块集中声明，新增路由必须同步补充。
 // 内置路由元数据按模块集中声明，新增路由必须同步补充。
 var (
 	// HealthLive 表示存活检查路由。
@@ -57,16 +61,7 @@ var (
 
 // DefaultRouteMetas 返回内置路由元数据集合，供测试和文档防漂移复用。
 func DefaultRouteMetas() []RouteMeta {
-	return []RouteMeta{
-		HealthLive,
-		HealthReady,
-		HealthMetrics,
-		AuthRegister,
-		AuthLogin,
-		AuthRefresh,
-		AuthLogout,
-		UserProfile,
-		SystemConfigReloadStatus,
-		SystemConfigReloadRun,
-	}
+	out := make([]RouteMeta, len(defaultRouteMetas))
+	copy(out, defaultRouteMetas)
+	return out
 }

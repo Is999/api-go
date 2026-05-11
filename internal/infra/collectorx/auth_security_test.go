@@ -77,14 +77,48 @@ func TestNormalizeAuthSecurityLabels(t *testing.T) {
 	if got := normalizeAuthSecurityReason(""); got != authSecurityLabelUnknown {
 		t.Fatalf("normalizeAuthSecurityReason(empty) = %q, want unknown", got)
 	}
-	if got := normalizeAuthSecurityReason("security_payload_too_large"); got != authSecurityReasonSecurityPayloadTooLarge {
-		t.Fatalf("normalizeAuthSecurityReason(payload limit) = %q, want %q", got, authSecurityReasonSecurityPayloadTooLarge)
+	if got := normalizeAuthSecurityReason("security_payload_too_large"); got != AuthSecurityReasonSecurityPayloadTooLarge {
+		t.Fatalf("normalizeAuthSecurityReason(payload limit) = %q, want %q", got, AuthSecurityReasonSecurityPayloadTooLarge)
 	}
 	if got := normalizeAuthSecurityAppID("site-a"); got != "site-a" {
 		t.Fatalf("normalizeAuthSecurityAppID() = %q", got)
 	}
 	if got := normalizeAuthSecurityAppID("site/a"); got != authSecurityLabelOther {
 		t.Fatalf("normalizeAuthSecurityAppID(invalid) = %q, want other", got)
+	}
+}
+
+// TestAuthSecurityContracts 确保认证风控动作、原因和分类都从契约派生。
+func TestAuthSecurityContracts(t *testing.T) {
+	actionSeen := make(map[string]struct{})
+	for _, action := range DefaultAuthSecurityActions() {
+		if action == "" {
+			t.Fatal("empty auth security action")
+		}
+		if _, ok := actionSeen[action]; ok {
+			t.Fatalf("duplicate auth security action=%s", action)
+		}
+		actionSeen[action] = struct{}{}
+		if got := normalizeAuthSecurityAction(action); got != action {
+			t.Fatalf("normalizeAuthSecurityAction(%s)=%s", action, got)
+		}
+	}
+
+	reasonSeen := make(map[string]struct{})
+	for _, contract := range DefaultAuthSecurityReasonContracts() {
+		if contract.Reason == "" || contract.Category == "" {
+			t.Fatalf("invalid auth security reason contract=%+v", contract)
+		}
+		if _, ok := reasonSeen[contract.Reason]; ok {
+			t.Fatalf("duplicate auth security reason=%s", contract.Reason)
+		}
+		reasonSeen[contract.Reason] = struct{}{}
+		if got := normalizeAuthSecurityReason(contract.Reason); got != contract.Reason {
+			t.Fatalf("normalizeAuthSecurityReason(%s)=%s", contract.Reason, got)
+		}
+		if got := normalizeAuthSecurityCategory(contract.Reason); got != contract.Category {
+			t.Fatalf("normalizeAuthSecurityCategory(%s)=%s, want %s", contract.Reason, got, contract.Category)
+		}
 	}
 }
 
@@ -97,42 +131,42 @@ func TestNormalizeAuthSecurityCategory(t *testing.T) {
 	}{
 		{
 			name:   "auth",
-			reason: authSecurityReasonInvalidPassword,
+			reason: AuthSecurityReasonInvalidPassword,
 			want:   authSecurityCategoryAuth,
 		},
 		{
 			name:   "token",
-			reason: authSecurityReasonTokenInvalid,
+			reason: AuthSecurityReasonTokenInvalid,
 			want:   authSecurityCategoryToken,
 		},
 		{
 			name:   "rate limit",
-			reason: authSecurityReasonLoginIPRateLimited,
+			reason: AuthSecurityReasonLoginIPRateLimited,
 			want:   authSecurityCategoryRateLimit,
 		},
 		{
 			name:   "security client",
-			reason: authSecurityReasonSignatureFailed,
+			reason: AuthSecurityReasonSignatureFailed,
 			want:   authSecurityCategorySecurityClient,
 		},
 		{
 			name:   "security config",
-			reason: authSecurityReasonSecurityKeyUnavailable,
+			reason: AuthSecurityReasonSecurityKeyUnavailable,
 			want:   authSecurityCategorySecurityConfig,
 		},
 		{
 			name:   "payload limit",
-			reason: authSecurityReasonSecurityPayloadTooLarge,
+			reason: AuthSecurityReasonSecurityPayloadTooLarge,
 			want:   authSecurityCategorySecurityPayloadLimit,
 		},
 		{
 			name:   "security response",
-			reason: authSecurityReasonResponseEncryptFailed,
+			reason: AuthSecurityReasonResponseEncryptFailed,
 			want:   authSecurityCategorySecurityResponse,
 		},
 		{
 			name:   "session lifecycle",
-			reason: authSecurityReasonSessionRotated,
+			reason: AuthSecurityReasonSessionRotated,
 			want:   authSecurityCategorySessionLifecycle,
 		},
 		{
