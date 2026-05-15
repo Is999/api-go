@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"api/internal/middleware"
+	"api/internal/requestctx"
 	"api/internal/svc"
 
 	"github.com/zeromicro/go-zero/rest"
@@ -41,12 +42,13 @@ type RouteHandler func(*svc.ServiceContext, *middleware.AuthMiddleware) http.Han
 
 // RouteSpec 是路由注册、契约、安全链路和文档同步的单一规格。
 type RouteSpec struct {
-	Method       string             // HTTP 方法
-	Path         string             // HTTP 路径
-	Meta         RouteMeta          // 路由元数据
-	DocumentPath string             // 仓库根目录下的接口文档路径
-	Chain        RouteSecurityChain // 实际安全链路
-	Handler      RouteHandler       // 真实 Handler 构造函数
+	Method        string             // HTTP 方法
+	Path          string             // HTTP 路径
+	Meta          RouteMeta          // 路由元数据
+	DocumentPath  string             // 仓库根目录下的接口文档路径
+	Chain         RouteSecurityChain // 实际安全链路
+	SkipAccessLog bool               // 是否跳过普通访问日志，适用于 live/ready/metrics 等高频探针
+	Handler       RouteHandler       // 真实 Handler 构造函数
 }
 
 // RestRoute 将路由规格转换为 go-zero 路由。
@@ -54,10 +56,19 @@ func (s RouteSpec) RestRoute(svcCtx *svc.ServiceContext, authMw *middleware.Auth
 	if s.Handler == nil {
 		panic("路由规格缺少 Handler: " + s.Method + " " + s.Path)
 	}
+	handler := s.Handler(svcCtx, authMw)
 	return rest.Route{
-		Method:  s.Method,
-		Path:    s.Path,
-		Handler: s.Handler(svcCtx, authMw),
+		Method: s.Method,
+		Path:   s.Path,
+		Handler: func(w http.ResponseWriter, r *http.Request) {
+			if s.Meta.Alias != "" {
+				requestctx.SetRoute(r.Context(), string(s.Meta.Alias))
+			}
+			if s.SkipAccessLog {
+				requestctx.SetSkipAccessLog(r.Context(), true)
+			}
+			handler(w, r)
+		},
 	}
 }
 

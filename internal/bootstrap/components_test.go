@@ -47,6 +47,9 @@ func TestDefaultComponentSpecsValid(t *testing.T) {
 		if spec.Build == nil {
 			t.Fatalf("默认组件规格缺少构造函数: %s", spec.Name)
 		}
+		if spec.File == "" || spec.Method == "" || spec.Description == "" {
+			t.Fatalf("默认组件规格清单字段不完整: %+v", spec)
+		}
 		if _, ok := seen[spec.Name]; ok {
 			t.Fatalf("默认组件规格名称重复: %s", spec.Name)
 		}

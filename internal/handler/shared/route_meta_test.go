@@ -57,7 +57,7 @@ func TestRouteMetaAccessBoundaries(t *testing.T) {
 func TestRouteSecurityPoliciesUseKnownAliases(t *testing.T) {
 	known := routeMetaAccessByAlias()
 	for alias := range security.RouteSecurityPolicies {
-		if _, ok := known[alias]; !ok {
+		if _, ok := known[string(alias)]; !ok {
 			t.Fatalf("security policy route alias missing from RouteMeta: %s", alias)
 		}
 	}

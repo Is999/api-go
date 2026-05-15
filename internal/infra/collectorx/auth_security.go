@@ -4,6 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"strings"
+
+	"github.com/Is999/go-utils/errors"
+)
+
+// 默认 Processor 注册名称。
+const (
+	defaultProcessorAuthSecurity = "auth_security_processor" // 认证风控事件默认 Processor
 )
 
 // 认证风控事件指标标签兜底值。
@@ -130,6 +137,25 @@ func DefaultAuthSecurityReasonContracts() []AuthSecurityReasonContract {
 	return append([]AuthSecurityReasonContract(nil), defaultAuthSecurityReasonContracts...)
 }
 
+// defaultProcessorSpecs 是内置 Processor 规格源，元素按启动注册顺序排列。
+var defaultProcessorSpecs = []DefaultProcessorSpec{
+	{
+		Name:        defaultProcessorAuthSecurity,
+		BizType:     BizTypeAuthSecurity,
+		File:        "internal/infra/collectorx/auth_security.go",
+		Method:      "collectorx.DefaultProcessorSpecs / RegisterDefaultProcessors / NewAuthSecurityProcessor",
+		Description: "默认汇总 auth.security 认证风控事件指标",
+		Build: func() Processor {
+			return NewAuthSecurityProcessor()
+		},
+	},
+}
+
+// DefaultProcessorSpecs 返回项目前台 API 内置 Processor 规格快照。
+func DefaultProcessorSpecs() []DefaultProcessorSpec {
+	return append([]DefaultProcessorSpec(nil), defaultProcessorSpecs...)
+}
+
 // AuthSecurityProcessor 汇总认证风控事件的轻量指标。
 type AuthSecurityProcessor struct{}
 
@@ -143,7 +169,15 @@ func RegisterDefaultProcessors(manager *Manager) error {
 	if manager == nil {
 		return nil
 	}
-	return manager.RegisterProcessor(BizTypeAuthSecurity, NewAuthSecurityProcessor())
+	for _, spec := range defaultProcessorSpecs {
+		if spec.Build == nil {
+			return errors.Errorf("默认 Collector Processor 构造器为空 name=%s biz_type=%s", spec.Name, spec.BizType)
+		}
+		if err := manager.RegisterProcessor(spec.BizType, spec.Build()); err != nil {
+			return errors.Wrapf(err, "注册默认 Collector Processor 失败 name=%s biz_type=%s", spec.Name, spec.BizType)
+		}
+	}
+	return nil
 }
 
 // authSecurityPayload 是认证风控事件 Processor 关心的字段子集。

@@ -19,30 +19,31 @@ type metaKey struct{}
 
 // Meta 保存一次请求在应用内传播的链路与审计元数据。
 type Meta struct {
-	StartedAt    time.Time // 请求元数据创建时间
-	TraceID      string    // 链路追踪 ID
-	SpanID       string    // 当前服务内处理片段 ID
-	Route        string    // 统一路由别名
-	Method       string    // HTTP 方法
-	Path         string    // HTTP 请求路径
-	ClientIP     string    // 客户端 IP
-	Locale       string    // 请求语言
-	UserID       int64     // 当前用户 ID
-	UserName     string    // 当前用户名称
-	AccessToken  string    // 当前请求携带的访问令牌
-	Node         string    // 当前服务节点
-	Mode         string    // 当前运行模式
-	HTTPStatus   int       // HTTP 状态码
-	BizCode      int       // 业务状态码
-	BizMessage   string    // 业务响应文案
-	LatencyMS    int64     // 请求总耗时（毫秒）
-	ErrorMessage string    // 错误信息
-	ErrorCause   error     // 原始错误对象
-	TaskID       string    // 当前异步任务 ID
-	WorkflowID   string    // 当前工作流实例 ID
-	WorkflowNode string    // 当前工作流节点名称
-	ShardIndex   int       // 当前工作流分片索引
-	ShardTotal   int       // 当前工作流总分片数
+	StartedAt     time.Time // 请求元数据创建时间
+	TraceID       string    // 链路追踪 ID
+	SpanID        string    // 当前服务内处理片段 ID
+	Route         string    // 统一路由别名
+	Method        string    // HTTP 方法
+	Path          string    // HTTP 请求路径
+	ClientIP      string    // 客户端 IP
+	Locale        string    // 请求语言
+	UserID        int64     // 当前用户 ID
+	UserName      string    // 当前用户名称
+	AccessToken   string    // 当前请求携带的访问令牌
+	Node          string    // 当前服务节点
+	Mode          string    // 当前运行模式
+	HTTPStatus    int       // HTTP 状态码
+	BizCode       int       // 业务状态码
+	BizMessage    string    // 业务响应文案
+	LatencyMS     int64     // 请求总耗时（毫秒）
+	ErrorMessage  string    // 错误信息
+	ErrorCause    error     // 原始错误对象
+	SkipAccessLog bool      // 是否跳过普通访问日志，供高频探针路由降噪
+	TaskID        string    // 当前异步任务 ID
+	WorkflowID    string    // 当前工作流实例 ID
+	WorkflowNode  string    // 当前工作流节点名称
+	ShardIndex    int       // 当前工作流分片索引
+	ShardTotal    int       // 当前工作流总分片数
 }
 
 // New 为请求创建统一元数据容器。
@@ -88,6 +89,13 @@ func SetTrace(ctx context.Context, traceID, spanID string) {
 func SetRoute(ctx context.Context, route string) {
 	if meta := FromContext(ctx); meta != nil && route != "" {
 		meta.Route = route
+	}
+}
+
+// SetSkipAccessLog 设置当前请求是否跳过普通访问日志。
+func SetSkipAccessLog(ctx context.Context, skip bool) {
+	if meta := FromContext(ctx); meta != nil {
+		meta.SkipAccessLog = skip
 	}
 }
 

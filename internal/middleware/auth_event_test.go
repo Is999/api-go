@@ -12,6 +12,7 @@ import (
 	"api/internal/infra/collectorx"
 	authlogic "api/internal/logic/auth"
 	"api/internal/requestctx"
+	"api/internal/routealias"
 	"api/internal/svc"
 )
 
@@ -22,7 +23,7 @@ func TestAuthMiddlewareMissingBearerEmitsAuthSecurityEvent(t *testing.T) {
 	nextCalled := false
 	handler := middleware.Handle(func(w http.ResponseWriter, r *http.Request) {
 		nextCalled = true
-	}, RouteAlias("user.profile"))
+	}, routealias.UserProfile)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/profile", nil)
 	req.RemoteAddr = "127.0.0.1:12345"
@@ -49,8 +50,8 @@ func TestAuthMiddlewareMissingBearerEmitsAuthSecurityEvent(t *testing.T) {
 	if payload["action"] != authlogic.AuthEventActionAuthFailed || payload["reason"] != authlogic.AuthEventReasonMissingBearer {
 		t.Fatalf("payload action/reason = %+v", payload)
 	}
-	if payload["route"] != "user.profile" {
-		t.Fatalf("payload route = %v, want user.profile", payload["route"])
+	if payload["route"] != string(routealias.UserProfile) {
+		t.Fatalf("payload route = %v, want %s", payload["route"], routealias.UserProfile)
 	}
 	if _, ok := payload["client_ip_hash"].(string); !ok {
 		t.Fatalf("payload client_ip_hash missing: %+v", payload)
@@ -101,7 +102,7 @@ func TestEmitAuthFailureEventIncludesKnownIdentity(t *testing.T) {
 func TestEmitSecurityFailureEvent(t *testing.T) {
 	svcCtx, seen := newAuthMiddlewareEventService(t)
 	ctx, _ := requestctx.New(context.Background())
-	requestctx.SetRoute(ctx, "auth.login")
+	requestctx.SetRoute(ctx, string(routealias.AuthLogin))
 	requestctx.SetRequest(ctx, http.MethodPost, "/api/auth/login", "127.0.0.1")
 	requestctx.SetTrace(ctx, "trace-id", "span-id")
 
@@ -120,8 +121,8 @@ func TestEmitSecurityFailureEvent(t *testing.T) {
 	if payload["reason"] != authlogic.AuthEventReasonRequestDecryptFailed {
 		t.Fatalf("payload reason = %v, want %s", payload["reason"], authlogic.AuthEventReasonRequestDecryptFailed)
 	}
-	if payload["route"] != "auth.login" {
-		t.Fatalf("payload route = %v, want auth.login", payload["route"])
+	if payload["route"] != string(routealias.AuthLogin) {
+		t.Fatalf("payload route = %v, want %s", payload["route"], routealias.AuthLogin)
 	}
 	raw := string((*seen)[0].Payload)
 	if strings.Contains(raw, "127.0.0.1") {

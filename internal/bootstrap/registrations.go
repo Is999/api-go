@@ -4,6 +4,7 @@ import (
 	"sort"
 
 	"api/internal/handler"
+	"api/internal/infra/collectorx"
 
 	utils "github.com/Is999/go-utils"
 	"github.com/Is999/go-utils/errors"
@@ -11,19 +12,17 @@ import (
 
 // 默认注册清单使用的注册类型和运行时入口名称。
 const (
+	// registrationKindComponent 表示启动期组件来源注册项。
+	registrationKindComponent = "component"
 	// registrationKindRoute 表示 HTTP 路由模块注册项。
 	registrationKindRoute = "route"
 	// registrationKindRuntimeRegistry 表示轻量运行时扩展入口注册项。
 	registrationKindRuntimeRegistry = "runtime_registry"
 
-	// runtimeRegistryComponentLifecycle 表示启动期组件生命周期注册入口。
-	runtimeRegistryComponentLifecycle = "component_lifecycle"
 	// runtimeRegistryCollectorProcessor 表示 Collector Processor 注册入口。
 	runtimeRegistryCollectorProcessor = "collector_processor"
 	// runtimeRegistryAuthSecurityEvent 表示认证风控事件投递入口。
 	runtimeRegistryAuthSecurityEvent = "auth_security_event"
-	// runtimeRegistryAuthSecurityProcessor 表示认证风控事件默认 Processor。
-	runtimeRegistryAuthSecurityProcessor = "auth_security_processor"
 	// runtimeRegistrySysConfigCache 表示 sys_config 缓存读取入口。
 	runtimeRegistrySysConfigCache = "sys_config_cache"
 	// runtimeRegistrySysConfigKeyRegistry 表示 sys_config key 注册入口。
@@ -34,7 +33,15 @@ const (
 
 // RegistrationManifestItem 描述一个默认注册项，供文档、测试和启动装配核对。
 type RegistrationManifestItem struct {
-	Kind        string // 注册类型，如 route / runtime_registry
+	Kind        string // 注册类型，如 component / route / runtime_registry
+	Name        string // 注册名称，必须在同类型内保持唯一
+	File        string // 注册实现所在文件
+	Method      string // 注册入口方法或构造方法
+	Description string // 注册项中文说明
+}
+
+// registrationSpec 描述默认注册项的稳定说明字段。
+type registrationSpec struct {
 	Name        string // 注册名称，必须在同类型内保持唯一
 	File        string // 注册实现所在文件
 	Method      string // 注册入口方法或构造方法
@@ -43,17 +50,36 @@ type RegistrationManifestItem struct {
 
 // runtimeRegistrySpec 描述一个内置轻量运行时扩展入口。
 type runtimeRegistrySpec struct {
-	Name        string // 注册名称，必须在运行时扩展内保持唯一
-	File        string // 注册实现所在文件
-	Method      string // 注册入口方法或构造方法
-	Description string // 注册项中文说明
+	registrationSpec // 运行时扩展在默认注册清单中的说明字段
 }
 
 // DefaultRegistrationManifest 返回项目前台 API 默认注册清单。
 // 该清单只描述内置注册项，不包含业务方后续注册的 Collector Processor。
 func DefaultRegistrationManifest() []RegistrationManifestItem {
-	items := routeRegistrationManifestItems()
+	items := componentRegistrationManifestItems()
+	items = append(items, routeRegistrationManifestItems()...)
 	items = append(items, runtimeRegistrationManifestItems()...)
+	return items
+}
+
+// registrationManifestItem 将注册规格转换为统一清单项。
+func registrationManifestItem(kind string, spec registrationSpec) RegistrationManifestItem {
+	return RegistrationManifestItem{
+		Kind:        kind,
+		Name:        spec.Name,
+		File:        spec.File,
+		Method:      spec.Method,
+		Description: spec.Description,
+	}
+}
+
+// componentRegistrationManifestItems 从启动组件规格派生清单项。
+func componentRegistrationManifestItems() []RegistrationManifestItem {
+	specs := defaultComponentSpecs()
+	items := make([]RegistrationManifestItem, 0, len(specs))
+	for _, spec := range specs {
+		items = append(items, registrationManifestItem(registrationKindComponent, spec.registrationSpec))
+	}
 	return items
 }
 
@@ -75,50 +101,69 @@ func routeRegistrationManifestItems() []RegistrationManifestItem {
 
 // defaultRuntimeRegistrySpecs 返回轻量运行时扩展入口规格。
 func defaultRuntimeRegistrySpecs() []runtimeRegistrySpec {
-	return []runtimeRegistrySpec{
+	specs := []runtimeRegistrySpec{
 		{
-			Name:        runtimeRegistryComponentLifecycle,
-			File:        "internal/bootstrap/components.go + internal/svc/component.go",
-			Method:      "defaultComponentSpecs / buildDefaultComponentRegistry / svc.NewComponentRegistry",
-			Description: "统一注册核心组件健康探测和关闭入口",
+			registrationSpec: registrationSpec{
+				Name:        runtimeRegistryCollectorProcessor,
+				File:        "internal/infra/collectorx/manager.go",
+				Method:      "collectorx.Manager.RegisterProcessor / RegisterProcessorFunc",
+				Description: "按 bizType 注册轻量 Collector Processor",
+			},
 		},
 		{
-			Name:        runtimeRegistryCollectorProcessor,
-			File:        "internal/infra/collectorx/manager.go",
-			Method:      "collectorx.Manager.RegisterProcessor / RegisterProcessorFunc",
-			Description: "按 bizType 注册轻量 Collector Processor",
-		},
-		{
-			Name:        runtimeRegistryAuthSecurityEvent,
-			File:        "internal/logic/auth/auth_event.go",
-			Method:      "auth.AuthCollectorBizType / RecordAuthEvent",
-			Description: "投递脱敏认证风控事件到轻量 Collector",
-		},
-		{
-			Name:        runtimeRegistryAuthSecurityProcessor,
-			File:        "internal/infra/collectorx/auth_security.go",
-			Method:      "collectorx.RegisterDefaultProcessors / NewAuthSecurityProcessor",
-			Description: "默认汇总 auth.security 认证风控事件指标",
-		},
-		{
-			Name:        runtimeRegistrySysConfigCache,
-			File:        "internal/logic/config/sys_config.go",
-			Method:      "config.NewSysConfigLogic / GetCachedValue",
-			Description: "读取 sys_config 运行期配置缓存",
-		},
-		{
-			Name:        runtimeRegistrySysConfigKeyRegistry,
-			File:        "internal/logic/config/sys_config_key.go",
-			Method:      "config.NewSysConfigKeyRegistry / SysConfigLogic.GetBool",
-			Description: "按 key 声明类型化读取 sys_config 配置",
-		},
-		{
-			Name:        runtimeRegistryCacheRebuildLock,
-			File:        "internal/infra/redsync/lock.go + internal/logic/cache_guard.go",
-			Method:      "RebuildCacheWithLock / TryRebuildCacheWithLock",
-			Description: "使用 redsync 保护缓存重建",
+			registrationSpec: registrationSpec{
+				Name:        runtimeRegistryAuthSecurityEvent,
+				File:        "internal/logic/auth/auth_event.go",
+				Method:      "auth.AuthCollectorBizType / RecordAuthEvent",
+				Description: "投递脱敏认证风控事件到轻量 Collector",
+			},
 		},
 	}
+	specs = append(specs, collectorProcessorRuntimeRegistrySpecs()...)
+	specs = append(specs, []runtimeRegistrySpec{
+		{
+			registrationSpec: registrationSpec{
+				Name:        runtimeRegistrySysConfigCache,
+				File:        "internal/logic/config/sys_config.go",
+				Method:      "config.NewSysConfigLogic / GetCachedValue",
+				Description: "读取 sys_config 运行期配置缓存",
+			},
+		},
+		{
+			registrationSpec: registrationSpec{
+				Name:        runtimeRegistrySysConfigKeyRegistry,
+				File:        "internal/logic/config/sys_config_key.go",
+				Method:      "config.NewSysConfigKeyRegistry / SysConfigLogic.GetBool",
+				Description: "按 key 声明类型化读取 sys_config 配置",
+			},
+		},
+		{
+			registrationSpec: registrationSpec{
+				Name:        runtimeRegistryCacheRebuildLock,
+				File:        "internal/infra/redsync/lock.go + internal/logic/cache_guard.go",
+				Method:      "RebuildCacheWithLock / TryRebuildCacheWithLock",
+				Description: "使用 redsync 保护缓存重建",
+			},
+		},
+	}...)
+	return specs
+}
+
+// collectorProcessorRuntimeRegistrySpecs 从默认 Processor 规格派生运行时注册清单。
+func collectorProcessorRuntimeRegistrySpecs() []runtimeRegistrySpec {
+	processorSpecs := collectorx.DefaultProcessorSpecs()
+	specs := make([]runtimeRegistrySpec, 0, len(processorSpecs))
+	for _, processorSpec := range processorSpecs {
+		specs = append(specs, runtimeRegistrySpec{
+			registrationSpec: registrationSpec{
+				Name:        processorSpec.Name,
+				File:        processorSpec.File,
+				Method:      processorSpec.Method,
+				Description: processorSpec.Description,
+			},
+		})
+	}
+	return specs
 }
 
 // runtimeRegistrationManifestItems 从运行时扩展规格派生注册清单。
@@ -126,13 +171,7 @@ func runtimeRegistrationManifestItems() []RegistrationManifestItem {
 	specs := defaultRuntimeRegistrySpecs()
 	items := make([]RegistrationManifestItem, 0, len(specs))
 	for _, spec := range specs {
-		items = append(items, RegistrationManifestItem{
-			Kind:        registrationKindRuntimeRegistry,
-			Name:        spec.Name,
-			File:        spec.File,
-			Method:      spec.Method,
-			Description: spec.Description,
-		})
+		items = append(items, registrationManifestItem(registrationKindRuntimeRegistry, spec.registrationSpec))
 	}
 	return items
 }
@@ -144,6 +183,14 @@ func ValidateDefaultRegistrationManifest() error {
 		return errors.Tag(err)
 	}
 	manifestNames := groupManifestNames(items)
+
+	actualComponentNames := defaultComponentSpecNames()
+	if err := validateNameListUnique(registrationKindComponent, actualComponentNames); err != nil {
+		return errors.Tag(err)
+	}
+	if err := validateManifestKindNames(registrationKindComponent, manifestNames[registrationKindComponent], actualComponentNames); err != nil {
+		return errors.Tag(err)
+	}
 
 	actualRouteNames := routeModuleNames(defaultRouteModules())
 	if err := validateNameListUnique(registrationKindRoute, actualRouteNames); err != nil {
@@ -161,6 +208,16 @@ func ValidateDefaultRegistrationManifest() error {
 		return errors.Tag(err)
 	}
 	return nil
+}
+
+// defaultComponentSpecNames 从启动组件规格派生校验名称。
+func defaultComponentSpecNames() []string {
+	specs := defaultComponentSpecs()
+	names := make([]string, 0, len(specs))
+	for _, spec := range specs {
+		names = append(names, spec.Name)
+	}
+	return names
 }
 
 // defaultRouteModules 返回项目前台 API 内置 HTTP 路由模块集合。

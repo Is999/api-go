@@ -5,6 +5,7 @@ import (
 
 	"api/internal/handler/shared"
 	"api/internal/middleware"
+	"api/internal/routealias"
 	"api/internal/security"
 
 	"github.com/Is999/go-utils/errors"
@@ -83,7 +84,7 @@ func ValidateDefaultRouteSecurityManifest() error {
 		}
 	}
 	for alias := range security.RouteSecurityPolicies {
-		if _, ok := seenSecurityAliases[alias]; !ok {
+		if _, ok := seenSecurityAliases[string(alias)]; !ok {
 			return errors.Errorf("路由安全策略未进入清单 alias=%s", alias)
 		}
 	}
@@ -161,7 +162,7 @@ func cloneSecurityFields(fields []string) []string {
 
 // hasExplicitRouteSecurityPolicy 判断路由是否在前台安全策略表中显式声明。
 func hasExplicitRouteSecurityPolicy(alias string) bool {
-	_, ok := security.RouteSecurityPolicies[alias]
+	_, ok := security.RouteSecurityPolicies[routealias.Alias(alias)]
 	return ok
 }
 

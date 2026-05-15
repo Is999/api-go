@@ -31,6 +31,16 @@ type Processor interface {
 	ProcessBatch(context.Context, []Event) ([]ProcessResult, error)
 }
 
+// DefaultProcessorSpec 描述内置 Collector Processor 的注册规格和清单信息。
+type DefaultProcessorSpec struct {
+	Name        string           // 注册清单名称，必须唯一
+	BizType     string           // Collector 业务类型，必须和事件 bizType 一致
+	File        string           // 注册实现所在文件
+	Method      string           // 注册入口方法或构造方法
+	Description string           // 注册项中文说明
+	Build       func() Processor // 构造默认 Processor，返回 nil 会被启动注册拦截
+}
+
 // ProcessorFunc 允许业务方用普通函数快速注册批量处理器。
 type ProcessorFunc func(context.Context, []Event) ([]ProcessResult, error)
 

@@ -119,6 +119,29 @@ func TestDefaultRouteContractsValid(t *testing.T) {
 	}
 }
 
+// TestDefaultRouteContractsSkipAccessLog 确保只有健康探针路由会跳过普通访问日志。
+func TestDefaultRouteContractsSkipAccessLog(t *testing.T) {
+	healthAliases := map[string]struct{}{
+		string(shared.HealthLive.Alias):    {},
+		string(shared.HealthReady.Alias):   {},
+		string(shared.HealthMetrics.Alias): {},
+	}
+	seenHealth := make(map[string]struct{}, len(healthAliases))
+	for _, contract := range DefaultRouteContracts() {
+		alias := string(contract.Meta.Alias)
+		_, isHealth := healthAliases[alias]
+		if contract.SkipAccessLog != isHealth {
+			t.Fatalf("route %s skip_access_log = %v, want %v", alias, contract.SkipAccessLog, isHealth)
+		}
+		if isHealth {
+			seenHealth[alias] = struct{}{}
+		}
+	}
+	if len(seenHealth) != len(healthAliases) {
+		t.Fatalf("健康探针路由覆盖不完整: got=%v want=%v", seenHealth, healthAliases)
+	}
+}
+
 // TestRouteContractDocumentsContainPath 确保接口文档包含契约表中的真实路径。
 func TestRouteContractDocumentsContainPath(t *testing.T) {
 	for _, contract := range DefaultRouteContracts() {
@@ -162,7 +185,7 @@ func TestRouteSecurityPoliciesUseContractAliases(t *testing.T) {
 		aliases[string(contract.Meta.Alias)] = struct{}{}
 	}
 	for alias := range security.RouteSecurityPolicies {
-		if _, ok := aliases[alias]; !ok {
+		if _, ok := aliases[string(alias)]; !ok {
 			t.Fatalf("security policy route alias missing from route contracts: %s", alias)
 		}
 	}

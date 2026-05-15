@@ -8,6 +8,7 @@ import (
 
 	"api/internal/config"
 	"api/internal/handler/shared"
+	"api/internal/routealias"
 	"api/internal/security"
 	"api/internal/svc"
 
@@ -66,7 +67,7 @@ func TestRouteSecurityPoliciesMatchSecurityContracts(t *testing.T) {
 		policy := security.PolicyByRoute(string(contract.Alias))
 		switch contract.Chain {
 		case RouteSecurityNone:
-			if _, ok := security.RouteSecurityPolicies[string(contract.Alias)]; ok {
+			if _, ok := security.RouteSecurityPolicies[routealias.Alias(contract.Alias)]; ok {
 				t.Fatalf("no-security route must not define frontend security policy: %s", contract.Alias)
 			}
 		case RouteSecurityInternal:
@@ -76,7 +77,7 @@ func TestRouteSecurityPoliciesMatchSecurityContracts(t *testing.T) {
 		}
 	}
 	for alias := range security.RouteSecurityPolicies {
-		if _, ok := securityByAlias[alias]; !ok {
+		if _, ok := securityByAlias[string(alias)]; !ok {
 			t.Fatalf("frontend security policy missing route security contract: %s", alias)
 		}
 	}
@@ -115,7 +116,7 @@ func TestPublicAndAuthRoutesDeclareSecurityPolicy(t *testing.T) {
 	for _, contract := range DefaultRouteSecurityContracts() {
 		switch contract.Chain {
 		case RouteSecurityPublic, RouteSecurityAuth:
-			if _, ok := security.RouteSecurityPolicies[string(contract.Alias)]; !ok {
+			if _, ok := security.RouteSecurityPolicies[routealias.Alias(contract.Alias)]; !ok {
 				t.Fatalf("frontend route must declare explicit security policy: %s", contract.Alias)
 			}
 		}

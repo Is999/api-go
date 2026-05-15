@@ -15,33 +15,36 @@ func RouteSpecs() []shared.RouteSpec {
 	return []shared.RouteSpec{
 		// GET /api/live：存活检查，不访问外部依赖。
 		{
-			Method:       http.MethodGet,
-			Path:         "/api/live",
-			Meta:         shared.HealthLive,
-			DocumentPath: shared.RouteDocHealth,
-			Chain:        shared.RouteSecurityNone,
+			Method:        http.MethodGet,
+			Path:          "/api/live",
+			Meta:          shared.HealthLive,
+			DocumentPath:  shared.RouteDocHealth,
+			Chain:         shared.RouteSecurityNone,
+			SkipAccessLog: true,
 			Handler: func(svcCtx *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
 				return LiveHandler(svcCtx)
 			},
 		},
 		// GET /api/ready：就绪检查，探测 MySQL/Redis 等关键依赖。
 		{
-			Method:       http.MethodGet,
-			Path:         "/api/ready",
-			Meta:         shared.HealthReady,
-			DocumentPath: shared.RouteDocHealth,
-			Chain:        shared.RouteSecurityNone,
+			Method:        http.MethodGet,
+			Path:          "/api/ready",
+			Meta:          shared.HealthReady,
+			DocumentPath:  shared.RouteDocHealth,
+			Chain:         shared.RouteSecurityNone,
+			SkipAccessLog: true,
 			Handler: func(svcCtx *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
 				return ReadyHandler(svcCtx)
 			},
 		},
 		// GET /api/metrics：Prometheus 指标抓取入口。
 		{
-			Method:       http.MethodGet,
-			Path:         "/api/metrics",
-			Meta:         shared.HealthMetrics,
-			DocumentPath: shared.RouteDocHealth,
-			Chain:        shared.RouteSecurityNone,
+			Method:        http.MethodGet,
+			Path:          "/api/metrics",
+			Meta:          shared.HealthMetrics,
+			DocumentPath:  shared.RouteDocHealth,
+			Chain:         shared.RouteSecurityNone,
+			SkipAccessLog: true,
 			Handler: func(_ *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
 				return MetricsHandler()
 			},

@@ -12,6 +12,7 @@ import (
 	"api/common/runtimecfg"
 	"api/internal/config"
 	authlogic "api/internal/logic/auth"
+	"api/internal/routealias"
 	"api/internal/security"
 	"api/internal/svc"
 
@@ -24,7 +25,7 @@ func TestSignatureMiddlewareSkipsRouteWithoutSignPolicy(t *testing.T) {
 	middleware := NewSignatureMiddleware(svcCtx)
 	handler := middleware.Handle(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
-	}, RouteAlias("user.profile"))
+	}, routealias.UserProfile)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/user/profile", nil)
 	rec := httptest.NewRecorder()
@@ -43,7 +44,7 @@ func TestCryptoMiddlewareSkipsRouteWithoutCipherPolicy(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
-	req = bindRequestMeta(req, RouteAlias("auth.logout"))
+	req = bindRequestMeta(req, routealias.AuthLogout)
 	rec := httptest.NewRecorder()
 	handler(rec, req)
 

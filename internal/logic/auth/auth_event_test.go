@@ -9,6 +9,7 @@ import (
 	"api/internal/config"
 	"api/internal/infra/collectorx"
 	"api/internal/requestctx"
+	"api/internal/routealias"
 	"api/internal/svc"
 )
 
@@ -18,7 +19,7 @@ func TestRecordAuthEventEnqueuesSanitizedPayload(t *testing.T) {
 	svcCtx, seen := newAuthEventTestService(t, cfg, true)
 	ctx, _ := requestctx.New(context.Background())
 	requestctx.SetTrace(ctx, "trace-demo", "span-demo")
-	requestctx.SetRoute(ctx, "auth.login")
+	requestctx.SetRoute(ctx, string(routealias.AuthLogin))
 	requestctx.SetRequest(ctx, "POST", "/api/auth/login", "127.0.0.1")
 	requestctx.SetNode(ctx, "node-a")
 	requestctx.SetMode(ctx, "dev")
@@ -48,7 +49,7 @@ func TestRecordAuthEventEnqueuesSanitizedPayload(t *testing.T) {
 	if payload.Action != AuthEventActionLoginSuccess || payload.UserID != 42 || payload.Reason != AuthEventReasonSessionCreated {
 		t.Fatalf("payload core fields = %+v", payload)
 	}
-	if payload.AppID != "site-a" || payload.Route != "auth.login" || payload.TraceID != "trace-demo" || payload.SpanID != "span-demo" {
+	if payload.AppID != "site-a" || payload.Route != string(routealias.AuthLogin) || payload.TraceID != "trace-demo" || payload.SpanID != "span-demo" {
 		t.Fatalf("payload trace fields = %+v", payload)
 	}
 	if payload.UsernameHash != authEventHash(cfg, "demo_user") {

@@ -17,13 +17,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// accessLogIgnorePathSet 定义不输出访问日志的高频探针路径。
-var accessLogIgnorePathSet = map[string]struct{}{
-	"/api/live":    {}, // 存活探针高频访问，默认不写访问日志。
-	"/api/ready":   {}, // 就绪探针高频访问，异常由 ready 链路暴露。
-	"/api/metrics": {}, // Prometheus 抓取入口高频访问，避免污染业务访问日志。
-}
-
 // AccessLogMiddleware 在请求结束时统一输出访问日志并更新 span 状态。
 type AccessLogMiddleware struct{}
 
@@ -48,7 +41,7 @@ func (m *AccessLogMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 				requestctx.SetResponse(ctx, recorder.status, meta.BizCode, meta.BizMessage, meta.ErrorMessage)
 			}
 			success := meta.ErrorMessage == "" && recorder.status < http.StatusBadRequest
-			if !shouldIgnoreAccessLog(meta.Path) {
+			if !shouldSkipAccessLog(meta) {
 				fields := []logx.LogField{
 					logx.Field("http_status", recorder.status),
 					logx.Field("biz_code", meta.BizCode),
@@ -134,14 +127,9 @@ func appendAccessTextKV(parts []string, key string, value string) []string {
 	return append(parts, fmt.Sprintf("%s=%s", key, value))
 }
 
-// shouldIgnoreAccessLog 判断请求路径是否属于探针日志白名单。
-func shouldIgnoreAccessLog(path string) bool {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return false
-	}
-	_, ignored := accessLogIgnorePathSet[path]
-	return ignored
+// shouldSkipAccessLog 判断当前请求是否按路由规格跳过普通访问日志。
+func shouldSkipAccessLog(meta *requestctx.Meta) bool {
+	return meta != nil && meta.SkipAccessLog
 }
 
 // statusRecorder 记录 handler 实际写出的状态码和响应大小。

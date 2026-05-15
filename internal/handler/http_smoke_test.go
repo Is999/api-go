@@ -15,6 +15,7 @@ import (
 	"api/internal/handler/shared"
 	"api/internal/middleware"
 	"api/internal/requestctx"
+	"api/internal/routealias"
 	"api/internal/svc"
 	"api/internal/types"
 )
@@ -64,7 +65,7 @@ func TestAuthMiddlewareMissingBearerUsesUnifiedEnvelope(t *testing.T) {
 	nextCalled := false
 	handler := authMw.Handle(func(w http.ResponseWriter, r *http.Request) {
 		nextCalled = true
-	}, middleware.RouteAlias("user.profile"))
+	}, routealias.UserProfile)
 
 	req := newSmokeRequest(http.MethodGet, "/api/user/profile", nil)
 	rec := httptest.NewRecorder()
@@ -98,7 +99,7 @@ func TestPublicSecurityChainAllowsPlainJSONWithoutSecret(t *testing.T) {
 	handler := authMw.PublicHandle(func(w http.ResponseWriter, r *http.Request) {
 		nextCalled = true
 		helper.NewJsonResp(r.Context(), w).SetCode(codes.Success).Success(map[string]any{"ok": true})
-	}, middleware.RouteAlias("auth.login"))
+	}, routealias.AuthLogin)
 
 	req := newSmokeRequest(http.MethodPost, "/api/auth/login", bytes.NewBufferString(`{"username":"demo","password":"secret123"}`))
 	rec := httptest.NewRecorder()

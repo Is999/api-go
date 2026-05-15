@@ -11,6 +11,7 @@ import (
 	authlogic "api/internal/logic/auth"
 	userlogic "api/internal/logic/user"
 	"api/internal/requestctx"
+	"api/internal/routealias"
 	"api/internal/svc"
 
 	"github.com/Is999/go-utils"
@@ -18,12 +19,12 @@ import (
 )
 
 // RouteAlias 是路由在日志、权限和排障体系中的稳定标识。
-type RouteAlias string
+type RouteAlias = routealias.Alias
 
 // 鉴权中间件路由别名特殊值。
 const (
 	// Ignore 表示该路由跳过业务路由别名写入。
-	Ignore RouteAlias = "ignore"
+	Ignore = routealias.Ignore
 )
 
 // AuthMiddleware 负责 JWT 鉴权、Redis session 校验以及请求元数据补全。

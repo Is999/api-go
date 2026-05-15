@@ -1,6 +1,9 @@
 package shared
 
-import "api/internal/middleware"
+import (
+	"api/internal/middleware"
+	"api/internal/routealias"
+)
 
 // RouteAccess 表示路由访问边界。
 type RouteAccess string
@@ -35,28 +38,28 @@ func newRouteMeta(alias middleware.RouteAlias, access RouteAccess, describe stri
 // 内置路由元数据按模块集中声明，新增路由必须同步补充。
 var (
 	// HealthLive 表示存活检查路由。
-	HealthLive = newRouteMeta("health.live", RouteAccessPublic, "存活检查")
+	HealthLive = newRouteMeta(routealias.HealthLive, RouteAccessPublic, "存活检查")
 	// HealthReady 表示就绪检查路由。
-	HealthReady = newRouteMeta("health.ready", RouteAccessPublic, "就绪检查")
+	HealthReady = newRouteMeta(routealias.HealthReady, RouteAccessPublic, "就绪检查")
 	// HealthMetrics 表示 Prometheus 指标抓取路由。
-	HealthMetrics = newRouteMeta("health.metrics", RouteAccessPublic, "指标抓取")
+	HealthMetrics = newRouteMeta(routealias.HealthMetrics, RouteAccessPublic, "指标抓取")
 
 	// AuthRegister 表示前台用户注册路由。
-	AuthRegister = newRouteMeta("auth.register", RouteAccessPublic, "前台用户注册")
+	AuthRegister = newRouteMeta(routealias.AuthRegister, RouteAccessPublic, "前台用户注册")
 	// AuthLogin 表示前台用户登录路由。
-	AuthLogin = newRouteMeta("auth.login", RouteAccessPublic, "前台用户登录")
+	AuthLogin = newRouteMeta(routealias.AuthLogin, RouteAccessPublic, "前台用户登录")
 	// AuthRefresh 表示访问令牌刷新路由。
-	AuthRefresh = newRouteMeta("auth.refresh", RouteAccessAuth, "刷新访问令牌")
+	AuthRefresh = newRouteMeta(routealias.AuthRefresh, RouteAccessAuth, "刷新访问令牌")
 	// AuthLogout 表示前台用户退出登录路由。
-	AuthLogout = newRouteMeta("auth.logout", RouteAccessAuth, "前台用户退出登录")
+	AuthLogout = newRouteMeta(routealias.AuthLogout, RouteAccessAuth, "前台用户退出登录")
 
 	// UserProfile 表示当前用户资料路由。
-	UserProfile = newRouteMeta("user.profile", RouteAccessAuth, "获取当前用户资料")
+	UserProfile = newRouteMeta(routealias.UserProfile, RouteAccessAuth, "获取当前用户资料")
 
 	// SystemConfigReloadStatus 表示内网配置热加载状态查询路由。
-	SystemConfigReloadStatus = newRouteMeta("system.config_reload.status", RouteAccessInternal, "内网查询配置热加载状态")
+	SystemConfigReloadStatus = newRouteMeta(routealias.SystemConfigReloadStatus, RouteAccessInternal, "内网查询配置热加载状态")
 	// SystemConfigReloadRun 表示内网手动触发配置热加载路由。
-	SystemConfigReloadRun = newRouteMeta("system.config_reload.run", RouteAccessInternal, "内网手动触发配置热加载")
+	SystemConfigReloadRun = newRouteMeta(routealias.SystemConfigReloadRun, RouteAccessInternal, "内网手动触发配置热加载")
 )
 
 // DefaultRouteMetas 返回内置路由元数据集合，供测试和文档防漂移复用。

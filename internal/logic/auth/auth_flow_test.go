@@ -15,6 +15,7 @@ import (
 	userlogic "api/internal/logic/user"
 	"api/internal/model"
 	"api/internal/requestctx"
+	"api/internal/routealias"
 	"api/internal/svc"
 	"api/internal/types"
 
@@ -29,7 +30,7 @@ import (
 func TestAuthMainFlowIntegration(t *testing.T) {
 	svcCtx, rds, seen := newAuthFlowTestService(t)
 
-	registerCtx := authFlowContext(AuthEventActionRegisterSuccess, "auth.register", http.MethodPost, "/api/auth/register", "10.0.0.8")
+	registerCtx := authFlowContext(AuthEventActionRegisterSuccess, string(routealias.AuthRegister), http.MethodPost, "/api/auth/register", "10.0.0.8")
 	registerResp := requireAuthTokenResp(t, NewAuthLogic(registerCtx, svcCtx).Register(&types.RegisterReq{
 		Username: "demo_user",
 		Password: "P@ssw0rd!",
@@ -43,7 +44,7 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 	registerJTI := requireSessionToken(t, svcCtx, rds, registerResp.User.ID, registerResp.Token)
 	requireSessionIndexMembers(t, svcCtx, rds, registerResp.User.ID, []string{registerJTI})
 
-	loginCtx := authFlowContext(AuthEventActionLoginSuccess, "auth.login", http.MethodPost, "/api/auth/login", "10.0.0.9")
+	loginCtx := authFlowContext(AuthEventActionLoginSuccess, string(routealias.AuthLogin), http.MethodPost, "/api/auth/login", "10.0.0.9")
 	loginResp := requireAuthTokenResp(t, NewAuthLogic(loginCtx, svcCtx).Login(&types.LoginReq{
 		Username: "demo_user",
 		Password: "P@ssw0rd!",
@@ -65,13 +66,13 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 		t.Fatalf("UpdateAPIUser(email) error = %v", err)
 	}
 
-	profileCtx := authFlowAuthenticatedContext("user.profile", http.MethodGet, "/api/user/profile", "10.0.0.9", loginResp)
+	profileCtx := authFlowAuthenticatedContext(string(routealias.UserProfile), http.MethodGet, "/api/user/profile", "10.0.0.9", loginResp)
 	profile := requireUserProfile(t, userlogic.NewUserLogic(profileCtx, svcCtx).Profile(), codes.FetchSuccess)
 	if profile.Email != "demo@example.com" {
 		t.Fatalf("profile email = %q, want cached demo@example.com", profile.Email)
 	}
 
-	refreshCtx := authFlowAuthenticatedContext("auth.refresh", http.MethodPost, "/api/auth/refresh", "10.0.0.9", loginResp)
+	refreshCtx := authFlowAuthenticatedContext(string(routealias.AuthRefresh), http.MethodPost, "/api/auth/refresh", "10.0.0.9", loginResp)
 	refreshResp := requireAuthTokenResp(t, NewAuthLogic(refreshCtx, svcCtx).Refresh(), codes.Success)
 	if refreshResp.Token == loginResp.Token {
 		t.Fatal("refresh token should differ from login token")
@@ -83,7 +84,7 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 	requireSessionMissing(t, svcCtx, rds, refreshResp.User.ID, loginJTI)
 	requireSessionIndexMembers(t, svcCtx, rds, refreshResp.User.ID, []string{registerJTI, refreshJTI})
 
-	logoutCtx := authFlowAuthenticatedContext("auth.logout", http.MethodPost, "/api/auth/logout", "10.0.0.9", refreshResp)
+	logoutCtx := authFlowAuthenticatedContext(string(routealias.AuthLogout), http.MethodPost, "/api/auth/logout", "10.0.0.9", refreshResp)
 	logoutResult := NewAuthLogic(logoutCtx, svcCtx).Logout()
 	if logoutResult == nil || !logoutResult.IsSuccess() || logoutResult.Code != codes.Success {
 		t.Fatalf("Logout() = %+v, want success", logoutResult)
@@ -92,10 +93,10 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 	requireSessionIndexMembers(t, svcCtx, rds, refreshResp.User.ID, []string{registerJTI})
 
 	requireAuthFlowEvents(t, *seen, []authFlowEventWant{
-		{action: AuthEventActionRegisterSuccess, reason: AuthEventReasonSessionCreated, route: "auth.register"},
-		{action: AuthEventActionLoginSuccess, reason: AuthEventReasonSessionCreated, route: "auth.login"},
-		{action: AuthEventActionRefreshSuccess, reason: AuthEventReasonSessionRotated, route: "auth.refresh"},
-		{action: AuthEventActionLogoutSuccess, reason: AuthEventReasonCurrentSessionDeleted, route: "auth.logout"},
+		{action: AuthEventActionRegisterSuccess, reason: AuthEventReasonSessionCreated, route: string(routealias.AuthRegister)},
+		{action: AuthEventActionLoginSuccess, reason: AuthEventReasonSessionCreated, route: string(routealias.AuthLogin)},
+		{action: AuthEventActionRefreshSuccess, reason: AuthEventReasonSessionRotated, route: string(routealias.AuthRefresh)},
+		{action: AuthEventActionLogoutSuccess, reason: AuthEventReasonCurrentSessionDeleted, route: string(routealias.AuthLogout)},
 	})
 }
 

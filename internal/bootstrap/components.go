@@ -34,8 +34,8 @@ type componentBuildContext struct {
 
 // componentSpec 描述一个默认组件来源及其构造逻辑。
 type componentSpec struct {
-	Name  string                                      // 组件来源名称，必须在规格内唯一
-	Build func(componentBuildContext) []svc.Component // 构造该来源下的实际组件
+	registrationSpec                                             // 组件来源在默认注册清单中的说明字段
+	Build            func(componentBuildContext) []svc.Component // 构造该来源下的实际组件
 }
 
 // buildDefaultComponentRegistry 构造启动期核心组件注册表。
@@ -56,7 +56,12 @@ func buildDefaultComponentRegistry(svcCtx *svc.ServiceContext) (*svc.ComponentRe
 func defaultComponentSpecs() []componentSpec {
 	return []componentSpec{
 		{
-			Name: componentNameMySQL,
+			registrationSpec: registrationSpec{
+				Name:        componentNameMySQL,
+				File:        "internal/bootstrap/components.go",
+				Method:      "mysqlComponent / buildDefaultComponentRegistry",
+				Description: "注册默认主库健康探测和关闭入口",
+			},
 			Build: func(ctx componentBuildContext) []svc.Component {
 				if ctx.ServiceContext == nil {
 					return nil
@@ -65,11 +70,21 @@ func defaultComponentSpecs() []componentSpec {
 			},
 		},
 		{
-			Name:  componentSourceSiteMySQL,
+			registrationSpec: registrationSpec{
+				Name:        componentSourceSiteMySQL,
+				File:        "internal/bootstrap/components.go",
+				Method:      "siteMySQLComponents / buildDefaultComponentRegistry",
+				Description: "按名称注册扩展库健康探测和关闭入口",
+			},
 			Build: siteMySQLComponents,
 		},
 		{
-			Name: componentNameRedis,
+			registrationSpec: registrationSpec{
+				Name:        componentNameRedis,
+				File:        "internal/bootstrap/components.go",
+				Method:      "redisComponent / buildDefaultComponentRegistry",
+				Description: "注册默认 Redis 健康探测和关闭入口",
+			},
 			Build: func(ctx componentBuildContext) []svc.Component {
 				if ctx.ServiceContext == nil {
 					return nil

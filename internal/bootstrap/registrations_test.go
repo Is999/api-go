@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"api/internal/handler"
+	"api/internal/infra/collectorx"
 )
 
 // TestValidateDefaultRegistrationManifest 确保默认注册清单与真实内置注册集合保持一致。
@@ -13,7 +14,7 @@ func TestValidateDefaultRegistrationManifest(t *testing.T) {
 	}
 }
 
-// TestDefaultRegistrationManifestHasBuiltinEntries 确保清单覆盖路由和轻量运行时扩展两类内置注册。
+// TestDefaultRegistrationManifestHasBuiltinEntries 确保清单覆盖组件、路由和轻量运行时扩展三类内置注册。
 func TestDefaultRegistrationManifestHasBuiltinEntries(t *testing.T) {
 	items := DefaultRegistrationManifest()
 	if len(items) == 0 {
@@ -24,9 +25,38 @@ func TestDefaultRegistrationManifestHasBuiltinEntries(t *testing.T) {
 	for _, item := range items {
 		kindSet[item.Kind] = struct{}{}
 	}
-	for _, kind := range []string{registrationKindRoute, registrationKindRuntimeRegistry} {
+	for _, kind := range []string{registrationKindComponent, registrationKindRoute, registrationKindRuntimeRegistry} {
 		if _, ok := kindSet[kind]; !ok {
 			t.Fatalf("默认注册清单缺少 kind=%s", kind)
+		}
+	}
+}
+
+// TestComponentRegistrationManifestMatchesSpecs 确保启动组件注册清单由组件规格派生。
+func TestComponentRegistrationManifestMatchesSpecs(t *testing.T) {
+	componentItems := manifestItemsByKind(DefaultRegistrationManifest(), registrationKindComponent)
+	specs := defaultComponentSpecs()
+	if len(componentItems) != len(specs) {
+		t.Fatalf("component manifest count = %d, spec count = %d", len(componentItems), len(specs))
+	}
+	for index, spec := range specs {
+		item := componentItems[index]
+		if item.Name != spec.Name || item.File != spec.File || item.Method != spec.Method || item.Description != spec.Description {
+			t.Fatalf("component manifest mismatch index=%d item=%+v spec=%+v", index, item, spec)
+		}
+	}
+}
+
+// TestDefaultComponentSpecNamesDeriveFromSpecs 确保组件校验名称从组件规格派生。
+func TestDefaultComponentSpecNamesDeriveFromSpecs(t *testing.T) {
+	names := defaultComponentSpecNames()
+	specs := defaultComponentSpecs()
+	if len(names) != len(specs) {
+		t.Fatalf("component names count = %d, spec count = %d", len(names), len(specs))
+	}
+	for index, spec := range specs {
+		if names[index] != spec.Name {
+			t.Fatalf("component name mismatch index=%d names=%v specs=%+v", index, names, specs)
 		}
 	}
 }
@@ -71,6 +101,25 @@ func TestRuntimeRegistrationManifestMatchesSpecs(t *testing.T) {
 		item := runtimeItems[index]
 		if item.Name != spec.Name || item.File != spec.File || item.Method != spec.Method || item.Description != spec.Description {
 			t.Fatalf("runtime manifest mismatch index=%d item=%+v spec=%+v", index, item, spec)
+		}
+	}
+}
+
+// TestRuntimeRegistrationManifestIncludesDefaultCollectorProcessors 确保默认 Processor 清单从 collectorx 规格派生。
+func TestRuntimeRegistrationManifestIncludesDefaultCollectorProcessors(t *testing.T) {
+	runtimeItems := manifestItemsByKind(DefaultRegistrationManifest(), registrationKindRuntimeRegistry)
+	itemByName := make(map[string]RegistrationManifestItem, len(runtimeItems))
+	for _, item := range runtimeItems {
+		itemByName[item.Name] = item
+	}
+
+	for _, spec := range collectorx.DefaultProcessorSpecs() {
+		item, ok := itemByName[spec.Name]
+		if !ok {
+			t.Fatalf("默认注册清单缺少 Processor=%s", spec.Name)
+		}
+		if item.File != spec.File || item.Method != spec.Method || item.Description != spec.Description {
+			t.Fatalf("Processor 清单与规格不一致: item=%+v spec=%+v", item, spec)
 		}
 	}
 }
