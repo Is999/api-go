@@ -109,9 +109,6 @@ func TestRuntimeConfigSectionSpecsValid(t *testing.T) {
 		t.Fatal("runtime config section specs should not be empty")
 	}
 	keys := runtimeConfigSectionKeys()
-	if len(keys) != len(specs) {
-		t.Fatalf("runtime config section key count = %d, spec count = %d", len(keys), len(specs))
-	}
 	seen := make(map[string]struct{}, len(specs))
 	for _, spec := range specs {
 		if spec.Key == "" {

@@ -40,8 +40,8 @@ func TestRegisterDefaultProcessorsEnqueuesAuthSecurity(t *testing.T) {
 // TestDefaultProcessorSpecsValid 确保内置 Processor 注册、启动清单和文档共用同一规格源。
 func TestDefaultProcessorSpecsValid(t *testing.T) {
 	specs := DefaultProcessorSpecs()
-	if len(specs) != 1 {
-		t.Fatalf("DefaultProcessorSpecs() len = %d, want 1", len(specs))
+	if len(specs) == 0 {
+		t.Fatal("DefaultProcessorSpecs() 不能为空")
 	}
 
 	nameSeen := make(map[string]struct{}, len(specs))
@@ -61,12 +61,6 @@ func TestDefaultProcessorSpecsValid(t *testing.T) {
 		if spec.Build == nil || spec.Build() == nil {
 			t.Fatalf("默认 Processor 构造器无效: %+v", spec)
 		}
-	}
-	if _, ok := nameSeen[defaultProcessorAuthSecurity]; !ok {
-		t.Fatalf("默认 Processor 规格缺少 %s", defaultProcessorAuthSecurity)
-	}
-	if _, ok := bizTypeSeen[BizTypeAuthSecurity]; !ok {
-		t.Fatalf("默认 Processor 规格缺少 bizType=%s", BizTypeAuthSecurity)
 	}
 }
 

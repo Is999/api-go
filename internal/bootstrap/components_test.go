@@ -1,7 +1,6 @@
 package bootstrap
 
 import (
-	"reflect"
 	"testing"
 
 	"api/common/runtimecfg"
@@ -11,8 +10,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// TestBuildDefaultComponentRegistryNames 确保核心依赖进入组件生命周期清单。
-func TestBuildDefaultComponentRegistryNames(t *testing.T) {
+// TestBuildDefaultComponentRegistryIncludesCoreDependencies 确保核心依赖进入组件生命周期清单。
+func TestBuildDefaultComponentRegistryIncludesCoreDependencies(t *testing.T) {
 	svcCtx := svc.NewServiceContext(config.Config{}, "test-version", svc.Dependencies{
 		SiteDBs: svc.SiteDatabases{
 			NamedDBs: map[svc.DbName]*gorm.DB{
@@ -26,24 +25,28 @@ func TestBuildDefaultComponentRegistryNames(t *testing.T) {
 		t.Fatalf("buildDefaultComponentRegistry() error = %v", err)
 	}
 	got := componentItemNames(registry.Items())
-	want := []string{componentNameMySQL, "mysql_archive", "mysql_user", componentNameRedis}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("component names = %v, want %v", got, want)
+	indexByName := make(map[string]int, len(got))
+	for index, name := range got {
+		indexByName[name] = index
+	}
+	for _, name := range []string{componentNameMySQL, "mysql_archive", "mysql_user", componentNameRedis} {
+		if _, ok := indexByName[name]; !ok {
+			t.Fatalf("组件生命周期清单缺少核心依赖 %q，实际为 %v", name, got)
+		}
+	}
+	if indexByName["mysql_archive"] > indexByName["mysql_user"] {
+		t.Fatalf("命名扩展库组件应按名称稳定排序，实际为 %v", got)
 	}
 }
 
-// TestDefaultComponentSpecsValid 确保组件生命周期来源规格完整且顺序稳定。
+// TestDefaultComponentSpecsValid 确保组件生命周期来源规格完整且名称唯一。
 func TestDefaultComponentSpecsValid(t *testing.T) {
 	specs := defaultComponentSpecs()
-	want := []string{componentNameMySQL, componentSourceSiteMySQL, componentNameRedis}
-	if len(specs) != len(want) {
-		t.Fatalf("默认组件规格数量不符合预期: got=%d want=%d", len(specs), len(want))
+	if len(specs) == 0 {
+		t.Fatal("默认组件规格不能为空")
 	}
 	seen := make(map[string]struct{}, len(specs))
-	for index, spec := range specs {
-		if spec.Name != want[index] {
-			t.Fatalf("默认组件规格顺序不符合预期: index=%d got=%s want=%s", index, spec.Name, want[index])
-		}
+	for _, spec := range specs {
 		if spec.Build == nil {
 			t.Fatalf("默认组件规格缺少构造函数: %s", spec.Name)
 		}

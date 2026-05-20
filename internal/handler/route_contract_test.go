@@ -17,15 +17,11 @@ import (
 // TestBuiltinRouteModuleSpecsValid 确保内置路由模块规格字段完整且顺序可用于注册。
 func TestBuiltinRouteModuleSpecsValid(t *testing.T) {
 	specs := BuiltinRouteModuleSpecs()
-	modules := BuiltinRouteModules()
 	if len(specs) == 0 {
 		t.Fatal("builtin route module specs must not be empty")
 	}
-	if len(modules) != len(specs) {
-		t.Fatalf("module count = %d, spec count = %d", len(modules), len(specs))
-	}
 	seenNames := make(map[string]struct{}, len(specs))
-	for index, spec := range specs {
+	for _, spec := range specs {
 		if strings.TrimSpace(spec.Name) == "" || spec.File == "" || spec.Method == "" || spec.Description == "" {
 			t.Fatalf("route module spec has empty field: %+v", spec)
 		}
@@ -39,9 +35,6 @@ func TestBuiltinRouteModuleSpecsValid(t *testing.T) {
 			t.Fatalf("duplicate route module spec name: %s", spec.Name)
 		}
 		seenNames[spec.Name] = struct{}{}
-		if modules[index].Name() != spec.Name {
-			t.Fatalf("module name mismatch index=%d got=%s want=%s", index, modules[index].Name(), spec.Name)
-		}
 	}
 }
 

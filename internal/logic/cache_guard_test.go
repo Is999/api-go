@@ -17,3 +17,21 @@ func TestCacheLockKeyUsesAppNamespace(t *testing.T) {
 		t.Fatalf("cacheLockKey() = %q, want %q", got, want)
 	}
 }
+
+// TestRuntimeRegistrySpecsValid 确保通用缓存保护注册入口规格完整且名称唯一。
+func TestRuntimeRegistrySpecsValid(t *testing.T) {
+	specs := RuntimeRegistrySpecs()
+	if len(specs) == 0 {
+		t.Fatal("RuntimeRegistrySpecs() 不能为空")
+	}
+	seen := make(map[string]struct{}, len(specs))
+	for _, spec := range specs {
+		if spec.Name == "" || spec.File == "" || spec.Method == "" || spec.Description == "" {
+			t.Fatalf("运行时注册规格字段不完整: %+v", spec)
+		}
+		if _, ok := seen[spec.Name]; ok {
+			t.Fatalf("运行时注册规格名称重复: %s", spec.Name)
+		}
+		seen[spec.Name] = struct{}{}
+	}
+}

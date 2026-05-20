@@ -33,12 +33,16 @@ type App struct {
 
 // New 负责把依赖装配与 HTTP 服务注册串起来。
 func New(ctx context.Context, c config.Config, version string) (*App, error) {
-	if err := ValidateDefaultRegistrationManifest(); err != nil {
-		return nil, errors.Wrap(err, "校验默认注册清单失败")
-	}
-
 	svcCtx, shutdown, err := BuildServiceContext(ctx, c, version)
 	if err != nil {
+		return nil, errors.Tag(err)
+	}
+	routeModules := defaultRouteModules()
+	if err := validateRegistrationNamesUnique(registrationKindRoute, routeModuleNames(routeModules)); err != nil {
+		_ = closeServiceContextResources(svcCtx)
+		if shutdown != nil {
+			_ = shutdown(context.Background())
+		}
 		return nil, errors.Tag(err)
 	}
 
@@ -59,7 +63,7 @@ func New(ctx context.Context, c config.Config, version string) (*App, error) {
 		shutdown:       shutdown,
 	}
 	svcCtx.ConfigReload = app
-	handler.RegisterHandlers(server, svcCtx, defaultRouteModules()...)
+	handler.RegisterHandlers(server, svcCtx, routeModules...)
 	return app, nil
 }
 

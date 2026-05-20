@@ -1,16 +1,15 @@
 package bootstrap
 
 import (
-	"sort"
-
 	"api/internal/handler"
 	"api/internal/infra/collectorx"
+	corelogic "api/internal/logic"
+	authlogic "api/internal/logic/auth"
+	configlogic "api/internal/logic/config"
 
-	utils "github.com/Is999/go-utils"
 	"github.com/Is999/go-utils/errors"
 )
 
-// 默认注册清单使用的注册类型和运行时入口名称。
 const (
 	// registrationKindComponent 表示启动期组件来源注册项。
 	registrationKindComponent = "component"
@@ -18,17 +17,6 @@ const (
 	registrationKindRoute = "route"
 	// registrationKindRuntimeRegistry 表示轻量运行时扩展入口注册项。
 	registrationKindRuntimeRegistry = "runtime_registry"
-
-	// runtimeRegistryCollectorProcessor 表示 Collector Processor 注册入口。
-	runtimeRegistryCollectorProcessor = "collector_processor"
-	// runtimeRegistryAuthSecurityEvent 表示认证风控事件投递入口。
-	runtimeRegistryAuthSecurityEvent = "auth_security_event"
-	// runtimeRegistrySysConfigCache 表示 sys_config 缓存读取入口。
-	runtimeRegistrySysConfigCache = "sys_config_cache"
-	// runtimeRegistrySysConfigKeyRegistry 表示 sys_config key 注册入口。
-	runtimeRegistrySysConfigKeyRegistry = "sys_config_key_registry"
-	// runtimeRegistryCacheRebuildLock 表示缓存重建分布式锁入口。
-	runtimeRegistryCacheRebuildLock = "cache_rebuild_lock"
 )
 
 // RegistrationManifestItem 描述一个默认注册项，供文档、测试和启动装配核对。
@@ -101,68 +89,17 @@ func routeRegistrationManifestItems() []RegistrationManifestItem {
 
 // defaultRuntimeRegistrySpecs 返回轻量运行时扩展入口规格。
 func defaultRuntimeRegistrySpecs() []runtimeRegistrySpec {
-	specs := []runtimeRegistrySpec{
-		{
-			registrationSpec: registrationSpec{
-				Name:        runtimeRegistryCollectorProcessor,
-				File:        "internal/infra/collectorx/manager.go",
-				Method:      "collectorx.Manager.RegisterProcessor / RegisterProcessorFunc",
-				Description: "按 bizType 注册轻量 Collector Processor",
-			},
-		},
-		{
-			registrationSpec: registrationSpec{
-				Name:        runtimeRegistryAuthSecurityEvent,
-				File:        "internal/logic/auth/auth_event.go",
-				Method:      "auth.AuthCollectorBizType / RecordAuthEvent",
-				Description: "投递脱敏认证风控事件到轻量 Collector",
-			},
-		},
-	}
-	specs = append(specs, collectorProcessorRuntimeRegistrySpecs()...)
-	specs = append(specs, []runtimeRegistrySpec{
-		{
-			registrationSpec: registrationSpec{
-				Name:        runtimeRegistrySysConfigCache,
-				File:        "internal/logic/config/sys_config.go",
-				Method:      "config.NewSysConfigLogic / GetCachedValue",
-				Description: "读取 sys_config 运行期配置缓存",
-			},
-		},
-		{
-			registrationSpec: registrationSpec{
-				Name:        runtimeRegistrySysConfigKeyRegistry,
-				File:        "internal/logic/config/sys_config_key.go",
-				Method:      "config.NewSysConfigKeyRegistry / SysConfigLogic.GetBool",
-				Description: "按 key 声明类型化读取 sys_config 配置",
-			},
-		},
-		{
-			registrationSpec: registrationSpec{
-				Name:        runtimeRegistryCacheRebuildLock,
-				File:        "internal/infra/redsync/lock.go + internal/logic/cache_guard.go",
-				Method:      "RebuildCacheWithLock / TryRebuildCacheWithLock",
-				Description: "使用 redsync 保护缓存重建",
-			},
-		},
-	}...)
-	return specs
-}
-
-// collectorProcessorRuntimeRegistrySpecs 从默认 Processor 规格派生运行时注册清单。
-func collectorProcessorRuntimeRegistrySpecs() []runtimeRegistrySpec {
-	processorSpecs := collectorx.DefaultProcessorSpecs()
-	specs := make([]runtimeRegistrySpec, 0, len(processorSpecs))
-	for _, processorSpec := range processorSpecs {
-		specs = append(specs, runtimeRegistrySpec{
-			registrationSpec: registrationSpec{
-				Name:        processorSpec.Name,
-				File:        processorSpec.File,
-				Method:      processorSpec.Method,
-				Description: processorSpec.Description,
-			},
-		})
-	}
+	collectorSpecs := collectorRuntimeRegistrySpecs()
+	authSpecs := authRuntimeRegistrySpecs()
+	processorSpecs := collectorDefaultProcessorRuntimeRegistrySpecs()
+	configSpecs := configRuntimeRegistrySpecs()
+	cacheSpecs := cacheRuntimeRegistrySpecs()
+	specs := make([]runtimeRegistrySpec, 0, len(collectorSpecs)+len(authSpecs)+len(processorSpecs)+len(configSpecs)+len(cacheSpecs))
+	specs = append(specs, collectorSpecs...)
+	specs = append(specs, authSpecs...)
+	specs = append(specs, processorSpecs...)
+	specs = append(specs, configSpecs...)
+	specs = append(specs, cacheSpecs...)
 	return specs
 }
 
@@ -176,48 +113,66 @@ func runtimeRegistrationManifestItems() []RegistrationManifestItem {
 	return items
 }
 
-// ValidateDefaultRegistrationManifest 校验默认注册清单与真实内置注册集合是否一致。
-func ValidateDefaultRegistrationManifest() error {
-	items := DefaultRegistrationManifest()
-	if err := validateManifestItems(items); err != nil {
-		return errors.Tag(err)
+// runtimeRegistrySpecFromFields 构造 bootstrap 内部统一的运行时扩展规格。
+func runtimeRegistrySpecFromFields(name, file, method, description string) runtimeRegistrySpec {
+	return runtimeRegistrySpec{
+		registrationSpec: registrationSpec{
+			Name:        name,
+			File:        file,
+			Method:      method,
+			Description: description,
+		},
 	}
-	manifestNames := groupManifestNames(items)
-
-	actualComponentNames := defaultComponentSpecNames()
-	if err := validateNameListUnique(registrationKindComponent, actualComponentNames); err != nil {
-		return errors.Tag(err)
-	}
-	if err := validateManifestKindNames(registrationKindComponent, manifestNames[registrationKindComponent], actualComponentNames); err != nil {
-		return errors.Tag(err)
-	}
-
-	actualRouteNames := routeModuleNames(defaultRouteModules())
-	if err := validateNameListUnique(registrationKindRoute, actualRouteNames); err != nil {
-		return errors.Tag(err)
-	}
-	if err := validateManifestKindNames(registrationKindRoute, manifestNames[registrationKindRoute], actualRouteNames); err != nil {
-		return errors.Tag(err)
-	}
-
-	actualRuntimeNames := defaultRuntimeRegistryNames()
-	if err := validateNameListUnique(registrationKindRuntimeRegistry, actualRuntimeNames); err != nil {
-		return errors.Tag(err)
-	}
-	if err := validateManifestKindNames(registrationKindRuntimeRegistry, manifestNames[registrationKindRuntimeRegistry], actualRuntimeNames); err != nil {
-		return errors.Tag(err)
-	}
-	return nil
 }
 
-// defaultComponentSpecNames 从启动组件规格派生校验名称。
-func defaultComponentSpecNames() []string {
-	specs := defaultComponentSpecs()
-	names := make([]string, 0, len(specs))
-	for _, spec := range specs {
-		names = append(names, spec.Name)
+// collectorRuntimeRegistrySpecs 从 Collector 注册规格派生运行时清单。
+func collectorRuntimeRegistrySpecs() []runtimeRegistrySpec {
+	items := collectorx.RuntimeRegistrySpecs()
+	specs := make([]runtimeRegistrySpec, 0, len(items))
+	for _, item := range items {
+		specs = append(specs, runtimeRegistrySpecFromFields(item.Name, item.File, item.Method, item.Description))
 	}
-	return names
+	return specs
+}
+
+// authRuntimeRegistrySpecs 从认证业务注册规格派生运行时清单。
+func authRuntimeRegistrySpecs() []runtimeRegistrySpec {
+	items := authlogic.RuntimeRegistrySpecs()
+	specs := make([]runtimeRegistrySpec, 0, len(items))
+	for _, item := range items {
+		specs = append(specs, runtimeRegistrySpecFromFields(item.Name, item.File, item.Method, item.Description))
+	}
+	return specs
+}
+
+// collectorDefaultProcessorRuntimeRegistrySpecs 从默认 Processor 注册规格派生运行时清单。
+func collectorDefaultProcessorRuntimeRegistrySpecs() []runtimeRegistrySpec {
+	items := collectorx.DefaultProcessorRuntimeRegistrySpecs()
+	specs := make([]runtimeRegistrySpec, 0, len(items))
+	for _, item := range items {
+		specs = append(specs, runtimeRegistrySpecFromFields(item.Name, item.File, item.Method, item.Description))
+	}
+	return specs
+}
+
+// configRuntimeRegistrySpecs 从运行期配置注册规格派生运行时清单。
+func configRuntimeRegistrySpecs() []runtimeRegistrySpec {
+	items := configlogic.RuntimeRegistrySpecs()
+	specs := make([]runtimeRegistrySpec, 0, len(items))
+	for _, item := range items {
+		specs = append(specs, runtimeRegistrySpecFromFields(item.Name, item.File, item.Method, item.Description))
+	}
+	return specs
+}
+
+// cacheRuntimeRegistrySpecs 从通用缓存保护注册规格派生运行时清单。
+func cacheRuntimeRegistrySpecs() []runtimeRegistrySpec {
+	items := corelogic.RuntimeRegistrySpecs()
+	specs := make([]runtimeRegistrySpec, 0, len(items))
+	for _, item := range items {
+		specs = append(specs, runtimeRegistrySpecFromFields(item.Name, item.File, item.Method, item.Description))
+	}
+	return specs
 }
 
 // defaultRouteModules 返回项目前台 API 内置 HTTP 路由模块集合。
@@ -225,81 +180,22 @@ func defaultRouteModules() []handler.RouteModule {
 	return handler.BuiltinRouteModules()
 }
 
-// defaultRuntimeRegistryNames 从运行时扩展规格派生校验名称。
-func defaultRuntimeRegistryNames() []string {
-	specs := defaultRuntimeRegistrySpecs()
-	names := make([]string, 0, len(specs))
-	for _, spec := range specs {
-		names = append(names, spec.Name)
-	}
-	return names
-}
-
-// validateManifestItems 校验注册清单项本身的结构完整性和唯一性。
-func validateManifestItems(items []RegistrationManifestItem) error {
-	seen := make(map[string]struct{}, len(items))
-	for _, item := range items {
-		if item.Kind == "" {
-			return errors.Errorf("默认注册清单存在空 kind 项")
-		}
-		if item.Name == "" {
-			return errors.Errorf("默认注册清单[%s]存在空 name 项", item.Kind)
-		}
-		if item.File == "" {
-			return errors.Errorf("默认注册清单[%s:%s]存在空 file 项", item.Kind, item.Name)
-		}
-		if item.Method == "" {
-			return errors.Errorf("默认注册清单[%s:%s]存在空 method 项", item.Kind, item.Name)
-		}
-		if item.Description == "" {
-			return errors.Errorf("默认注册清单[%s:%s]存在空 description 项", item.Kind, item.Name)
-		}
-		key := item.Kind + ":" + item.Name
-		if _, ok := seen[key]; ok {
-			return errors.Errorf("默认注册清单存在重复项 %s", key)
-		}
-		seen[key] = struct{}{}
-	}
-	return nil
-}
-
-// groupManifestNames 按 kind 归集注册名称，供后续和真实内置注册集合比对。
-func groupManifestNames(items []RegistrationManifestItem) map[string][]string {
-	grouped := make(map[string][]string, 2)
-	for _, item := range items {
-		grouped[item.Kind] = append(grouped[item.Kind], item.Name)
-	}
-	return grouped
-}
-
-// validateManifestKindNames 校验某一类注册清单名称与真实内置注册名称完全一致。
-func validateManifestKindNames(kind string, manifestNames, actualNames []string) error {
-	missing := utils.Diff(actualNames, manifestNames)
-	extra := utils.Diff(manifestNames, actualNames)
-	if len(missing) == 0 && len(extra) == 0 {
-		return nil
-	}
-	sort.Strings(missing)
-	sort.Strings(extra)
-	return errors.Errorf("默认注册清单[%s]与真实内置注册不一致 missing=%v extra=%v", kind, missing, extra)
-}
-
-// validateNameListUnique 校验真实注册列表内部名称唯一，避免同一模块被重复装配。
-func validateNameListUnique(kind string, names []string) error {
+// validateRegistrationNamesUnique 校验注册列表内部名称唯一，避免同一能力被重复装配。
+func validateRegistrationNamesUnique(kind string, names []string) error {
 	seen := make(map[string]struct{}, len(names))
 	for _, name := range names {
 		if name == "" {
-			return errors.Errorf("默认注册清单[%s]存在空真实注册名称", kind)
+			return errors.Errorf("注册集合[%s]存在空名称", kind)
 		}
 		if _, ok := seen[name]; ok {
-			return errors.Errorf("默认注册清单[%s]存在重复真实注册名称: %s", kind, name)
+			return errors.Errorf("注册集合[%s]存在重复名称: %s", kind, name)
 		}
 		seen[name] = struct{}{}
 	}
 	return nil
 }
 
-// routeModuleNames 提取路由模块名称列表，供注册清单校验复用。
+// routeModuleNames 提取路由模块名称列表，供启动装配和测试复用。
 func routeModuleNames(items []handler.RouteModule) []string {
 	names := make([]string, 0, len(items))
 	for _, item := range items {
