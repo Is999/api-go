@@ -42,6 +42,18 @@ type RouteModuleSpec struct {
 	Routes      func() []shared.RouteSpec // 模块内置路由规格
 }
 
+// 内置路由模块名称常量，供规格表和显式构造入口复用。
+const (
+	// routeModuleHealth 表示健康检查路由模块。
+	routeModuleHealth = "health"
+	// routeModuleAuth 表示前台认证路由模块。
+	routeModuleAuth = "auth"
+	// routeModuleUser 表示前台用户路由模块。
+	routeModuleUser = "user"
+	// routeModuleConfig 表示运行期配置管理路由模块。
+	routeModuleConfig = "config"
+)
+
 // NewRouteModuleFunc 创建函数式路由模块。
 func NewRouteModuleFunc(name string, register func(*RouteScope)) RouteModule {
 	return RouteModuleFunc{name: strings.TrimSpace(name), register: register}
@@ -71,12 +83,9 @@ func BuiltinRouteModules() []RouteModule {
 
 // BuiltinRouteModuleSpecs 返回内置 HTTP 路由模块规格，供启动装配和注册清单复用。
 func BuiltinRouteModuleSpecs() []RouteModuleSpec {
-	return []RouteModuleSpec{
-		healthRouteModuleSpec(),
-		authRouteModuleSpec(),
-		userRouteModuleSpec(),
-		configRouteModuleSpec(),
-	}
+	out := make([]RouteModuleSpec, len(builtinRouteModuleSpecs))
+	copy(out, builtinRouteModuleSpecs)
+	return out
 }
 
 // DefaultRouteSpecs 返回内置 HTTP 路由规格，顺序与内置模块注册顺序保持一致。
@@ -101,22 +110,22 @@ func DefaultRouteSpecs() []shared.RouteSpec {
 
 // NewHealthRouteModule 创建健康检查路由模块。
 func NewHealthRouteModule() RouteModule {
-	return newRouteModule(healthRouteModuleSpec())
+	return newBuiltinRouteModule(routeModuleHealth)
 }
 
 // NewAuthRouteModule 创建前台认证路由模块。
 func NewAuthRouteModule() RouteModule {
-	return newRouteModule(authRouteModuleSpec())
+	return newBuiltinRouteModule(routeModuleAuth)
 }
 
 // NewUserRouteModule 创建前台用户路由模块。
 func NewUserRouteModule() RouteModule {
-	return newRouteModule(userRouteModuleSpec())
+	return newBuiltinRouteModule(routeModuleUser)
 }
 
 // NewConfigRouteModule 创建运行期配置管理路由模块。
 func NewConfigRouteModule() RouteModule {
-	return newRouteModule(configRouteModuleSpec())
+	return newBuiltinRouteModule(routeModuleConfig)
 }
 
 // newRouteModule 根据模块规格构造可注册模块。
@@ -129,48 +138,56 @@ func newRouteModule(spec RouteModuleSpec) RouteModule {
 	})
 }
 
-// healthRouteModuleSpec 返回健康检查模块规格。
-func healthRouteModuleSpec() RouteModuleSpec {
-	return RouteModuleSpec{
-		Name:        "health",
+// builtinRouteModuleSpecs 是前台 API 内置 HTTP 路由模块的单一装配规格。
+var builtinRouteModuleSpecs = []RouteModuleSpec{
+	{
+		Name:        routeModuleHealth,
 		File:        "internal/handler/routes.go + internal/handler/health/routes.go",
 		Method:      "handler.NewHealthRouteModule / health.RouteSpecs",
 		Description: "注册健康检查路由",
 		Routes:      healthhandler.RouteSpecs,
-	}
-}
-
-// authRouteModuleSpec 返回前台认证模块规格。
-func authRouteModuleSpec() RouteModuleSpec {
-	return RouteModuleSpec{
-		Name:        "auth",
+	},
+	{
+		Name:        routeModuleAuth,
 		File:        "internal/handler/routes.go + internal/handler/auth/routes.go",
 		Method:      "handler.NewAuthRouteModule / auth.RouteSpecs",
 		Description: "注册前台认证路由",
 		Routes:      authhandler.RouteSpecs,
-	}
-}
-
-// userRouteModuleSpec 返回前台用户模块规格。
-func userRouteModuleSpec() RouteModuleSpec {
-	return RouteModuleSpec{
-		Name:        "user",
+	},
+	{
+		Name:        routeModuleUser,
 		File:        "internal/handler/routes.go + internal/handler/user/routes.go",
 		Method:      "handler.NewUserRouteModule / user.RouteSpecs",
 		Description: "注册前台用户路由",
 		Routes:      userhandler.RouteSpecs,
-	}
-}
-
-// configRouteModuleSpec 返回运行期配置模块规格。
-func configRouteModuleSpec() RouteModuleSpec {
-	return RouteModuleSpec{
-		Name:        "config",
+	},
+	{
+		Name:        routeModuleConfig,
 		File:        "internal/handler/routes.go + internal/handler/config/routes.go",
 		Method:      "handler.NewConfigRouteModule / config.RouteSpecs",
 		Description: "注册内网运行期配置管理路由",
 		Routes:      confighandler.RouteSpecs,
+	},
+}
+
+// newBuiltinRouteModule 按内置模块名称构造路由模块，供显式 NewXxx 入口复用同一份规格。
+func newBuiltinRouteModule(name string) RouteModule {
+	spec, ok := builtinRouteModuleSpec(name)
+	if !ok {
+		panic("unknown builtin route module: " + name)
 	}
+	return newRouteModule(spec)
+}
+
+// builtinRouteModuleSpec 根据模块名称读取内置模块规格。
+func builtinRouteModuleSpec(name string) (RouteModuleSpec, bool) {
+	name = strings.TrimSpace(name)
+	for _, spec := range builtinRouteModuleSpecs {
+		if spec.Name == name {
+			return spec, true
+		}
+	}
+	return RouteModuleSpec{}, false
 }
 
 // RegisterHandlers 统一注册全局中间件和各领域路由模块。
