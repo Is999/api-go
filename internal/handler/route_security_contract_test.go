@@ -148,9 +148,13 @@ func TestRouteNoTokenBehaviorMatchesSecurityContracts(t *testing.T) {
 			if rec.Code == http.StatusUnauthorized {
 				t.Fatalf("route %s should not require token, got 401", key)
 			}
-		case RouteSecurityAuth, RouteSecurityInternal:
+		case RouteSecurityAuth:
 			if rec.Code != http.StatusUnauthorized {
 				t.Fatalf("route %s should require token, status=%d", key, rec.Code)
+			}
+		case RouteSecurityInternal:
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("route %s should require ops token, status=%d", key, rec.Code)
 			}
 		default:
 			t.Fatalf("unknown route security chain: %+v", securityContract)

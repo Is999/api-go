@@ -28,19 +28,6 @@ type RegistrationManifestItem struct {
 	Description string // 注册项中文说明
 }
 
-// registrationSpec 描述默认注册项的稳定说明字段。
-type registrationSpec struct {
-	Name        string // 注册名称，必须在同类型内保持唯一
-	File        string // 注册实现所在文件
-	Method      string // 注册入口方法或构造方法
-	Description string // 注册项中文说明
-}
-
-// runtimeRegistrySpec 描述一个内置轻量运行时扩展入口。
-type runtimeRegistrySpec struct {
-	registrationSpec // 运行时扩展在默认注册清单中的说明字段
-}
-
 // DefaultRegistrationManifest 返回项目前台 API 默认注册清单。
 // 该清单只描述内置注册项，不包含业务方后续注册的 Collector Processor。
 func DefaultRegistrationManifest() []RegistrationManifestItem {
@@ -50,23 +37,18 @@ func DefaultRegistrationManifest() []RegistrationManifestItem {
 	return items
 }
 
-// registrationManifestItem 将注册规格转换为统一清单项。
-func registrationManifestItem(kind string, spec registrationSpec) RegistrationManifestItem {
-	return RegistrationManifestItem{
-		Kind:        kind,
-		Name:        spec.Name,
-		File:        spec.File,
-		Method:      spec.Method,
-		Description: spec.Description,
-	}
-}
-
 // componentRegistrationManifestItems 从启动组件规格派生清单项。
 func componentRegistrationManifestItems() []RegistrationManifestItem {
 	specs := defaultComponentSpecs()
 	items := make([]RegistrationManifestItem, 0, len(specs))
 	for _, spec := range specs {
-		items = append(items, registrationManifestItem(registrationKindComponent, spec.registrationSpec))
+		items = append(items, RegistrationManifestItem{
+			Kind:        registrationKindComponent,
+			Name:        spec.Name,
+			File:        spec.File,
+			Method:      spec.Method,
+			Description: spec.Description,
+		})
 	}
 	return items
 }
@@ -87,92 +69,60 @@ func routeRegistrationManifestItems() []RegistrationManifestItem {
 	return items
 }
 
-// defaultRuntimeRegistrySpecs 返回轻量运行时扩展入口规格。
-func defaultRuntimeRegistrySpecs() []runtimeRegistrySpec {
-	collectorSpecs := collectorRuntimeRegistrySpecs()
-	authSpecs := authRuntimeRegistrySpecs()
-	processorSpecs := collectorDefaultProcessorRuntimeRegistrySpecs()
-	configSpecs := configRuntimeRegistrySpecs()
-	cacheSpecs := cacheRuntimeRegistrySpecs()
-	specs := make([]runtimeRegistrySpec, 0, len(collectorSpecs)+len(authSpecs)+len(processorSpecs)+len(configSpecs)+len(cacheSpecs))
-	specs = append(specs, collectorSpecs...)
-	specs = append(specs, authSpecs...)
-	specs = append(specs, processorSpecs...)
-	specs = append(specs, configSpecs...)
-	specs = append(specs, cacheSpecs...)
-	return specs
-}
-
 // runtimeRegistrationManifestItems 从运行时扩展规格派生注册清单。
 func runtimeRegistrationManifestItems() []RegistrationManifestItem {
-	specs := defaultRuntimeRegistrySpecs()
-	items := make([]RegistrationManifestItem, 0, len(specs))
-	for _, spec := range specs {
-		items = append(items, registrationManifestItem(registrationKindRuntimeRegistry, spec.registrationSpec))
+	collectorSpecs := collectorx.RuntimeRegistrySpecs()
+	authSpecs := authlogic.RuntimeRegistrySpecs()
+	processorSpecs := collectorx.DefaultProcessorSpecs()
+	configSpecs := configlogic.RuntimeRegistrySpecs()
+	cacheSpecs := corelogic.RuntimeRegistrySpecs()
+	items := make([]RegistrationManifestItem, 0, len(collectorSpecs)+len(authSpecs)+len(processorSpecs)+len(configSpecs)+len(cacheSpecs))
+	for _, spec := range collectorSpecs {
+		items = append(items, RegistrationManifestItem{
+			Kind:        registrationKindRuntimeRegistry,
+			Name:        spec.Name,
+			File:        spec.File,
+			Method:      spec.Method,
+			Description: spec.Description,
+		})
+	}
+	for _, spec := range authSpecs {
+		items = append(items, RegistrationManifestItem{
+			Kind:        registrationKindRuntimeRegistry,
+			Name:        spec.Name,
+			File:        spec.File,
+			Method:      spec.Method,
+			Description: spec.Description,
+		})
+	}
+	for _, spec := range processorSpecs {
+		items = append(items, RegistrationManifestItem{
+			Kind:        registrationKindRuntimeRegistry,
+			Name:        spec.Name,
+			File:        spec.File,
+			Method:      spec.Method,
+			Description: spec.Description,
+		})
+	}
+	for _, spec := range configSpecs {
+		items = append(items, RegistrationManifestItem{
+			Kind:        registrationKindRuntimeRegistry,
+			Name:        spec.Name,
+			File:        spec.File,
+			Method:      spec.Method,
+			Description: spec.Description,
+		})
+	}
+	for _, spec := range cacheSpecs {
+		items = append(items, RegistrationManifestItem{
+			Kind:        registrationKindRuntimeRegistry,
+			Name:        spec.Name,
+			File:        spec.File,
+			Method:      spec.Method,
+			Description: spec.Description,
+		})
 	}
 	return items
-}
-
-// runtimeRegistrySpecFromFields 构造 bootstrap 内部统一的运行时扩展规格。
-func runtimeRegistrySpecFromFields(name, file, method, description string) runtimeRegistrySpec {
-	return runtimeRegistrySpec{
-		registrationSpec: registrationSpec{
-			Name:        name,
-			File:        file,
-			Method:      method,
-			Description: description,
-		},
-	}
-}
-
-// collectorRuntimeRegistrySpecs 从 Collector 注册规格派生运行时清单。
-func collectorRuntimeRegistrySpecs() []runtimeRegistrySpec {
-	items := collectorx.RuntimeRegistrySpecs()
-	specs := make([]runtimeRegistrySpec, 0, len(items))
-	for _, item := range items {
-		specs = append(specs, runtimeRegistrySpecFromFields(item.Name, item.File, item.Method, item.Description))
-	}
-	return specs
-}
-
-// authRuntimeRegistrySpecs 从认证业务注册规格派生运行时清单。
-func authRuntimeRegistrySpecs() []runtimeRegistrySpec {
-	items := authlogic.RuntimeRegistrySpecs()
-	specs := make([]runtimeRegistrySpec, 0, len(items))
-	for _, item := range items {
-		specs = append(specs, runtimeRegistrySpecFromFields(item.Name, item.File, item.Method, item.Description))
-	}
-	return specs
-}
-
-// collectorDefaultProcessorRuntimeRegistrySpecs 从默认 Processor 注册规格派生运行时清单。
-func collectorDefaultProcessorRuntimeRegistrySpecs() []runtimeRegistrySpec {
-	items := collectorx.DefaultProcessorRuntimeRegistrySpecs()
-	specs := make([]runtimeRegistrySpec, 0, len(items))
-	for _, item := range items {
-		specs = append(specs, runtimeRegistrySpecFromFields(item.Name, item.File, item.Method, item.Description))
-	}
-	return specs
-}
-
-// configRuntimeRegistrySpecs 从运行期配置注册规格派生运行时清单。
-func configRuntimeRegistrySpecs() []runtimeRegistrySpec {
-	items := configlogic.RuntimeRegistrySpecs()
-	specs := make([]runtimeRegistrySpec, 0, len(items))
-	for _, item := range items {
-		specs = append(specs, runtimeRegistrySpecFromFields(item.Name, item.File, item.Method, item.Description))
-	}
-	return specs
-}
-
-// cacheRuntimeRegistrySpecs 从通用缓存保护注册规格派生运行时清单。
-func cacheRuntimeRegistrySpecs() []runtimeRegistrySpec {
-	items := corelogic.RuntimeRegistrySpecs()
-	specs := make([]runtimeRegistrySpec, 0, len(items))
-	for _, item := range items {
-		specs = append(specs, runtimeRegistrySpecFromFields(item.Name, item.File, item.Method, item.Description))
-	}
-	return specs
 }
 
 // defaultRouteModules 返回项目前台 API 内置 HTTP 路由模块集合。

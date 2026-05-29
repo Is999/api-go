@@ -44,6 +44,8 @@ func TestRouteMetaAccessBoundaries(t *testing.T) {
 		string(UserProfile.Alias):              RouteAccessAuth,
 		string(SystemConfigReloadStatus.Alias): RouteAccessInternal,
 		string(SystemConfigReloadRun.Alias):    RouteAccessInternal,
+		string(SystemDocsFile.Alias):           RouteAccessInternal,
+		string(SystemDocsNestedFile.Alias):     RouteAccessInternal,
 	}
 	got := routeMetaAccessByAlias()
 	for alias, access := range want {

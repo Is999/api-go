@@ -25,6 +25,9 @@ func TestBuiltinRouteModuleSpecsValid(t *testing.T) {
 		if strings.TrimSpace(spec.Name) == "" || spec.File == "" || spec.Method == "" || spec.Description == "" {
 			t.Fatalf("route module spec has empty field: %+v", spec)
 		}
+		if !strings.HasPrefix(spec.File, "internal/handler/") || !strings.HasSuffix(spec.File, "/routes.go") || strings.Contains(spec.File, " + ") {
+			t.Fatalf("route module spec file invalid: %+v", spec)
+		}
 		if spec.Routes == nil {
 			t.Fatalf("route module spec routes missing: %+v", spec)
 		}

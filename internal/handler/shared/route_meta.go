@@ -55,11 +55,17 @@ var (
 
 	// UserProfile 表示当前用户资料路由。
 	UserProfile = newRouteMeta(routealias.UserProfile, RouteAccessAuth, "获取当前用户资料")
+	// UserRuntimeSync 表示内网同步前台用户运行态缓存。
+	UserRuntimeSync = newRouteMeta(routealias.UserRuntimeSync, RouteAccessInternal, "内网同步前台用户运行态缓存")
 
 	// SystemConfigReloadStatus 表示内网配置热加载状态查询路由。
 	SystemConfigReloadStatus = newRouteMeta(routealias.SystemConfigReloadStatus, RouteAccessInternal, "内网查询配置热加载状态")
 	// SystemConfigReloadRun 表示内网手动触发配置热加载路由。
 	SystemConfigReloadRun = newRouteMeta(routealias.SystemConfigReloadRun, RouteAccessInternal, "内网手动触发配置热加载")
+	// SystemDocsFile 表示内网读取 API 接口文档二级资源。
+	SystemDocsFile = newRouteMeta(routealias.SystemDocsFile, RouteAccessInternal, "内网读取API接口文档二级资源")
+	// SystemDocsNestedFile 表示内网读取 API 接口文档三级资源。
+	SystemDocsNestedFile = newRouteMeta(routealias.SystemDocsNestedFile, RouteAccessInternal, "内网读取API接口文档三级资源")
 )
 
 // DefaultRouteMetas 返回内置路由元数据集合，供测试和文档防漂移复用。

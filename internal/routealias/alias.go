@@ -31,6 +31,8 @@ const (
 const (
 	// UserProfile 表示当前用户资料路由别名。
 	UserProfile Alias = "user.profile"
+	// UserRuntimeSync 表示内网同步前台用户运行态缓存路由别名。
+	UserRuntimeSync Alias = "user.runtime.sync"
 )
 
 const (
@@ -38,4 +40,8 @@ const (
 	SystemConfigReloadStatus Alias = "system.config_reload.status"
 	// SystemConfigReloadRun 表示内网手动触发配置热加载路由别名。
 	SystemConfigReloadRun Alias = "system.config_reload.run"
+	// SystemDocsFile 表示内网读取 API 接口文档二级资源路由别名。
+	SystemDocsFile Alias = "system.docs.file"
+	// SystemDocsNestedFile 表示内网读取 API 接口文档三级资源路由别名。
+	SystemDocsNestedFile Alias = "system.docs.nested_file"
 )

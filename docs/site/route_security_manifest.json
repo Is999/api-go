@@ -143,6 +143,19 @@
       "documentPath": "docs/site/接口文档/前台系统/用户接口.md"
     },
     {
+      "alias": "user.runtime.sync",
+      "method": "POST",
+      "path": "/internal/users/:id/runtime-sync",
+      "access": "internal",
+      "chain": "internal",
+      "describe": "内网同步前台用户运行态缓存",
+      "requestSign": [],
+      "requestCipher": [],
+      "responseSign": [],
+      "responseCipher": [],
+      "documentPath": "docs/site/接口文档/前台系统/用户接口.md"
+    },
+    {
       "alias": "system.config_reload.status",
       "method": "GET",
       "path": "/internal/system/config-reload/status",
@@ -162,6 +175,32 @@
       "access": "internal",
       "chain": "internal",
       "describe": "内网手动触发配置热加载",
+      "requestSign": [],
+      "requestCipher": [],
+      "responseSign": [],
+      "responseCipher": [],
+      "documentPath": "docs/site/接口文档/前台系统/系统接口.md"
+    },
+    {
+      "alias": "system.docs.file",
+      "method": "GET",
+      "path": "/internal/docs/:path/:file",
+      "access": "internal",
+      "chain": "internal",
+      "describe": "内网读取API接口文档二级资源",
+      "requestSign": [],
+      "requestCipher": [],
+      "responseSign": [],
+      "responseCipher": [],
+      "documentPath": "docs/site/接口文档/前台系统/系统接口.md"
+    },
+    {
+      "alias": "system.docs.nested_file",
+      "method": "GET",
+      "path": "/internal/docs/:path/:sub/:file",
+      "access": "internal",
+      "chain": "internal",
+      "describe": "内网读取API接口文档三级资源",
       "requestSign": [],
       "requestCipher": [],
       "responseSign": [],

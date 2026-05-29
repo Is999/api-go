@@ -109,9 +109,9 @@ collector:
     consumer: "api"
     max_len: 100000
 
-# 运维级接口保护；配置热加载接口只允许内网来源并必须携带 X-Ops-Token。
+# 运维级接口保护；内网热加载和运行态同步接口必须携带 X-Ops-Token。
 ops:
-  # 生产环境必须通过密钥管理注入强随机令牌，留空会拒绝访问配置热加载接口。
+  # 生产环境必须通过密钥管理注入强随机令牌，留空会拒绝访问运维接口。
   config_reload_token: ""
   # 可选内网 IP 或 CIDR 白名单，留空表示允许本机、私有地址和链路本地地址。
   config_reload_allowed_ips: []

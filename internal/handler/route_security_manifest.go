@@ -1,14 +1,9 @@
 package handler
 
 import (
-	"strings"
-
 	"api/internal/handler/shared"
 	"api/internal/middleware"
-	"api/internal/routealias"
 	"api/internal/security"
-
-	"github.com/Is999/go-utils/errors"
 )
 
 // RouteSecurityManifestItem 描述前后端同步安全策略所需的单路由清单项。
@@ -51,96 +46,6 @@ func DefaultRouteSecurityManifest() []RouteSecurityManifestItem {
 	return items
 }
 
-// ValidateDefaultRouteSecurityManifest 校验路由、链路和字段级安全策略没有漂移。
-func ValidateDefaultRouteSecurityManifest() error {
-	items := DefaultRouteSecurityManifest()
-	if len(items) != len(DefaultRouteContracts()) {
-		return errors.Errorf("路由安全清单数量不一致 manifest=%d contracts=%d", len(items), len(DefaultRouteContracts()))
-	}
-	securityByAlias := defaultRouteSecurityContractsByAlias()
-	seenRoutes := make(map[string]struct{}, len(items))
-	seenSecurityAliases := make(map[string]struct{}, len(securityByAlias))
-	for _, item := range items {
-		alias := strings.TrimSpace(string(item.Alias))
-		if alias == "" || item.Method == "" || item.Path == "" || item.Access == "" || item.Chain == "" || item.DocumentPath == "" {
-			return errors.Errorf("路由安全清单字段不完整: %+v", item)
-		}
-		if _, ok := securityByAlias[alias]; !ok {
-			return errors.Errorf("路由安全清单缺少安全链路契约 alias=%s", alias)
-		}
-		seenSecurityAliases[alias] = struct{}{}
-		routeKey := securityManifestRouteKey(item.Method, item.Path)
-		if _, ok := seenRoutes[routeKey]; ok {
-			return errors.Errorf("路由安全清单重复声明 route=%s", routeKey)
-		}
-		seenRoutes[routeKey] = struct{}{}
-		if err := validateRouteSecurityManifestItem(item); err != nil {
-			return errors.Tag(err)
-		}
-	}
-	for alias := range securityByAlias {
-		if _, ok := seenSecurityAliases[alias]; !ok {
-			return errors.Errorf("路由安全清单未覆盖安全链路契约 alias=%s", alias)
-		}
-	}
-	for alias := range security.RouteSecurityPolicies {
-		if _, ok := seenSecurityAliases[string(alias)]; !ok {
-			return errors.Errorf("路由安全策略未进入清单 alias=%s", alias)
-		}
-	}
-	return nil
-}
-
-// validateRouteSecurityManifestItem 校验单条路由清单的安全链路与策略声明是否匹配。
-func validateRouteSecurityManifestItem(item RouteSecurityManifestItem) error {
-	alias := string(item.Alias)
-	hasPolicy := hasExplicitRouteSecurityPolicy(alias)
-	policyEmpty := routeSecurityManifestPolicyEmpty(item)
-	switch item.Chain {
-	case RouteSecurityNone:
-		if hasPolicy {
-			return errors.Errorf("无安全链路路由不能声明前台安全策略 alias=%s", alias)
-		}
-	case RouteSecurityInternal:
-		if !hasPolicy {
-			return errors.Errorf("内网路由必须显式声明空安全策略 alias=%s", alias)
-		}
-		if !policyEmpty {
-			return errors.Errorf("内网路由必须跳过前台签名加密策略 alias=%s", alias)
-		}
-	case RouteSecurityPublic, RouteSecurityAuth:
-		if !hasPolicy {
-			return errors.Errorf("前台路由必须显式声明安全策略 alias=%s", alias)
-		}
-	default:
-		return errors.Errorf("未知路由安全链路 alias=%s chain=%s", alias, item.Chain)
-	}
-	return validateRouteSecurityManifestFields(item)
-}
-
-// validateRouteSecurityManifestFields 校验字段级签名和加密策略不使用全量处理且数量受控。
-func validateRouteSecurityManifestFields(item RouteSecurityManifestItem) error {
-	groups := []struct {
-		label     string   // 字段组名称，用于错误上下文
-		fields    []string // 当前字段组声明的字段路径
-		forbidden string   // 当前字段组禁止使用的全量处理标记
-	}{
-		{label: "request sign", fields: item.RequestSign, forbidden: security.SignFieldAll},
-		{label: "request cipher", fields: item.RequestCipher, forbidden: security.CipherWholeBody},
-		{label: "response sign", fields: item.ResponseSign, forbidden: security.SignFieldAll},
-		{label: "response cipher", fields: item.ResponseCipher, forbidden: security.CipherWholeBody},
-	}
-	for _, group := range groups {
-		if hasRouteSecurityManifestField(group.fields, group.forbidden) {
-			return errors.Errorf("路由安全清单禁止全量处理 alias=%s group=%s field=%s", item.Alias, group.label, group.forbidden)
-		}
-		if err := security.ValidateSecurityFieldCount(group.fields, group.label); err != nil {
-			return errors.Wrapf(err, "路由安全清单字段数量非法 alias=%s group=%s", item.Alias, group.label)
-		}
-	}
-	return nil
-}
-
 // defaultRouteSecurityContractsByAlias 按路由别名索引默认安全链路契约。
 func defaultRouteSecurityContractsByAlias() map[string]RouteSecurityContract {
 	result := make(map[string]RouteSecurityContract, len(DefaultRouteSecurityContracts()))
@@ -158,33 +63,4 @@ func cloneSecurityFields(fields []string) []string {
 	result := make([]string, len(fields))
 	copy(result, fields)
 	return result
-}
-
-// hasExplicitRouteSecurityPolicy 判断路由是否在前台安全策略表中显式声明。
-func hasExplicitRouteSecurityPolicy(alias string) bool {
-	_, ok := security.RouteSecurityPolicies[routealias.Alias(alias)]
-	return ok
-}
-
-// routeSecurityManifestPolicyEmpty 判断路由清单是否未声明任何前台签名或加密字段。
-func routeSecurityManifestPolicyEmpty(item RouteSecurityManifestItem) bool {
-	return len(item.RequestSign) == 0 &&
-		len(item.RequestCipher) == 0 &&
-		len(item.ResponseSign) == 0 &&
-		len(item.ResponseCipher) == 0
-}
-
-// hasRouteSecurityManifestField 判断字段组是否包含指定保留标记。
-func hasRouteSecurityManifestField(fields []string, want string) bool {
-	for _, field := range fields {
-		if strings.EqualFold(strings.TrimSpace(field), want) {
-			return true
-		}
-	}
-	return false
-}
-
-// securityManifestRouteKey 生成方法和路径维度的唯一键，用于重复路由检测。
-func securityManifestRouteKey(method string, path string) string {
-	return strings.ToUpper(strings.TrimSpace(method)) + " " + strings.TrimSpace(path)
 }

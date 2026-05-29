@@ -12,13 +12,6 @@ import (
 	"api/internal/security"
 )
 
-// TestDefaultRouteSecurityManifestValid 确保前后端同步清单可通过完整性校验。
-func TestDefaultRouteSecurityManifestValid(t *testing.T) {
-	if err := ValidateDefaultRouteSecurityManifest(); err != nil {
-		t.Fatalf("ValidateDefaultRouteSecurityManifest() error = %v", err)
-	}
-}
-
 // TestDefaultRouteSecurityManifestMatchesRouteContracts 确保清单逐条覆盖真实路由契约。
 func TestDefaultRouteSecurityManifestMatchesRouteContracts(t *testing.T) {
 	manifest := DefaultRouteSecurityManifest()

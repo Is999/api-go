@@ -23,7 +23,7 @@ const (
 	HeaderOpsToken = "X-Ops-Token"
 )
 
-// OpsMiddleware 保护配置热加载等运维级接口。
+// OpsMiddleware 保护配置热加载、运行态同步等运维级接口。
 type OpsMiddleware struct {
 	svc *svc.ServiceContext // 运维保护依赖的服务上下文
 }
@@ -52,24 +52,24 @@ func (m *OpsMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// validateConfigReloadOps 校验配置热加载接口的运维访问边界。
+// validateConfigReloadOps 校验运维接口的访问边界。
 func validateConfigReloadOps(r *http.Request, cfg config.OpsConfig) error {
 	token := strings.TrimSpace(cfg.ConfigReloadToken)
 	if token == "" {
-		return errors.Errorf("配置热加载运维令牌未配置")
+		return errors.Errorf("运维接口令牌未配置")
 	}
 	got := strings.TrimSpace(r.Header.Get(HeaderOpsToken))
 	if got == "" {
 		return errors.Errorf("缺少请求头%s", HeaderOpsToken)
 	}
 	if subtle.ConstantTimeCompare([]byte(got), []byte(token)) != 1 {
-		return errors.Errorf("配置热加载运维令牌不匹配")
+		return errors.Errorf("运维接口令牌不匹配")
 	}
 	if forwardedHeaderHasPublicAddr(r) {
-		return errors.Errorf("配置热加载转发来源包含公网IP")
+		return errors.Errorf("运维接口转发来源包含公网IP")
 	}
 	if !clientIPAllowed(utils.ClientIP(r), cfg.ConfigReloadAllowedIPs) {
-		return errors.Errorf("配置热加载来源IP非内网或未命中白名单")
+		return errors.Errorf("运维接口来源IP非内网或未命中白名单")
 	}
 	return nil
 }

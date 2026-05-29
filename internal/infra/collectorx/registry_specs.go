@@ -27,18 +27,3 @@ var runtimeRegistrySpecs = []RuntimeRegistrySpec{
 func RuntimeRegistrySpecs() []RuntimeRegistrySpec {
 	return append([]RuntimeRegistrySpec(nil), runtimeRegistrySpecs...)
 }
-
-// DefaultProcessorRuntimeRegistrySpecs 返回内置 Processor 对应的运行时扩展规格。
-func DefaultProcessorRuntimeRegistrySpecs() []RuntimeRegistrySpec {
-	processorSpecs := DefaultProcessorSpecs()
-	specs := make([]RuntimeRegistrySpec, 0, len(processorSpecs))
-	for _, processorSpec := range processorSpecs {
-		specs = append(specs, RuntimeRegistrySpec{
-			Name:        processorSpec.Name,
-			File:        processorSpec.File,
-			Method:      processorSpec.Method,
-			Description: processorSpec.Description,
-		})
-	}
-	return specs
-}

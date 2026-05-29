@@ -1,0 +1,78 @@
+package docs
+
+import (
+	"io/fs"
+	"net/http"
+	"net/url"
+	"os"
+	pathpkg "path"
+	"strings"
+)
+
+const (
+	internalDocsPathPrefix  = "/internal/docs"    // API 内网文档资源路由前缀
+	internalDocsDefaultPath = "接口文档/前台系统/系统接口.md" // 直接访问入口时返回的默认文档
+	docsPageCacheHeader     = "no-cache"          // Markdown 文档不做强缓存
+)
+
+// Handler 返回 API 内网文档资源处理器；调用方仍需在路由层挂 OpsMiddleware。
+func Handler() http.HandlerFunc {
+	var fileServer http.Handler
+	var initErr error
+	if _, err := os.Stat("docs/site"); err == nil {
+		fileServer = http.FileServer(http.Dir("docs/site"))
+	} else {
+		sub, err := fs.Sub(FS, "site")
+		if err != nil {
+			initErr = err
+		} else {
+			fileServer = http.FileServer(http.FS(sub))
+		}
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		if initErr != nil {
+			http.Error(w, "文档资源初始化失败", http.StatusInternalServerError)
+			return
+		}
+		docsPath, ok := internalDocsAssetPath(r.URL.Path)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+
+		w.Header().Set("Cache-Control", docsPageCacheHeader)
+		req := r.Clone(r.Context())
+		req.URL.Path = "/" + docsPath
+		req.URL.RawPath = ""
+		fileServer.ServeHTTP(w, req)
+	}
+}
+
+// internalDocsAssetPath 清洗内网文档路径，并只放行可展示给后台的接口文档。
+func internalDocsAssetPath(requestPath string) (string, bool) {
+	if text, err := url.PathUnescape(strings.TrimSpace(requestPath)); err == nil {
+		requestPath = text
+	}
+	cleanPath := pathpkg.Clean("/" + strings.TrimLeft(strings.TrimSpace(requestPath), "/"))
+	if cleanPath == internalDocsPathPrefix || cleanPath == internalDocsPathPrefix+"/" {
+		return internalDocsDefaultPath, true
+	}
+	if !strings.HasPrefix(cleanPath, internalDocsPathPrefix+"/") {
+		return "", false
+	}
+	docsPath := strings.TrimPrefix(cleanPath, internalDocsPathPrefix+"/")
+	if !allowedInternalDocsAsset(docsPath) {
+		return "", false
+	}
+	return docsPath, true
+}
+
+// allowedInternalDocsAsset 限定后台可代理的 API 文档范围，避免暴露角色文档和安全清单。
+func allowedInternalDocsAsset(docsPath string) bool {
+	docsPath = strings.Trim(strings.TrimSpace(docsPath), "/")
+	if docsPath == "接口文档/接口文档统一规范.md" {
+		return true
+	}
+	return strings.HasPrefix(docsPath, "接口文档/前台系统/") && strings.HasSuffix(docsPath, ".md")
+}

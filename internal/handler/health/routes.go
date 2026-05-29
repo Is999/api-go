@@ -6,17 +6,14 @@ import (
 	"api/internal/handler/shared"
 	"api/internal/middleware"
 	"api/internal/svc"
-
-	"github.com/zeromicro/go-zero/rest"
 )
 
 // RouteSpecs 返回基础健康检查路由规格。
 func RouteSpecs() []shared.RouteSpec {
 	return []shared.RouteSpec{
-		// GET /api/live：存活检查，不访问外部依赖。
 		{
 			Method:        http.MethodGet,
-			Path:          "/api/live",
+			Path:          "/api/live", // 存活检查，不访问外部依赖。
 			Meta:          shared.HealthLive,
 			DocumentPath:  shared.RouteDocHealth,
 			Chain:         shared.RouteSecurityNone,
@@ -25,10 +22,9 @@ func RouteSpecs() []shared.RouteSpec {
 				return LiveHandler(svcCtx)
 			},
 		},
-		// GET /api/ready：就绪检查，探测 MySQL/Redis 等关键依赖。
 		{
 			Method:        http.MethodGet,
-			Path:          "/api/ready",
+			Path:          "/api/ready", // 就绪检查，探测 MySQL/Redis 等关键依赖。
 			Meta:          shared.HealthReady,
 			DocumentPath:  shared.RouteDocHealth,
 			Chain:         shared.RouteSecurityNone,
@@ -37,10 +33,9 @@ func RouteSpecs() []shared.RouteSpec {
 				return ReadyHandler(svcCtx)
 			},
 		},
-		// GET /api/metrics：Prometheus 指标抓取入口。
 		{
 			Method:        http.MethodGet,
-			Path:          "/api/metrics",
+			Path:          "/api/metrics", // Prometheus 指标抓取入口。
 			Meta:          shared.HealthMetrics,
 			DocumentPath:  shared.RouteDocHealth,
 			Chain:         shared.RouteSecurityNone,
@@ -50,10 +45,4 @@ func RouteSpecs() []shared.RouteSpec {
 			},
 		},
 	}
-}
-
-// RegisterRoutes 注册基础健康检查路由。
-func RegisterRoutes(server *rest.Server, serverCtx *svc.ServiceContext) {
-	// 健康检查和指标入口供负载均衡、容器探针和监控抓取使用，不校验前台 token。
-	shared.AddRouteSpecs(server, serverCtx, nil, RouteSpecs())
 }

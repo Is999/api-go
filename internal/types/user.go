@@ -14,3 +14,19 @@ type UserProfile struct {
 	CreatedAt   string `json:"createdAt"`   // 创建时间
 	UpdatedAt   string `json:"updatedAt"`   // 更新时间
 }
+
+// UserRuntimeSyncReq 表示内网同步单个前台用户运行态缓存的请求。
+type UserRuntimeSyncReq struct {
+	ID       int64  `path:"id" json:"id,optional" form:"id,optional"` // 用户 ID
+	Profile  bool   `json:"profile,optional"`                         // 是否删除用户资料缓存
+	Sessions bool   `json:"sessions,optional"`                        // 是否失效该用户全部登录态
+	Reason   string `json:"reason,optional"`                          // 触发同步的后台操作原因
+}
+
+// UserRuntimeSyncResp 表示前台用户运行态同步结果。
+type UserRuntimeSyncResp struct {
+	UserID                  int64  `json:"userId"`                  // 用户 ID
+	ProfileCacheInvalidated bool   `json:"profileCacheInvalidated"` // 是否已处理资料缓存
+	SessionsInvalidated     bool   `json:"sessionsInvalidated"`     // 是否已处理全部登录态
+	Reason                  string `json:"reason"`                  // 后台传入的同步原因
+}
