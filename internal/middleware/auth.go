@@ -95,12 +95,12 @@ func (m *AuthMiddleware) Handle(next http.HandlerFunc, alias RouteAlias) http.Ha
 
 		user, err := userlogic.NewUserLogic(ctx, m.svc).GetActiveUserForAuth(identity.UserID)
 		if err != nil {
-			if errors.Is(err, userlogic.ErrAPIUserDisabled) {
+			if errors.Is(err, userlogic.ErrUserDisabled) {
 				failUnauthorized(codes.UserDisabled, i18n.MsgKeyUserDisabled, err, authlogic.AuthEventReasonUserDisabled, identity)
 				return
 			}
 			reason := authlogic.AuthEventReasonTokenInvalid
-			if errors.Is(err, userlogic.ErrAPIUserNotFound) {
+			if errors.Is(err, userlogic.ErrUserNotFound) {
 				reason = authlogic.AuthEventReasonUserNotFound
 			}
 			failUnauthorized(codes.TokenInvalid, i18n.MsgKeyTokenInvalid, err, reason, identity)

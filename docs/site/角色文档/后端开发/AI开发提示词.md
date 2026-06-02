@@ -30,7 +30,7 @@
 8. 接口按能力命名，优先使用 `Reader`、`Writer`、`Repository`、`Provider` 等自然后缀；只有一个实现且无替换点时不要强行抽接口。
 9. Redis Key 必须集中定义，禁止在业务代码临时拼接高基数通配 Key。
 10. 目录布局必须符合当前项目分层，保持 `handler` / `logic` / `model` / `svc` / `types` 等边界清晰。
-11. 前台业务表默认使用 `api_` 前缀；运行期系统配置表固定使用 `sys_config`，不得新增 `api_sys_config`。
+11. 前台业务表默认使用清晰业务名，例如用户表为 `user`；只有特殊业务边界需要时才使用业务前缀。运行期系统配置表固定使用 `sys_config`，不得新增 `api_sys_config`。
 12. 业务读取运行期系统配置优先声明 `SysConfigKey` 并使用类型化 getter，避免散落字符串 uuid 和类型断言。
 
 三、中文注释

@@ -7,6 +7,7 @@ import (
 	"github.com/Is999/go-utils/errors"
 
 	"gorm.io/gorm"
+	"gorm.io/plugin/dbresolver"
 )
 
 // insertSchemaMigrationSQL 登记已执行迁移版本，参数必须使用绑定值。
@@ -30,7 +31,7 @@ func (s *GormMigrationStore) EnsureSchema(ctx context.Context, schemaSQL string)
 	if strings.TrimSpace(schemaSQL) == "" {
 		return errors.Errorf("schema_migrations DDL 为空")
 	}
-	if err := s.db.WithContext(ctx).Exec(schemaSQL).Error; err != nil {
+	if err := s.db.WithContext(ctx).Clauses(dbresolver.Write).Exec(schemaSQL).Error; err != nil {
 		return errors.Wrap(err, "创建 schema_migrations 表失败")
 	}
 	return nil
@@ -43,6 +44,7 @@ func (s *GormMigrationStore) AppliedMigrations(ctx context.Context) (map[string]
 	}
 	var rows []AppliedMigration
 	err := s.db.WithContext(ctx).
+		Clauses(dbresolver.Write).
 		Table("schema_migrations").
 		Select("version, name, asset, checksum").
 		Scan(&rows).Error
@@ -64,7 +66,7 @@ func (s *GormMigrationStore) ExecuteMigration(ctx context.Context, migration Mig
 	if s == nil || s.db == nil {
 		return errors.Errorf("数据库迁移 GORM 连接为空")
 	}
-	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return s.db.WithContext(ctx).Clauses(dbresolver.Write).Transaction(func(tx *gorm.DB) error {
 		statements := splitMigrationStatements(migration.SQL)
 		if len(statements) == 0 {
 			return errors.Errorf("数据库迁移 SQL 为空 version=%s name=%s asset=%s", migration.Version, migration.Name, migration.Asset)

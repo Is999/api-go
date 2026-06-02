@@ -8,6 +8,7 @@ import (
 
 	codes "api/common/codes"
 	i18n "api/common/i18n"
+	"api/common/idgen"
 	keys "api/common/rediskeys"
 	"api/internal/config"
 	corelogic "api/internal/logic"
@@ -31,11 +32,15 @@ const (
 )
 
 // 认证入口限流动作名称。
-// 认证入口限流动作名称。
 const (
 	authRateLimitActionLoginIP       = "login_ip"       // 登录 IP 维度
 	authRateLimitActionLoginUsername = "login_username" // 登录用户名维度
 	authRateLimitActionRegisterIP    = "register_ip"    // 注册 IP 维度
+)
+
+// 前台用户 ID 生成命名空间。
+const (
+	userIDNamespace = "api.user" // API 注册链路使用的雪花 ID 命名空间
 )
 
 // 批量会话操作保护边界。
@@ -78,7 +83,7 @@ func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
 		}
 		return authRateLimitResult(err)
 	}
-	exists, err := model.FindAPIUserByUsername(l.Svc.WriteDB(svc.DatabaseMain), req.Username)
+	exists, err := model.FindUserByUsername(l.Svc.WriteDB(svc.DatabaseMain), req.Username)
 	if err != nil {
 		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Register 查询用户名[%s]", req.Username).ToBizResult()
 	}
@@ -91,14 +96,20 @@ func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
 	if err != nil {
 		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Register 生成密码哈希失败").ToBizResult()
 	}
+	userID, err := idgen.NextID(userIDNamespace)
+	if err != nil {
+		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Register 生成用户ID失败").ToBizResult()
+	}
 	now := time.Now()
-	user := &model.APIUser{
+	user := &model.User{
+		ID:           userID,
+		ShardNo:      idgen.ShardNo(userID),
 		Username:     strings.TrimSpace(req.Username),
 		Nickname:     strings.TrimSpace(req.Nickname),
 		PasswordHash: string(passwordHash),
 		Email:        strings.TrimSpace(req.Email),
 		Phone:        strings.TrimSpace(req.Phone),
-		Status:       model.APIUserStatusEnabled,
+		Status:       model.UserStatusEnabled,
 		LastLoginAt:  now,
 		LastLoginIP:  l.ClientIP(),
 		CreatedAt:    now,
@@ -107,7 +118,7 @@ func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
 	if user.Nickname == "" {
 		user.Nickname = user.Username
 	}
-	if err = model.CreateAPIUser(l.Svc.WriteDB(svc.DatabaseMain), user); err != nil {
+	if err = model.CreateUser(l.Svc.WriteDB(svc.DatabaseMain), user); err != nil {
 		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Register 创建用户[%s]", req.Username).ToBizResult()
 	}
 	created, err := l.createSessionWithJTI(user)
@@ -153,7 +164,7 @@ func (l *AuthLogic) Login(req *types.LoginReq) *types.BizResult {
 		}
 		return authRateLimitResult(err)
 	}
-	user, err := model.FindAPIUserByUsername(l.Svc.WriteDB(svc.DatabaseMain), req.Username)
+	user, err := model.FindUserByUsername(l.Svc.WriteDB(svc.DatabaseMain), req.Username)
 	if err != nil {
 		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Login 查询用户[%s]", req.Username).ToBizResult()
 	}
@@ -174,7 +185,7 @@ func (l *AuthLogic) Login(req *types.LoginReq) *types.BizResult {
 		})
 		return invalidPasswordResult(errors.Errorf("AuthLogic.Login 用户[%s]密码错误", req.Username))
 	}
-	if user.Status != model.APIUserStatusEnabled {
+	if user.Status != model.UserStatusEnabled {
 		l.emitAuthEvent(AuthEventInput{
 			Action:   AuthEventActionLoginFailed,
 			UserID:   user.ID,
@@ -186,7 +197,7 @@ func (l *AuthLogic) Login(req *types.LoginReq) *types.BizResult {
 			WithError(errors.Errorf("AuthLogic.Login 用户[%s]已禁用", req.Username))
 	}
 	now := time.Now()
-	if err = model.UpdateAPIUser(l.Svc.WriteDB(svc.DatabaseMain), user.ID, map[string]any{
+	if err = model.UpdateUser(l.Svc.WriteDB(svc.DatabaseMain), user.ID, map[string]any{
 		"last_login_at": now,
 		"last_login_ip": l.ClientIP(),
 		"updated_at":    now,
@@ -224,7 +235,7 @@ func (l *AuthLogic) Refresh() *types.BizResult {
 	}
 	user, err := userlogic.NewUserLogic(l.Ctx, l.Svc).GetActiveUserForAuth(ctxUser.ID)
 	if err != nil {
-		if errors.Is(err, userlogic.ErrAPIUserNotFound) {
+		if errors.Is(err, userlogic.ErrUserNotFound) {
 			return types.NewBizResult(codes.TokenInvalid).
 				SetI18nMessage(i18n.MsgKeyTokenInvalid).
 				WithError(corelogic.WrapLogicError(err, "AuthLogic.Refresh 用户ID[%d]不存在", ctxUser.ID))
@@ -315,7 +326,7 @@ type createdSession struct {
 }
 
 // createSessionWithJTI 生成 JWT、写入 Redis 会话并返回内部 jti。
-func (l *AuthLogic) createSessionWithJTI(user *model.APIUser) (*createdSession, error) {
+func (l *AuthLogic) createSessionWithJTI(user *model.User) (*createdSession, error) {
 	if user == nil {
 		return nil, errors.New("用户为空")
 	}
@@ -351,7 +362,7 @@ func (l *AuthLogic) createSessionWithJTI(user *model.APIUser) (*createdSession, 
 }
 
 // rotateSession 创建新会话后删除旧会话，删除失败时回滚新会话。
-func (l *AuthLogic) rotateSession(user *model.APIUser, oldJTI string) (*types.AuthTokenResp, error) {
+func (l *AuthLogic) rotateSession(user *model.User, oldJTI string) (*types.AuthTokenResp, error) {
 	oldJTI = strings.TrimSpace(oldJTI)
 	if user == nil {
 		return nil, errors.New("用户为空")
@@ -371,7 +382,7 @@ func (l *AuthLogic) rotateSession(user *model.APIUser, oldJTI string) (*types.Au
 }
 
 // generateJWT 生成包含用户、站点和 jti 信息的访问令牌。
-func (l *AuthLogic) generateJWT(user *model.APIUser, jti string) (string, int64, error) {
+func (l *AuthLogic) generateJWT(user *model.User, jti string) (string, int64, error) {
 	cfg := l.Svc.CurrentConfig()
 	now := time.Now()
 	expiresAt := now.Add(time.Duration(cfg.JwtExpiresIn) * time.Second).Unix()

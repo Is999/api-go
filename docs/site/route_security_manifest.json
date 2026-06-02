@@ -169,6 +169,19 @@
       "documentPath": "docs/site/接口文档/前台系统/系统接口.md"
     },
     {
+      "alias": "system.config_reload.items",
+      "method": "GET",
+      "path": "/internal/system/config-reload/items",
+      "access": "internal",
+      "chain": "internal",
+      "describe": "内网查询运行态配置项",
+      "requestSign": [],
+      "requestCipher": [],
+      "responseSign": [],
+      "responseCipher": [],
+      "documentPath": "docs/site/接口文档/前台系统/系统接口.md"
+    },
+    {
       "alias": "system.config_reload.run",
       "method": "POST",
       "path": "/internal/system/config-reload/run",

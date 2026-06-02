@@ -3,6 +3,7 @@ package types
 // UserProfile 表示前台用户公开资料。
 type UserProfile struct {
 	ID          int64  `json:"id"`          // 用户 ID
+	ShardNo     int    `json:"shardNo"`     // 取模分片
 	Username    string `json:"username"`    // 用户名
 	Nickname    string `json:"nickname"`    // 昵称
 	Email       string `json:"email"`       // 邮箱

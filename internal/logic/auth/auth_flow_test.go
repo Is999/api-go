@@ -55,15 +55,15 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 	loginJTI := requireSessionToken(t, svcCtx, rds, loginResp.User.ID, loginResp.Token)
 	requireSessionIndexMembers(t, svcCtx, rds, loginResp.User.ID, []string{registerJTI, loginJTI})
 
-	user, err := model.FindAPIUserByUsername(svcCtx.WriteDB(svc.DatabaseMain), "demo_user")
+	user, err := model.FindUserByUsername(svcCtx.WriteDB(svc.DatabaseMain), "demo_user")
 	if err != nil {
-		t.Fatalf("FindAPIUserByUsername() error = %v", err)
+		t.Fatalf("FindUserByUsername() error = %v", err)
 	}
 	if user == nil || user.LastLoginIP != "10.0.0.9" {
 		t.Fatalf("user after login = %+v, want last_login_ip 10.0.0.9", user)
 	}
-	if err := model.UpdateAPIUser(svcCtx.WriteDB(svc.DatabaseMain), user.ID, map[string]any{"email": "changed@example.com"}); err != nil {
-		t.Fatalf("UpdateAPIUser(email) error = %v", err)
+	if err := model.UpdateUser(svcCtx.WriteDB(svc.DatabaseMain), user.ID, map[string]any{"email": "changed@example.com"}); err != nil {
+		t.Fatalf("UpdateUser(email) error = %v", err)
 	}
 
 	profileCtx := authFlowAuthenticatedContext(string(routealias.UserProfile), http.MethodGet, "/api/user/profile", "10.0.0.9", loginResp)
@@ -114,8 +114,8 @@ func newAuthFlowTestService(t *testing.T) (*svc.ServiceContext, redis.UniversalC
 	if err != nil {
 		t.Fatalf("gorm.Open(sqlite) error = %v", err)
 	}
-	if err := db.AutoMigrate(&authFlowAPIUserSQLite{}); err != nil {
-		t.Fatalf("AutoMigrate(APIUser) error = %v", err)
+	if err := db.AutoMigrate(&authFlowUserSQLite{}); err != nil {
+		t.Fatalf("AutoMigrate(User) error = %v", err)
 	}
 
 	server := miniredis.RunT(t)
@@ -163,24 +163,25 @@ func newAuthFlowTestService(t *testing.T) (*svc.ServiceContext, redis.UniversalC
 	return svcCtx, client, &seen
 }
 
-// authFlowAPIUserSQLite 使用 SQLite 自增主键创建测试表，业务读写仍走 model.APIUser。
-type authFlowAPIUserSQLite struct {
+// authFlowUserSQLite 使用 SQLite 创建用户表，业务读写仍走 model.User。
+type authFlowUserSQLite struct {
 	ID           int64     `gorm:"column:id;type:integer;primaryKey;autoIncrement:true"` // 主键
-	Username     string    `gorm:"column:username;type:varchar(32);not null;uniqueIndex:uk_api_user_username"`
+	ShardNo      int       `gorm:"column:shard_no;type:int;not null;default:0"`          // 取模分片
+	Username     string    `gorm:"column:username;type:varchar(32);not null;uniqueIndex:uk_user_username"`
 	Nickname     string    `gorm:"column:nickname;type:varchar(64);not null;default:''"`
 	PasswordHash string    `gorm:"column:password_hash;type:varchar(255);not null"`
-	Email        string    `gorm:"column:email;type:varchar(128);not null;default:'';index:idx_api_user_email"`
-	Phone        string    `gorm:"column:phone;type:varchar(32);not null;default:'';index:idx_api_user_phone"`
+	Email        string    `gorm:"column:email;type:varchar(128);not null;default:'';index:idx_user_email"`
+	Phone        string    `gorm:"column:phone;type:varchar(32);not null;default:'';index:idx_user_phone"`
 	Avatar       string    `gorm:"column:avatar;type:varchar(255);not null;default:''"`
-	Status       int       `gorm:"column:status;type:tinyint;not null;default:1;index:idx_api_user_status"`
+	Status       int       `gorm:"column:status;type:tinyint;not null;default:1;index:idx_user_status"`
 	LastLoginAt  time.Time `gorm:"column:last_login_at;type:timestamp"`
 	LastLoginIP  string    `gorm:"column:last_login_ip;type:varchar(45);not null;default:''"`
 	CreatedAt    time.Time `gorm:"column:created_at;type:timestamp;not null;default:CURRENT_TIMESTAMP"`
 	UpdatedAt    time.Time `gorm:"column:updated_at;type:timestamp;not null;default:CURRENT_TIMESTAMP"`
 }
 
-func (*authFlowAPIUserSQLite) TableName() string {
-	return model.TableNameAPIUser
+func (*authFlowUserSQLite) TableName() string {
+	return model.TableNameUser
 }
 
 func authFlowContext(action string, route string, method string, path string, clientIP string) context.Context {

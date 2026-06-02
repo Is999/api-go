@@ -5,15 +5,15 @@ import (
 	"testing"
 )
 
-// TestAPIUserSchemaSQL 验证前台用户表 DDL 会剥离说明头。
-func TestAPIUserSchemaSQL(t *testing.T) {
-	sql := APIUserSchemaSQL()
+// TestUserSchemaSQL 验证前台用户表 DDL 会剥离说明头。
+func TestUserSchemaSQL(t *testing.T) {
+	sql := UserSchemaSQL()
 
 	if strings.Contains(sql, "代码资产") {
-		t.Fatalf("APIUserSchemaSQL() should strip header comments: %q", sql)
+		t.Fatalf("UserSchemaSQL() should strip header comments: %q", sql)
 	}
-	if !strings.Contains(sql, "CREATE TABLE IF NOT EXISTS `api_user`") {
-		t.Fatalf("APIUserSchemaSQL() missing api_user DDL: %q", sql)
+	if !strings.Contains(sql, "CREATE TABLE IF NOT EXISTS `user`") {
+		t.Fatalf("UserSchemaSQL() missing user DDL: %q", sql)
 	}
 }
 

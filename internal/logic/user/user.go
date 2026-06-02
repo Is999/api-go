@@ -19,10 +19,10 @@ import (
 
 // 前台用户逻辑使用的哨兵错误。
 var (
-	// ErrAPIUserNotFound 表示前台用户不存在。
-	ErrAPIUserNotFound = errors.New("前台用户不存在")
-	// ErrAPIUserDisabled 表示前台用户已禁用。
-	ErrAPIUserDisabled = errors.New("前台用户已禁用")
+	// ErrUserNotFound 表示前台用户不存在。
+	ErrUserNotFound = errors.New("前台用户不存在")
+	// ErrUserDisabled 表示前台用户已禁用。
+	ErrUserDisabled = errors.New("前台用户已禁用")
 )
 
 // UserLogic 承载前台用户资料查询与缓存能力。
@@ -36,41 +36,41 @@ func NewUserLogic(ctx context.Context, svcCtx *svc.ServiceContext) *UserLogic {
 }
 
 // GetActiveUser 获取启用状态的用户实体。
-func (l *UserLogic) GetActiveUser(userID int64) (*model.APIUser, error) {
+func (l *UserLogic) GetActiveUser(userID int64) (*model.User, error) {
 	return l.getActiveUserByDB(l.Svc.ReadDB(svc.DatabaseMain), userID)
 }
 
 // GetActiveUserForAuth 获取鉴权链路用户，使用主库避免账号状态读延迟。
-func (l *UserLogic) GetActiveUserForAuth(userID int64) (*model.APIUser, error) {
+func (l *UserLogic) GetActiveUserForAuth(userID int64) (*model.User, error) {
 	return l.getActiveUserByDB(l.Svc.WriteDB(svc.DatabaseMain), userID)
 }
 
 // GetUserByID 根据用户 ID 查询用户。
-func (l *UserLogic) GetUserByID(userID int64) (*model.APIUser, error) {
+func (l *UserLogic) GetUserByID(userID int64) (*model.User, error) {
 	return l.getUserByID(l.Svc.ReadDB(svc.DatabaseMain), userID)
 }
 
 // getActiveUserByDB 使用指定数据库连接查询启用用户，调用方决定读写一致性。
-func (l *UserLogic) getActiveUserByDB(db *gorm.DB, userID int64) (*model.APIUser, error) {
+func (l *UserLogic) getActiveUserByDB(db *gorm.DB, userID int64) (*model.User, error) {
 	user, err := l.getUserByID(db, userID)
 	if err != nil {
 		return nil, errors.Tag(err)
 	}
 	if user == nil {
-		return nil, ErrAPIUserNotFound
+		return nil, ErrUserNotFound
 	}
-	if user.Status != model.APIUserStatusEnabled {
-		return nil, ErrAPIUserDisabled
+	if user.Status != model.UserStatusEnabled {
+		return nil, ErrUserDisabled
 	}
 	return user, nil
 }
 
 // getUserByID 使用指定数据库连接查询用户，便于鉴权和资料读取分离压力。
-func (l *UserLogic) getUserByID(db *gorm.DB, userID int64) (*model.APIUser, error) {
+func (l *UserLogic) getUserByID(db *gorm.DB, userID int64) (*model.User, error) {
 	if userID <= 0 {
 		return nil, nil
 	}
-	user, err := model.FindAPIUserByID(db, userID)
+	user, err := model.FindUserByID(db, userID)
 	if err != nil {
 		return nil, errors.Tag(err)
 	}
@@ -152,12 +152,13 @@ func (l *UserLogic) profileCacheTTL() int64 {
 }
 
 // BuildUserProfile 将用户实体转换为前台可展示资料。
-func BuildUserProfile(user *model.APIUser) *types.UserProfile {
+func BuildUserProfile(user *model.User) *types.UserProfile {
 	if user == nil {
 		return &types.UserProfile{}
 	}
 	return &types.UserProfile{
 		ID:          user.ID,
+		ShardNo:     user.ShardNo,
 		Username:    user.Username,
 		Nickname:    user.Nickname,
 		Email:       user.Email,

@@ -8,6 +8,7 @@ import (
 // TestInternalConfigReloadPaths 确保配置热加载只挂载内网路由前缀。
 func TestInternalConfigReloadPaths(t *testing.T) {
 	items := map[string]string{
+		"items":  InternalConfigReloadItemsPath,
 		"status": InternalConfigReloadStatusPath,
 		"run":    InternalConfigReloadRunPath,
 	}

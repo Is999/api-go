@@ -12,6 +12,8 @@ import (
 const (
 	// InternalConfigReloadStatusPath 表示内网查询配置热加载状态路由。
 	InternalConfigReloadStatusPath = "/internal/system/config-reload/status"
+	// InternalConfigReloadItemsPath 表示内网查询运行态配置项路由。
+	InternalConfigReloadItemsPath = "/internal/system/config-reload/items"
 	// InternalConfigReloadRunPath 表示内网手动触发配置热加载路由。
 	InternalConfigReloadRunPath = "/internal/system/config-reload/run"
 )
@@ -28,6 +30,17 @@ func RouteSpecs() []shared.RouteSpec {
 			Handler: func(svcCtx *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
 				opsMw := middleware.NewOpsMiddleware(svcCtx)
 				return opsMw.Handle(ConfigReloadStatusHandler(svcCtx))
+			},
+		},
+		{
+			Method:       http.MethodGet,
+			Path:         InternalConfigReloadItemsPath, // 内网查询运行态配置项。
+			Meta:         shared.SystemConfigReloadItems,
+			DocumentPath: shared.RouteDocSystem,
+			Chain:        shared.RouteSecurityInternal,
+			Handler: func(svcCtx *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
+				opsMw := middleware.NewOpsMiddleware(svcCtx)
+				return opsMw.Handle(ConfigReloadItemsHandler(svcCtx))
 			},
 		},
 		{

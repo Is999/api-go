@@ -20,8 +20,11 @@ func TestDefaultMigrationsContainCoreTables(t *testing.T) {
 			t.Fatalf("migration checksum length = %d, want 64: %+v", len(item.Checksum), item)
 		}
 	}
-	if migrations[0].Name != "create_api_user" || migrations[1].Name != "create_sys_config" {
+	if migrations[0].Name != "create_user" || migrations[1].Name != "create_sys_config" || migrations[2].Name != "user_snowflake_shard" {
 		t.Fatalf("DefaultMigrations() order mismatch: %+v", migrations)
+	}
+	if migrations[0].Version != "202606220001" || migrations[1].Version != "202606220002" || migrations[2].Version != "202606220003" {
+		t.Fatalf("DefaultMigrations() version mismatch: %+v", migrations)
 	}
 }
 
@@ -49,8 +52,8 @@ func TestDefaultMigrationsCoverDatabaseSQLAssets(t *testing.T) {
 func TestPendingMigrations(t *testing.T) {
 	migrations := DefaultMigrations()
 	pending := PendingMigrations(map[string]struct{}{migrations[0].Version: {}})
-	if len(pending) != 1 {
-		t.Fatalf("PendingMigrations() len = %d, want 1", len(pending))
+	if len(pending) != len(migrations)-1 {
+		t.Fatalf("PendingMigrations() len = %d, want %d", len(pending), len(migrations)-1)
 	}
 	if pending[0].Version == migrations[0].Version {
 		t.Fatalf("applied migration still pending: %+v", pending[0])

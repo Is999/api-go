@@ -24,7 +24,7 @@ func TestCreateSessionWritesSessionIndex(t *testing.T) {
 	defer client.Close()
 
 	logicObj := newAuthLogicForSession(client, config.AuthConfig{SessionTTLSeconds: 60})
-	user := &model.APIUser{ID: 42, Username: "demo", Status: model.APIUserStatusEnabled}
+	user := &model.User{ID: 42, Username: "demo", Status: model.UserStatusEnabled}
 	created, err := logicObj.createSessionWithJTI(user)
 	if err != nil {
 		t.Fatalf("createSessionWithJTI() error = %v", err)
@@ -49,7 +49,7 @@ func TestRotateSessionDeletesOldSession(t *testing.T) {
 	defer client.Close()
 
 	logicObj := newAuthLogicForSession(client, config.AuthConfig{SessionTTLSeconds: 60})
-	user := &model.APIUser{ID: 42, Username: "demo", Status: model.APIUserStatusEnabled}
+	user := &model.User{ID: 42, Username: "demo", Status: model.UserStatusEnabled}
 	oldToken, _, err := logicObj.generateJWT(user, "oldjti")
 	if err != nil {
 		t.Fatalf("generateJWT() error = %v", err)
@@ -90,7 +90,7 @@ func TestRotateSessionRollsBackNewSessionOnOldDeleteFailure(t *testing.T) {
 
 	rds := &failFirstDelRedis{UniversalClient: client}
 	logicObj := newAuthLogicForSession(rds, config.AuthConfig{SessionTTLSeconds: 60})
-	user := &model.APIUser{ID: 42, Username: "demo", Status: model.APIUserStatusEnabled}
+	user := &model.User{ID: 42, Username: "demo", Status: model.UserStatusEnabled}
 	oldKey := logicObj.userSessionKey(user.ID, "oldjti")
 	if err := client.Set(context.Background(), oldKey, "old-token", time.Hour).Err(); err != nil {
 		t.Fatalf("Set(old session) error = %v", err)
@@ -112,7 +112,7 @@ func TestDeleteUserSessionRemovesIndex(t *testing.T) {
 	defer client.Close()
 
 	logicObj := newAuthLogicForSession(client, config.AuthConfig{SessionTTLSeconds: 60})
-	user := &model.APIUser{ID: 42, Username: "demo", Status: model.APIUserStatusEnabled}
+	user := &model.User{ID: 42, Username: "demo", Status: model.UserStatusEnabled}
 	created, err := logicObj.createSessionWithJTI(user)
 	if err != nil {
 		t.Fatalf("createSessionWithJTI() error = %v", err)
@@ -136,7 +136,7 @@ func TestInvalidateUserSessionsDeletesIndexedSessions(t *testing.T) {
 	defer client.Close()
 
 	logicObj := newAuthLogicForSession(client, config.AuthConfig{SessionTTLSeconds: 60})
-	user := &model.APIUser{ID: 42, Username: "demo", Status: model.APIUserStatusEnabled}
+	user := &model.User{ID: 42, Username: "demo", Status: model.UserStatusEnabled}
 	first, err := logicObj.createSessionWithJTI(user)
 	if err != nil {
 		t.Fatalf("createSessionWithJTI(first) error = %v", err)
@@ -177,7 +177,7 @@ func TestCreateSessionRollsBackWhenSessionIndexFails(t *testing.T) {
 
 	rds := &failZAddRedis{UniversalClient: client}
 	logicObj := newAuthLogicForSession(rds, config.AuthConfig{SessionTTLSeconds: 60})
-	user := &model.APIUser{ID: 42, Username: "demo", Status: model.APIUserStatusEnabled}
+	user := &model.User{ID: 42, Username: "demo", Status: model.UserStatusEnabled}
 
 	if _, err := logicObj.createSessionWithJTI(user); err == nil {
 		t.Fatal("createSessionWithJTI() error = nil, want index failure")

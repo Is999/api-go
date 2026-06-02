@@ -28,8 +28,9 @@ type migrationSpec struct {
 
 // defaultMigrationSpecs 定义内置迁移清单，顺序即执行顺序。
 var defaultMigrationSpecs = []migrationSpec{
-	{version: "202606050001", name: "create_api_user", asset: apiUserSchemaAsset},
-	{version: "202606050002", name: "create_sys_config", asset: sysConfigSchemaAsset},
+	{version: "202606220001", name: "create_user", asset: userSchemaAsset},
+	{version: "202606220002", name: "create_sys_config", asset: sysConfigSchemaAsset},
+	{version: "202606220003", name: "user_snowflake_shard", asset: userSnowflakeShardAsset},
 }
 
 // DefaultMigrations 返回内置数据库迁移清单。

@@ -38,6 +38,8 @@ const (
 const (
 	// SystemConfigReloadStatus 表示内网查询配置热加载状态路由别名。
 	SystemConfigReloadStatus Alias = "system.config_reload.status"
+	// SystemConfigReloadItems 表示内网查询运行态配置项路由别名。
+	SystemConfigReloadItems Alias = "system.config_reload.items"
 	// SystemConfigReloadRun 表示内网手动触发配置热加载路由别名。
 	SystemConfigReloadRun Alias = "system.config_reload.run"
 	// SystemDocsFile 表示内网读取 API 接口文档二级资源路由别名。

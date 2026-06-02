@@ -64,6 +64,8 @@ var RouteSecurityPolicies = map[routealias.Alias]RouteSecurityPolicy{
 	routealias.UserRuntimeSync: {},
 	// system.config_reload.status 走内网运维链路，不参与前台签名加密。
 	routealias.SystemConfigReloadStatus: {},
+	// system.config_reload.items 走内网运维链路，不参与前台签名加密。
+	routealias.SystemConfigReloadItems: {},
 	// system.config_reload.run 走内网运维链路，不参与前台签名加密。
 	routealias.SystemConfigReloadRun: {},
 }

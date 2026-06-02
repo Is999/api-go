@@ -18,7 +18,7 @@ const integrationMySQLDSNEnv = "INTEGRATION_MYSQL_DSN"
 // TestAPIMigrationRunWithMySQL 使用真实 MySQL 校验迁移执行、幂等和 checksum 防篡改。
 func TestAPIMigrationRunWithMySQL(t *testing.T) {
 	db := openIntegrationMySQL(t)
-	resetIntegrationTables(t, db, "schema_migrations", "api_user", "sys_config")
+	resetIntegrationTables(t, db, "schema_migrations", "user", "sys_config")
 	store := NewGormMigrationStore(db)
 
 	results, err := RunMigrations(context.Background(), store, DefaultMigrations(), MigrationRunOptions{})

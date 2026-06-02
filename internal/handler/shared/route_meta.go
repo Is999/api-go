@@ -60,6 +60,8 @@ var (
 
 	// SystemConfigReloadStatus 表示内网配置热加载状态查询路由。
 	SystemConfigReloadStatus = newRouteMeta(routealias.SystemConfigReloadStatus, RouteAccessInternal, "内网查询配置热加载状态")
+	// SystemConfigReloadItems 表示内网运行态配置项查询路由。
+	SystemConfigReloadItems = newRouteMeta(routealias.SystemConfigReloadItems, RouteAccessInternal, "内网查询运行态配置项")
 	// SystemConfigReloadRun 表示内网手动触发配置热加载路由。
 	SystemConfigReloadRun = newRouteMeta(routealias.SystemConfigReloadRun, RouteAccessInternal, "内网手动触发配置热加载")
 	// SystemDocsFile 表示内网读取 API 接口文档二级资源。
