@@ -181,10 +181,14 @@ func (l *SysConfigLogic) getValueByKey(key SysConfigKey, expectedType int) (any,
 		}
 		return nil, errors.Tag(err)
 	}
-	if entry.Type != expectedType {
-		return nil, errors.Errorf("系统配置实际类型不匹配 uuid=%s want=%s got=%s", key.UUID, sysConfigTypeName(expectedType), sysConfigTypeName(entry.Type))
+	actualType, err := sysConfigCacheType(key.UUID, entry)
+	if err != nil {
+		return nil, errors.Tag(err)
 	}
-	return decodeSysConfigValue(entry.Type, entry.Value)
+	if actualType != expectedType {
+		return nil, errors.Errorf("系统配置实际类型不匹配 uuid=%s want=%s got=%s", key.UUID, sysConfigTypeName(expectedType), sysConfigTypeName(actualType))
+	}
+	return decodeSysConfigValue(actualType, entry[sysConfigCacheFieldValue])
 }
 
 // normalizeSysConfigKey 清洗并校验配置 key。

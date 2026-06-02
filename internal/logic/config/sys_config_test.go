@@ -49,7 +49,7 @@ func TestSysConfigCacheKeyUsesAppNamespace(t *testing.T) {
 	logicObj := NewSysConfigLogic(context.Background(), svc.NewServiceContext(appconfig.Config{AppID: "site-a"}, "v1", svc.Dependencies{}))
 
 	got := logicObj.sysConfigCacheKey("featureFlag")
-	want := "app:site-a:config_uuid:featureFlag"
+	want := "app:site-a:table:config_uuid:featureFlag"
 	if got != want {
 		t.Fatalf("sysConfigCacheKey() = %q, want %q", got, want)
 	}
@@ -77,6 +77,27 @@ func TestGetCachedValueReadsRedisBeforeDB(t *testing.T) {
 	}
 	if value != true {
 		t.Fatalf("GetCachedValue() = %#v, want true", value)
+	}
+}
+
+// TestGetCachedValueRejectsInvalidCacheType 确保损坏缓存不会被静默当成 group 类型。
+func TestGetCachedValueRejectsInvalidCacheType(t *testing.T) {
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	defer client.Close()
+
+	logicObj := NewSysConfigLogic(context.Background(), svc.NewServiceContext(appconfig.Config{AppID: "site-a"}, "v1", svc.Dependencies{Rds: client}))
+	cacheKey := logicObj.sysConfigCacheKey("featureFlag")
+	if err := client.HSet(context.Background(), cacheKey, map[string]any{
+		sysConfigCacheFieldUUID:  "featureFlag",
+		sysConfigCacheFieldType:  "bad",
+		sysConfigCacheFieldValue: "1",
+	}).Err(); err != nil {
+		t.Fatalf("seed sys_config cache: %v", err)
+	}
+
+	if _, err := logicObj.GetCachedValue("featureFlag"); err == nil {
+		t.Fatal("GetCachedValue() expected invalid cache type error")
 	}
 }
 

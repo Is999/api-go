@@ -7,6 +7,17 @@ const (
 	ScopeRoot = "app:"
 )
 
+// table-cache Redis key 二级前缀集中维护。
+const (
+	// tableCacheSegment 表示 table-cache 托管缓存的二级前缀。
+	// Redis 类型：Key 片段，TTL 过期规则：不直接写入 Redis，由具体 table-cache 目标控制。
+	tableCacheSegment = "table"
+
+	// EmptyValueMarker 表示空值缓存占位符，避免缓存穿透时重复回源。
+	// Redis 类型：占位值，TTL 过期规则：由具体缓存目标控制。
+	EmptyValueMarker = "__empty__"
+)
+
 // Redis Key 模板集中维护，业务代码只能按模板精确读写。
 const (
 	// UserSession 表示前台用户登录会话缓存键模板。
@@ -35,17 +46,16 @@ const (
 	UserProfile = "user:profile:%d"
 
 	// SysConfigUUID 表示系统配置缓存键模板。
-	// Redis 类型：Hash，TTL 过期规则：无固定 TTL，按业务更新或删除精确失效。
-	// 参数为配置 uuid；实际 Redis key 通过 WithPrefix 追加 app_id 前缀。
+	// Redis 类型：Hash，TTL 过期规则：由 table-cache 目标配置控制。
+	// 参数为配置 uuid；实际 Redis key 通过 TableCachePrefix 追加 app_id 与 table 前缀。
 	SysConfigUUID = "config_uuid:%s"
+
+	// SysConfigUUIDPattern 表示系统配置缓存键展示模板。
+	// Redis 类型：Hash 模板，TTL 过期规则：不直接写入 Redis，仅用于展示或匹配真实 key。
+	SysConfigUUIDPattern = "config_uuid:{uuid}"
 
 	// SignatureReplayRequest 表示签名防重放缓存键模板。
 	// Redis 类型：String，TTL 过期规则：按签名防重放 TTL 自动过期。
 	// 参数为 trace_id；实际 Redis key 通过 WithPrefix 追加 app_id 前缀。
 	SignatureReplayRequest = "signature:replay:%s"
-
-	// CacheRebuildLock 表示缓存回源重建互斥锁 key 模板。
-	// Redis 类型：String（由 redsync 管理），TTL 过期规则：由 redsync 锁 TTL 控制，到期自动释放。
-	// `%s` 位置填充真实缓存 key 的业务段；实际 Redis key 通过 WithPrefix 追加 app_id 前缀。
-	CacheRebuildLock = "cache:rebuild:lock:%s"
 )

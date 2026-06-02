@@ -1,0 +1,93 @@
+package cache
+
+import (
+	"strings"
+	"time"
+
+	keys "api/common/rediskeys"
+	corelogic "api/internal/logic"
+	"api/internal/svc"
+
+	"github.com/Is999/go-utils/errors"
+	tablecache "github.com/Is999/table-cache"
+	"gorm.io/gorm"
+)
+
+const (
+	// tableCacheRebuildLockTTL 表示 table-cache 回源锁默认持有时长。
+	tableCacheRebuildLockTTL = 10 * time.Second
+	// tableCacheWaitStep 表示等待其他实例回源完成的单次等待时间。
+	tableCacheWaitStep = 80 * time.Millisecond
+)
+
+// TableCacheManager 创建 API 的表数据缓存管理器。
+func TableCacheManager(base *corelogic.BaseLogic) (*tablecache.Manager, error) {
+	if base == nil || base.Redis() == nil {
+		return nil, errors.Errorf("Redis未初始化")
+	}
+	return tablecache.NewManager(
+		tablecache.NewRedisStore(base.Redis()),
+		tableCacheTargets(base),
+		tablecache.WithKeyPrefix(tableCacheKeyPrefix(base)),
+		tablecache.WithEmptyMarker(keys.EmptyValueMarker, corelogic.EmptyCacheTTL()),
+		tablecache.WithLockTTL(tableCacheRebuildLockTTL),
+		tablecache.WithWait(tableCacheWaitStep, 3),
+	)
+}
+
+// tableCacheKeyPrefix 返回当前站点 table-cache 托管缓存使用的 Redis key 前缀。
+func tableCacheKeyPrefix(base *corelogic.BaseLogic) string {
+	if base == nil || base.AppID() == "" {
+		return ""
+	}
+	return keys.TableCachePrefix()
+}
+
+// TableCachePhysicalKey 把逻辑缓存 key 转换为 table-cache 真实 Redis key。
+func TableCachePhysicalKey(base *corelogic.BaseLogic, key string) string {
+	key = strings.TrimSpace(key)
+	prefix := tableCacheKeyPrefix(base)
+	if key == "" || prefix == "" || strings.HasPrefix(key, prefix) {
+		return key
+	}
+	if keys.IsForeignKey(key) {
+		return ""
+	}
+	if keys.HasPrefix(key) {
+		return key
+	}
+	return prefix + key
+}
+
+// tableCacheWriteDB 获取表缓存回源主库连接。
+func tableCacheWriteDB(base *corelogic.BaseLogic, database svc.DbName, databaseLabel string) (*gorm.DB, error) {
+	if base == nil || base.Svc == nil {
+		return nil, errors.Errorf("服务上下文未初始化")
+	}
+	writeDB := base.Svc.WriteDB(database)
+	if writeDB == nil {
+		return nil, errors.Errorf("%s主库未初始化", strings.TrimSpace(databaseLabel))
+	}
+	return writeDB, nil
+}
+
+// cacheTemplatePrefix 返回模板型缓存键的固定前缀部分。
+func cacheTemplatePrefix(key string) string {
+	index := strings.Index(key, "{")
+	if index >= 0 {
+		return strings.TrimSpace(key[:index])
+	}
+	index = strings.Index(key, "%")
+	if index >= 0 {
+		return strings.TrimSpace(key[:index])
+	}
+	return strings.TrimSpace(key)
+}
+
+// tableCacheFirstStringPart 读取前缀型缓存 key 的第一个参数。
+func tableCacheFirstStringPart(params tablecache.LoadParams, title string) (string, error) {
+	if len(params.KeyParts) == 0 || strings.TrimSpace(params.KeyParts[0]) == "" {
+		return "", errors.Errorf("%s不能为空", title)
+	}
+	return strings.TrimSpace(params.KeyParts[0]), nil
+}

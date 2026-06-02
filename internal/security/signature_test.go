@@ -17,7 +17,7 @@ func TestBuildSignStringUsesStableOrder(t *testing.T) {
 	}
 
 	got := BuildSignString(data, []string{SignFieldAll}, "trace", "1700000000", "app")
-	want := `a=1&b=2&profile={"age":18,"name":"tom"}&key=` + utils.Md5("app-trace-1700000000")
+	want := `a=1&b=2&profile={"age":18,"name":"tom"}&key=` + utils.MD5("app-trace-1700000000")
 	if got != want {
 		t.Fatalf("BuildSignString() = %q, want %q", got, want)
 	}

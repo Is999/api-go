@@ -7,12 +7,14 @@ import (
 	"time"
 
 	"github.com/Is999/go-utils/errors"
+
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 )
 
-// TestTryLockRejectsNilRedisClient 校验 nil Redis 客户端会返回明确错误。
+// TestTryLockRejectsNilRedisClient 校验 nil Redis 客户端会返回明确错误，而不是在 redsync 内部 panic。
 func TestTryLockRejectsNilRedisClient(t *testing.T) {
+	// lock 模拟调用方传入 nil Redis 客户端时创建出来的锁实例。
 	lock := NewLock(nil, "lock:nil-client")
 
 	err := lock.TryLock(context.Background(), time.Second)
@@ -26,6 +28,7 @@ func TestTryLockRejectsNilRedisClient(t *testing.T) {
 
 // TestIsLockTakenDetectsContention 校验锁竞争错误能被识别为可跳过的互斥冲突。
 func TestIsLockTakenDetectsContention(t *testing.T) {
+	// server 和 client 使用 miniredis 构造同一把锁的竞争场景，避免依赖真实 Redis。
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	defer client.Close()
@@ -50,6 +53,7 @@ func TestIsLockTakenDetectsContention(t *testing.T) {
 
 // TestWithLockReturnsUnlockError 校验释放锁失败时 WithLock 会把错误返回给调用方。
 func TestWithLockReturnsUnlockError(t *testing.T) {
+	// server 和 client 使用 miniredis 构造可控的 Redis 环境，便于模拟释放阶段断连。
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	defer client.Close()
@@ -68,6 +72,7 @@ func TestWithLockReturnsUnlockError(t *testing.T) {
 
 // TestWithLockCancelsContextOnRenewalFailure 校验续期失败后业务 context 会被主动取消。
 func TestWithLockCancelsContextOnRenewalFailure(t *testing.T) {
+	// server 和 client 在业务函数内主动关闭，用来触发后台续期失败。
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	defer client.Close()

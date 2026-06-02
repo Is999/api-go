@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"testing"
 
+	keys "api/common/rediskeys"
 	appconfig "api/internal/config"
 	"api/internal/model"
 	"api/internal/svc"
@@ -92,8 +93,7 @@ func TestTypedSysConfigReturnsDefaultOnEmptyMarker(t *testing.T) {
 	cacheKey := logicObj.sysConfigCacheKey("featureFlag")
 	if err := client.HSet(context.Background(), cacheKey, map[string]any{
 		sysConfigCacheFieldUUID:  "featureFlag",
-		sysConfigCacheFieldValue: sysConfigEmptyValue,
-		sysConfigCacheFieldEmpty: "1",
+		sysConfigCacheFieldValue: keys.EmptyValueMarker,
 	}).Err(); err != nil {
 		t.Fatalf("seed empty sys_config cache: %v", err)
 	}

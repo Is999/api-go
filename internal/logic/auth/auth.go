@@ -575,7 +575,7 @@ func (l *AuthLogic) authRateLimitKeys(action, subject string) (string, string) {
 	if subject == "" {
 		subject = "unknown"
 	}
-	subjectHash := utils.Md5(subject)
+	subjectHash := utils.MD5(subject)
 	return l.AppRedisKey(fmt.Sprintf(keys.AuthRateLimitCount, action, subjectHash)),
 		l.AppRedisKey(fmt.Sprintf(keys.AuthRateLimitLock, action, subjectHash))
 }

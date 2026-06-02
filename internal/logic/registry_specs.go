@@ -8,20 +8,8 @@ type RuntimeRegistrySpec struct {
 	Description string // 注册项中文说明
 }
 
-const (
-	// RuntimeRegistryCacheRebuildLock 表示缓存重建分布式锁入口。
-	RuntimeRegistryCacheRebuildLock = "cache_rebuild_lock"
-)
-
 // runtimeRegistrySpecs 是通用业务逻辑运行时注册入口的清单源。
-var runtimeRegistrySpecs = []RuntimeRegistrySpec{
-	{
-		Name:        RuntimeRegistryCacheRebuildLock,
-		File:        "internal/infra/redsync/lock.go + internal/logic/cache_guard.go",
-		Method:      "RebuildCacheWithLock / TryRebuildCacheWithLock",
-		Description: "使用 redsync 保护缓存重建",
-	},
-}
+var runtimeRegistrySpecs []RuntimeRegistrySpec
 
 // RuntimeRegistrySpecs 返回通用业务逻辑运行时注册入口规格快照。
 func RuntimeRegistrySpecs() []RuntimeRegistrySpec {
