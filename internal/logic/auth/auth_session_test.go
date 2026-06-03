@@ -42,32 +42,32 @@ func TestCreateSessionWritesSessionIndex(t *testing.T) {
 	}
 }
 
-// TestRotateSessionDeletesOldSession 确保刷新 token 后旧 jti 会话立即失效。
-func TestRotateSessionDeletesOldSession(t *testing.T) {
+// TestRotateSessionDeletesPreviousSession 确保刷新 token 后原 jti 会话立即失效。
+func TestRotateSessionDeletesPreviousSession(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	defer client.Close()
 
 	logicObj := newAuthLogicForSession(client, config.AuthConfig{SessionTTLSeconds: 60})
 	user := &model.User{ID: 42, Username: "demo", Status: model.UserStatusEnabled}
-	oldToken, _, err := logicObj.generateJWT(user, "oldjti")
+	previousToken, _, err := logicObj.generateJWT(user, "previous-jti")
 	if err != nil {
 		t.Fatalf("generateJWT() error = %v", err)
 	}
-	oldKey := logicObj.userSessionKey(user.ID, "oldjti")
-	if err := client.Set(context.Background(), oldKey, oldToken, time.Hour).Err(); err != nil {
-		t.Fatalf("Set(old session) error = %v", err)
+	previousKey := logicObj.userSessionKey(user.ID, "previous-jti")
+	if err := client.Set(context.Background(), previousKey, previousToken, time.Hour).Err(); err != nil {
+		t.Fatalf("Set(previous session) error = %v", err)
 	}
 
-	resp, err := logicObj.rotateSession(user, "oldjti")
+	resp, err := logicObj.rotateSession(user, "previous-jti")
 	if err != nil {
 		t.Fatalf("rotateSession() error = %v", err)
 	}
-	if err := client.Get(context.Background(), oldKey).Err(); !stderrors.Is(err, redis.Nil) {
-		t.Fatalf("old session err = %v, want redis.Nil", err)
+	if err := client.Get(context.Background(), previousKey).Err(); !stderrors.Is(err, redis.Nil) {
+		t.Fatalf("previous session err = %v, want redis.Nil", err)
 	}
 	newJTI := tokenJTI(resp.Token, logicObj.Svc.CurrentConfig().JwtSecret)
-	if newJTI == "" || newJTI == "oldjti" {
+	if newJTI == "" || newJTI == "previous-jti" {
 		t.Fatalf("new jti = %q, want non-empty and different", newJTI)
 	}
 	if err := client.Get(context.Background(), logicObj.userSessionKey(user.ID, newJTI)).Err(); err != nil {
@@ -82,8 +82,8 @@ func TestRotateSessionDeletesOldSession(t *testing.T) {
 	}
 }
 
-// TestRotateSessionRollsBackNewSessionOnOldDeleteFailure 确保旧 session 删除失败时不泄露新 session。
-func TestRotateSessionRollsBackNewSessionOnOldDeleteFailure(t *testing.T) {
+// TestRotateSessionRollsBackNewSessionOnPreviousDeleteFailure 确保原 session 删除失败时不泄露新 session。
+func TestRotateSessionRollsBackNewSessionOnPreviousDeleteFailure(t *testing.T) {
 	server := miniredis.RunT(t)
 	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 	defer client.Close()
@@ -91,17 +91,17 @@ func TestRotateSessionRollsBackNewSessionOnOldDeleteFailure(t *testing.T) {
 	rds := &failFirstDelRedis{UniversalClient: client}
 	logicObj := newAuthLogicForSession(rds, config.AuthConfig{SessionTTLSeconds: 60})
 	user := &model.User{ID: 42, Username: "demo", Status: model.UserStatusEnabled}
-	oldKey := logicObj.userSessionKey(user.ID, "oldjti")
-	if err := client.Set(context.Background(), oldKey, "old-token", time.Hour).Err(); err != nil {
-		t.Fatalf("Set(old session) error = %v", err)
+	previousKey := logicObj.userSessionKey(user.ID, "previous-jti")
+	if err := client.Set(context.Background(), previousKey, "previous-token", time.Hour).Err(); err != nil {
+		t.Fatalf("Set(previous session) error = %v", err)
 	}
 
-	if _, err := logicObj.rotateSession(user, "oldjti"); err == nil {
+	if _, err := logicObj.rotateSession(user, "previous-jti"); err == nil {
 		t.Fatal("rotateSession() error = nil, want delete failure")
 	}
 	sessionKeys := sessionKeysForUser(server.Keys(), user.ID)
-	if len(sessionKeys) != 1 || sessionKeys[0] != oldKey {
-		t.Fatalf("session keys = %v, want only old session %q", sessionKeys, oldKey)
+	if len(sessionKeys) != 1 || sessionKeys[0] != previousKey {
+		t.Fatalf("session keys = %v, want only previous session %q", sessionKeys, previousKey)
 	}
 }
 

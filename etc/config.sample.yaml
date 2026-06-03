@@ -89,7 +89,7 @@ observability:
   redis_slow_ms: 100
   log_body_max_bytes: 4096
 
-# 签名验签和加解密配置。未配置秘钥时兼容普通请求；配置后启动期会校验版本路由和 AES/RSA 材料。
+# 签名验签和加解密配置。未配置密钥时按普通请求处理；配置后启动期会校验版本路由和 AES/RSA 材料。
 security:
   secret_key: {}
 # 启用示例：

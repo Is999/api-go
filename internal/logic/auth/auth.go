@@ -248,11 +248,11 @@ func (l *AuthLogic) Refresh() *types.BizResult {
 			SetI18nMessage(i18n.MsgKeyUserDisabled).
 			WithError(corelogic.WrapLogicError(err, "AuthLogic.Refresh 用户 ID[%d]状态无效", ctxUser.ID))
 	}
-	oldJTI := ""
+	previousJTI := ""
 	if meta := l.Meta(); meta != nil {
-		oldJTI = tokenJTI(meta.AccessToken, l.Svc.CurrentConfig().JwtSecret)
+		previousJTI = tokenJTI(meta.AccessToken, l.Svc.CurrentConfig().JwtSecret)
 	}
-	resp, err := l.rotateSession(user, oldJTI)
+	resp, err := l.rotateSession(user, previousJTI)
 	if err != nil {
 		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Refresh 用户 ID[%d]轮换会话", ctxUser.ID).ToBizResult()
 	}
@@ -338,22 +338,22 @@ func (l *AuthLogic) createSessionWithJTI(user *model.User) (*createdSession, err
 	}, nil
 }
 
-// rotateSession 创建新会话后删除旧会话，删除失败时回滚新会话。
-func (l *AuthLogic) rotateSession(user *model.User, oldJTI string) (*types.AuthTokenResp, error) {
-	oldJTI = strings.TrimSpace(oldJTI)
+// rotateSession 创建新会话后删除原会话，删除失败时回滚新会话。
+func (l *AuthLogic) rotateSession(user *model.User, previousJTI string) (*types.AuthTokenResp, error) {
+	previousJTI = strings.TrimSpace(previousJTI)
 	if user == nil {
 		return nil, errors.New("用户为空")
 	}
-	if oldJTI == "" {
-		return nil, errors.New("旧会话 jti 为空")
+	if previousJTI == "" {
+		return nil, errors.New("原会话 jti 为空")
 	}
 	created, err := l.createSessionWithJTI(user)
 	if err != nil {
 		return nil, errors.Tag(err)
 	}
-	if err := l.deleteUserSession(user.ID, oldJTI); err != nil {
+	if err := l.deleteUserSession(user.ID, previousJTI); err != nil {
 		_ = l.deleteUserSession(user.ID, created.JTI)
-		return nil, errors.Wrapf(err, "删除旧用户会话失败 user_id=%d old_jti=%s", user.ID, oldJTI)
+		return nil, errors.Wrapf(err, "删除原用户会话失败 user_id=%d previous_jti=%s", user.ID, previousJTI)
 	}
 	return created.Response, nil
 }

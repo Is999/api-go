@@ -27,7 +27,7 @@ const (
 	CryptoTypeRSA = "R"
 )
 
-// NormalizeSignatureType 兼容短码和完整算法名，空值默认使用 RSA。
+// NormalizeSignatureType 统一签名算法短码和完整名称，空值默认使用 RSA。
 func NormalizeSignatureType(value string) string {
 	switch strings.ToUpper(strings.TrimSpace(value)) {
 	case "", "R", "RSA":
@@ -41,7 +41,7 @@ func NormalizeSignatureType(value string) string {
 	}
 }
 
-// NormalizeCryptoType 兼容短码和完整算法名，空值默认使用 AES。
+// NormalizeCryptoType 统一加解密算法短码和完整名称，空值默认使用 AES。
 func NormalizeCryptoType(value string) string {
 	switch strings.ToUpper(strings.TrimSpace(value)) {
 	case "", "A", "AES":
@@ -82,7 +82,7 @@ func (s MD5Signer) Verify(data, sign string) (bool, error) {
 	return expected == sign, nil
 }
 
-// AESCipher 实现 AES-256-CBC 兼容的加解密与签名能力。
+// AESCipher 实现 AES-256-CBC 加解密与签名能力。
 type AESCipher struct {
 	cipher *utils.Cipher // AES-CBC 加解密器
 }

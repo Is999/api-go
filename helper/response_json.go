@@ -12,7 +12,7 @@ import (
 	"github.com/zeromicro/go-zero/rest/httpx"
 )
 
-// 统一响应状态常量，兼容前端已有成功/失败判断。
+// 统一响应状态常量，前端按 status 和 code 判断业务结果。
 const (
 	RespCodeUndefined = 0 // 未定义状态
 	RespCodeSuccess   = 1 // 成功

@@ -35,7 +35,7 @@ const (
 	fieldPath         = "path"          // HTTP 路径字段名
 	fieldLocale       = "locale"        // 请求语言字段名
 	fieldIP           = "ip"            // 客户端 IP 字段名
-	fieldUID          = "uid"           // 兼容 uid 字段名
+	fieldUID          = "uid"           // 用户 ID 短字段名
 	fieldUserID       = "user_id"       // 用户 ID 字段名
 	fieldUserName     = "user_name"     // 用户名字段名
 	fieldNode         = "node"          // 服务节点或工作流节点字段名
