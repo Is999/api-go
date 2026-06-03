@@ -4,12 +4,13 @@ import (
 	"testing"
 )
 
+// TestWithPrefix 验证对应场景符合预期。
 func TestWithPrefix(t *testing.T) {
 	tests := []struct {
-		name  string
-		appID string
-		key   string
-		want  string
+		name  string // name 表示测试场景名称。
+		appID string // appID 表示测试应用 ID。
+		key   string // key 表示待验证 key。
+		want  string // want 表示期望结果。
 	}{
 		{
 			name:  "scopes logical key",
@@ -47,11 +48,12 @@ func TestWithPrefix(t *testing.T) {
 	}
 }
 
+// TestHasPrefix 验证对应场景符合预期。
 func TestHasPrefix(t *testing.T) {
 	tests := []struct {
-		name string
-		key  string
-		want bool
+		name string // name 表示测试场景名称。
+		key  string // key 表示待验证 key。
+		want bool   // want 表示期望结果。
 	}{
 		{name: "scoped key", key: "app:site-a:user:session:42:jti", want: true},
 		{name: "empty logical key", key: "app:site-a:", want: false},
@@ -69,12 +71,13 @@ func TestHasPrefix(t *testing.T) {
 	}
 }
 
+// TestOwner 验证对应场景符合预期。
 func TestOwner(t *testing.T) {
 	tests := []struct {
-		name   string
-		key    string
-		want   string
-		wantOK bool
+		name   string // name 表示测试场景名称。
+		key    string // key 表示待验证 key。
+		want   string // want 表示期望结果。
+		wantOK bool   // wantOK 表示期望是否成功。
 	}{
 		{name: "scoped key", key: "app:site-a:user:session:42:jti", want: "site-a", wantOK: true},
 		{name: "empty logical key", key: "app:site-a:", want: "", wantOK: false},
@@ -93,12 +96,13 @@ func TestOwner(t *testing.T) {
 	}
 }
 
+// TestIsForeignKey 验证对应场景符合预期。
 func TestIsForeignKey(t *testing.T) {
 	tests := []struct {
-		name  string
-		appID string
-		key   string
-		want  bool
+		name  string // name 表示测试场景名称。
+		appID string // appID 表示测试应用 ID。
+		key   string // key 表示待验证 key。
+		want  bool   // want 表示期望结果。
 	}{
 		{name: "current app key", appID: "site-a", key: "app:site-a:user:session:42:jti", want: false},
 		{name: "other app key", appID: "site-a", key: "app:site-b:user:session:42:jti", want: true},
@@ -117,6 +121,7 @@ func TestIsForeignKey(t *testing.T) {
 	}
 }
 
+// TestWithPrefixWithEmptyAppIDFailsClosed 验证对应场景符合预期。
 func TestWithPrefixWithEmptyAppIDFailsClosed(t *testing.T) {
 	useAppID(t, "")
 	if got := Prefix(); got != "" {
@@ -130,11 +135,12 @@ func TestWithPrefixWithEmptyAppIDFailsClosed(t *testing.T) {
 	}
 }
 
+// TestTrimPrefix 验证对应场景符合预期。
 func TestTrimPrefix(t *testing.T) {
 	tests := []struct {
-		name string
-		key  string
-		want string
+		name string // name 表示测试场景名称。
+		key  string // key 表示待验证 key。
+		want string // want 表示期望结果。
 	}{
 		{
 			name: "trims scoped key",

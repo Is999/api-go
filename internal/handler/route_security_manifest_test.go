@@ -75,6 +75,7 @@ func TestDefaultRouteSecurityManifestMatchesFrontendSnapshot(t *testing.T) {
 	}
 }
 
+// emptyToNil 表示测试辅助逻辑。
 func emptyToNil(fields []string) []string {
 	if len(fields) == 0 {
 		return nil
@@ -82,11 +83,13 @@ func emptyToNil(fields []string) []string {
 	return fields
 }
 
+// routeSecurityManifestSnapshot 表示测试使用的辅助结构。
 type routeSecurityManifestSnapshot struct {
 	Version int                                 `json:"version"` // 快照版本
 	Routes  []routeSecurityManifestSnapshotItem `json:"routes"`  // 前端同步路由清单
 }
 
+// routeSecurityManifestSnapshotItem 表示测试使用的辅助结构。
 type routeSecurityManifestSnapshotItem struct {
 	Alias          string             `json:"alias"`          // 路由别名
 	Method         string             `json:"method"`         // HTTP 方法
@@ -101,6 +104,7 @@ type routeSecurityManifestSnapshotItem struct {
 	DocumentPath   string             `json:"documentPath"`   // 接口文档路径
 }
 
+// routeSecurityManifestSnapshotJSON 返回路由测试辅助数据。
 func routeSecurityManifestSnapshotJSON(t *testing.T) string {
 	t.Helper()
 	body, err := json.MarshalIndent(routeSecurityManifestSnapshot{
@@ -113,6 +117,7 @@ func routeSecurityManifestSnapshotJSON(t *testing.T) string {
 	return string(body) + "\n"
 }
 
+// routeSecurityManifestSnapshotItems 返回路由测试辅助数据。
 func routeSecurityManifestSnapshotItems(items []RouteSecurityManifestItem) []routeSecurityManifestSnapshotItem {
 	result := make([]routeSecurityManifestSnapshotItem, 0, len(items))
 	for _, item := range items {
@@ -133,6 +138,7 @@ func routeSecurityManifestSnapshotItems(items []RouteSecurityManifestItem) []rou
 	return result
 }
 
+// emptyToSlice 表示测试辅助逻辑。
 func emptyToSlice(fields []string) []string {
 	if len(fields) == 0 {
 		return []string{}

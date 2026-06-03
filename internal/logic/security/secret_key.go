@@ -115,17 +115,17 @@ func (l *SecretKeyLogic) GetRSAKey(appID string, versionHint string, grayKey str
 	}
 	switch keyType {
 	case RSAUserPublicKey:
-		text, err := resolveConfigPEMText(versionCfg.RSAPublicKeyUser, versionCfg.RSAPublicKeyUserRef, "用户RSA公钥")
+		text, err := resolveConfigPEMText(versionCfg.RSAPublicKeyUser, versionCfg.RSAPublicKeyUserRef, "用户 RSA公钥")
 		return text, version, errors.Tag(err)
 	case RSAServerPublicKey:
 		if strings.TrimSpace(versionCfg.RSAPublicKeyServer) == "" && strings.TrimSpace(versionCfg.RSAPublicKeyServerRef) == "" {
 			text, err := deriveConfigServerPublicPEM(versionCfg)
 			return text, version, errors.Tag(err)
 		}
-		text, err := resolveConfigPEMText(versionCfg.RSAPublicKeyServer, versionCfg.RSAPublicKeyServerRef, "服务端RSA公钥")
+		text, err := resolveConfigPEMText(versionCfg.RSAPublicKeyServer, versionCfg.RSAPublicKeyServerRef, "服务端 RSA公钥")
 		return text, version, errors.Tag(err)
 	case RSAServerPrivateKey:
-		text, err := resolveConfigPEMText(versionCfg.RSAPrivateKeyServer, versionCfg.RSAPrivateKeyServerRef, "服务端RSA私钥")
+		text, err := resolveConfigPEMText(versionCfg.RSAPrivateKeyServer, versionCfg.RSAPrivateKeyServerRef, "服务端 RSA私钥")
 		return text, version, errors.Tag(err)
 	default:
 		return "", "", errors.Errorf("RSA秘钥类型不合法: %s", keyType)
@@ -284,13 +284,13 @@ func resolveConfigPEMText(value string, ref string, label string) (string, error
 
 // deriveConfigServerPublicPEM 从配置文件中的服务端私钥派生公钥 PEM。
 func deriveConfigServerPublicPEM(versionCfg config.SecuritySecretKeyVersionConfig) (string, error) {
-	privatePEM, err := resolveConfigPEMText(versionCfg.RSAPrivateKeyServer, versionCfg.RSAPrivateKeyServerRef, "服务端RSA私钥")
+	privatePEM, err := resolveConfigPEMText(versionCfg.RSAPrivateKeyServer, versionCfg.RSAPrivateKeyServerRef, "服务端 RSA私钥")
 	if err != nil {
 		return "", errors.Tag(err)
 	}
 	privateKey, err := cryptox.ParseRSAPrivateKey(privatePEM)
 	if err != nil {
-		return "", errors.Wrap(err, "服务端RSA私钥格式不合法")
+		return "", errors.Wrap(err, "服务端 RSA私钥格式不合法")
 	}
 	return deriveRSAPublicPEMFromPrivateKey(privateKey)
 }
@@ -298,7 +298,7 @@ func deriveConfigServerPublicPEM(versionCfg config.SecuritySecretKeyVersionConfi
 // deriveRSAPublicPEMFromPrivateKey 从 RSA 私钥派生公钥 PEM。
 func deriveRSAPublicPEMFromPrivateKey(privateKey *rsa.PrivateKey) (string, error) {
 	if privateKey == nil {
-		return "", errors.Errorf("服务端RSA私钥为空")
+		return "", errors.Errorf("服务端 RSA私钥为空")
 	}
 	publicBytes, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
 	if err != nil {

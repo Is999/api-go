@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"strings"
 
+	"api/common/idgen"
 	keys "api/common/rediskeys"
 	"api/internal/config"
 
@@ -15,6 +16,7 @@ const (
 	minJWTSecretLength            = 16      // JWT 密钥最小长度，避免明显弱配置启动
 	minOpsTokenLength             = 16      // 运维令牌生产环境最小长度
 	minPasswordLength             = 6       // 前台密码最小允许长度下限
+	defaultUserRouteShardCount    = 1       // 业务用户默认保持单张物理表
 	maxAuthRateLimitWindowSeconds = 3600    // 认证限流最大统计窗口
 	maxAuthRateLimitLockSeconds   = 86400   // 认证限流最大锁定时长
 	maxAuthRateLimitAttempts      = 1000    // 认证限流最大尝试次数
@@ -40,6 +42,12 @@ func validateConfig(c config.Config) error {
 	if c.Auth.PasswordMinLength < minPasswordLength {
 		return errors.Errorf("auth.password_min_length 不能小于 %d", minPasswordLength)
 	}
+	if err := validateSnowflakeConfig(c.Snowflake); err != nil {
+		return errors.Tag(err)
+	}
+	if err := validateUserConfig(c.User); err != nil {
+		return errors.Tag(err)
+	}
 	if err := validateAuthRateLimitConfig("auth.login_rate_limit", c.Auth.LoginRateLimit); err != nil {
 		return errors.Tag(err)
 	}
@@ -59,6 +67,41 @@ func validateConfig(c config.Config) error {
 		return errors.Tag(err)
 	}
 	return nil
+}
+
+// validateSnowflakeConfig 校验分布式雪花 ID worker 配置。
+func validateSnowflakeConfig(cfg config.SnowflakeConfig) error {
+	if _, err := resolveSnowflakeWorkerID(cfg); err != nil {
+		return errors.Tag(err)
+	}
+	return nil
+}
+
+// resolveSnowflakeWorkerID 解析配置或环境变量中的显式 worker_id。
+func resolveSnowflakeWorkerID(cfg config.SnowflakeConfig) (int64, error) {
+	if cfg.WorkerID == nil {
+		return idgen.ResolveWorkerID(idgen.SnowflakeWorkerIDUnset)
+	}
+	return idgen.ResolveWorkerID(*cfg.WorkerID)
+}
+
+// configureSnowflakeWorkerID 发布当前进程使用的雪花 ID worker 配置。
+func configureSnowflakeWorkerID(cfg config.SnowflakeConfig) error {
+	workerID, err := resolveSnowflakeWorkerID(cfg)
+	if err != nil {
+		return errors.Tag(err)
+	}
+	return idgen.ConfigureWorkerID(workerID)
+}
+
+// validateUserConfig 校验业务用户默认物理表数量，防止写入路由不可迁移。
+func validateUserConfig(cfg config.UserConfig) error {
+	switch cfg.RouteShardCount {
+	case 0, 1, 10, 100, 1000:
+		return nil
+	default:
+		return errors.Errorf("user.route_shard_count 仅支持 1/10/100/1000")
+	}
 }
 
 // validateAuthRateLimitConfig 校验认证限流参数是否在可控范围内。

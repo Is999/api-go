@@ -57,6 +57,7 @@ func TestClearAuthRateLimitRemovesCountAndLock(t *testing.T) {
 	}
 }
 
+// newAuthLogicForRateLimit 构造测试依赖。
 func newAuthLogicForRateLimit(client redis.UniversalClient) *AuthLogic {
 	return NewAuthLogic(context.Background(), svc.NewServiceContext(config.Config{AppID: "site-a"}, "v1", svc.Dependencies{Rds: client}))
 }

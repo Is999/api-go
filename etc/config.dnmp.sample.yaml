@@ -14,6 +14,17 @@ app_id: "1"
 app_key: "dnmp-local-app-key-please-change"
 # 当前实例 ID，本地固定便于日志排查。
 instance_id: "local-api-1"
+
+# 基于 github.com/bwmarrin/snowflake 的分布式雪花 ID；所有会写 user 表的 api/admin 实例 worker_id 必须全局唯一。
+snowflake:
+  # 本地 api 固定使用 1，避免和 admin 本地 worker_id=512 冲突；成熟库不会自动分配 worker_id。
+  worker_id: 1
+
+# 业务用户写入路由；本地保持单表，拆分演练需先创建目标物理表。
+user:
+  # 新增用户默认物理表数量，仅支持 1/10/100/1000。
+  route_shard_count: 1
+
 # JWT 密钥仅供本地示例使用，部署前必须替换。
 jwt_secret: "please-change-this-jwt-secret"
 # JWT 过期时间，单位秒。

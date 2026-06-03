@@ -66,6 +66,7 @@ func TestRouteSecurityPoliciesUseKnownAliases(t *testing.T) {
 	}
 }
 
+// validRouteAccess 返回测试使用的有效配置。
 func validRouteAccess(access RouteAccess) bool {
 	switch access {
 	case RouteAccessPublic, RouteAccessAuth, RouteAccessInternal:
@@ -75,6 +76,7 @@ func validRouteAccess(access RouteAccess) bool {
 	}
 }
 
+// routeMetaAccessByAlias 返回路由测试辅助数据。
 func routeMetaAccessByAlias() map[string]RouteAccess {
 	result := make(map[string]RouteAccess, len(DefaultRouteMetas()))
 	for _, meta := range DefaultRouteMetas() {

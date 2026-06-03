@@ -200,11 +200,13 @@ func TestSessionTTLDoesNotExceedJWT(t *testing.T) {
 	}
 }
 
+// failFirstDelRedis 表示测试使用的辅助结构。
 type failFirstDelRedis struct {
-	redis.UniversalClient
-	delCalls int
+	redis.UniversalClient     // 嵌入字段表示测试复用的基础能力。
+	delCalls              int // delCalls 表示测试字段。
 }
 
+// Del 表示测试辅助逻辑。
 func (r *failFirstDelRedis) Del(ctx context.Context, keys ...string) *redis.IntCmd {
 	r.delCalls++
 	if r.delCalls == 1 {
@@ -215,16 +217,19 @@ func (r *failFirstDelRedis) Del(ctx context.Context, keys ...string) *redis.IntC
 	return r.UniversalClient.Del(ctx, keys...)
 }
 
+// failZAddRedis 表示测试使用的辅助结构。
 type failZAddRedis struct {
-	redis.UniversalClient
+	redis.UniversalClient // 嵌入字段表示测试复用的基础能力。
 }
 
+// ZAdd 表示测试辅助逻辑。
 func (r *failZAddRedis) ZAdd(ctx context.Context, key string, members ...redis.Z) *redis.IntCmd {
 	cmd := redis.NewIntCmd(ctx, "zadd", key)
 	cmd.SetErr(stderrors.New("forced zadd failure"))
 	return cmd
 }
 
+// newAuthLogicForSession 构造测试依赖。
 func newAuthLogicForSession(client redis.UniversalClient, authCfg config.AuthConfig) *AuthLogic {
 	cfg := config.Config{
 		AppID:        "site-a",
@@ -235,6 +240,7 @@ func newAuthLogicForSession(client redis.UniversalClient, authCfg config.AuthCon
 	return NewAuthLogic(context.Background(), svc.NewServiceContext(cfg, "v1", svc.Dependencies{Rds: client}))
 }
 
+// sessionKeysForUser 表示测试辅助逻辑。
 func sessionKeysForUser(keys []string, userID int64) []string {
 	prefix := "app:site-a:user:session:" + strconv.FormatInt(userID, 10) + ":"
 	result := make([]string, 0, len(keys))

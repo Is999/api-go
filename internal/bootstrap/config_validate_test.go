@@ -39,6 +39,43 @@ func TestValidateConfigRejectsMissingAppID(t *testing.T) {
 	}
 }
 
+// TestValidateConfigRejectsMissingSnowflakeWorkerID 确保雪花 worker_id 缺失时启动失败。
+func TestValidateConfigRejectsMissingSnowflakeWorkerID(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Snowflake.WorkerID = nil
+	t.Setenv("SNOWFLAKE_WORKER_ID", "")
+	if err := validateConfig(cfg); err == nil {
+		t.Fatal("expected missing snowflake.worker_id to be rejected")
+	}
+}
+
+// TestValidateConfigRejectsInvalidSnowflakeWorkerID 确保雪花 worker_id 越界时启动失败。
+func TestValidateConfigRejectsInvalidSnowflakeWorkerID(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Snowflake.WorkerID = int64Ptr(1024)
+	if err := validateConfig(cfg); err == nil {
+		t.Fatal("expected invalid snowflake.worker_id to be rejected")
+	}
+}
+
+// TestValidateConfigRejectsInvalidUserRouteShardCount 确保业务用户写入路由只允许平滑拆分档位。
+func TestValidateConfigRejectsInvalidUserRouteShardCount(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.User.RouteShardCount = 64
+	if err := validateConfig(cfg); err == nil {
+		t.Fatal("expected invalid user.route_shard_count to be rejected")
+	}
+}
+
+// TestNormalizeConfigDefaultsUserRouteShardCount 确保业务用户写入路由缺省时稳定回落单表。
+func TestNormalizeConfigDefaultsUserRouteShardCount(t *testing.T) {
+	cfg := config.Config{}
+	normalizeConfig(&cfg)
+	if cfg.User.RouteShardCount != defaultUserRouteShardCount {
+		t.Fatalf("route_shard_count = %d, want %d", cfg.User.RouteShardCount, defaultUserRouteShardCount)
+	}
+}
+
 // TestValidateConfigRejectsCollectorRedisEnabledWithoutStream 确保启用 Redis Stream 载体时必须配置 Stream。
 func TestValidateConfigRejectsCollectorRedisEnabledWithoutStream(t *testing.T) {
 	cfg := validBootstrapConfig()
@@ -144,10 +181,14 @@ func TestValidateConfigAcceptsProductionSafeConfig(t *testing.T) {
 	}
 }
 
+// validBootstrapConfig 返回满足默认启动校验的 API 测试配置。
 func validBootstrapConfig() config.Config {
 	return config.Config{
 		AppID:     "1",
 		JwtSecret: "test-secret-please-change",
+		Snowflake: config.SnowflakeConfig{
+			WorkerID: int64Ptr(1),
+		},
 		Auth: config.AuthConfig{
 			PasswordMinLength: 8,
 		},
@@ -158,6 +199,7 @@ func validBootstrapConfig() config.Config {
 	}
 }
 
+// validProductionBootstrapConfig 返回满足生产模式校验的 API 测试配置。
 func validProductionBootstrapConfig() config.Config {
 	cfg := validBootstrapConfig()
 	cfg.Mode = "pro"
@@ -176,4 +218,9 @@ func validProductionBootstrapConfig() config.Config {
 	}
 	cfg.Ops.ConfigReloadToken = "prod-ops-9f3b6e1c7a2d4f0b"
 	return cfg
+}
+
+// int64Ptr 返回 int64 指针，便于构造可选配置。
+func int64Ptr(value int64) *int64 {
+	return &value
 }

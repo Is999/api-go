@@ -162,6 +162,7 @@ func TestRouteNoTokenBehaviorMatchesSecurityContracts(t *testing.T) {
 	}
 }
 
+// hasSecurityField 表示测试辅助逻辑。
 func hasSecurityField(fields []string, want string) bool {
 	for _, field := range fields {
 		if strings.EqualFold(strings.TrimSpace(field), want) {
@@ -171,6 +172,7 @@ func hasSecurityField(fields []string, want string) bool {
 	return false
 }
 
+// routeSecurityContractByAlias 返回路由测试辅助数据。
 func routeSecurityContractByAlias() map[string]RouteSecurityContract {
 	result := make(map[string]RouteSecurityContract, len(DefaultRouteSecurityContracts()))
 	for _, contract := range DefaultRouteSecurityContracts() {
@@ -179,6 +181,7 @@ func routeSecurityContractByAlias() map[string]RouteSecurityContract {
 	return result
 }
 
+// routeHandlerByKey 返回路由测试辅助数据。
 func routeHandlerByKey(routes []rest.Route) map[string]http.HandlerFunc {
 	result := make(map[string]http.HandlerFunc, len(routes))
 	for _, route := range routes {

@@ -7,6 +7,7 @@ import (
 	"github.com/Is999/go-utils/errors"
 )
 
+// TestValidateSecurityFieldCountRejectsTooManyFields 验证对应场景符合预期。
 func TestValidateSecurityFieldCountRejectsTooManyFields(t *testing.T) {
 	fields := []string{"f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9"}
 	if err := ValidateSecurityFieldCount(fields, "请求签名"); err == nil {
@@ -14,6 +15,7 @@ func TestValidateSecurityFieldCountRejectsTooManyFields(t *testing.T) {
 	}
 }
 
+// TestValidateSecurityScalarValueRejectsComplexValue 验证对应场景符合预期。
 func TestValidateSecurityScalarValueRejectsComplexValue(t *testing.T) {
 	value := map[string]any{"name": "demo"}
 	if err := ValidateSecurityScalarValue("请求签名", "profile", value); err == nil {
@@ -21,6 +23,7 @@ func TestValidateSecurityScalarValueRejectsComplexValue(t *testing.T) {
 	}
 }
 
+// TestValidateSecurityTextValueRejectsOversizeValue 验证对应场景符合预期。
 func TestValidateSecurityTextValueRejectsOversizeValue(t *testing.T) {
 	value := strings.Repeat("x", MaxSecurityFieldBytes+1)
 	if err := ValidateSecurityTextValue("请求加密", "password", value, MaxSecurityFieldBytes); err == nil {
@@ -28,6 +31,7 @@ func TestValidateSecurityTextValueRejectsOversizeValue(t *testing.T) {
 	}
 }
 
+// TestValidateSecurityJSONValueRejectsOversizeValue 验证对应场景符合预期。
 func TestValidateSecurityJSONValueRejectsOversizeValue(t *testing.T) {
 	value := map[string]any{"text": strings.Repeat("x", MaxSecurityJSONFieldBytes)}
 	if _, err := ValidateSecurityJSONValue("响应加密", "profile", value); err == nil {
@@ -35,6 +39,7 @@ func TestValidateSecurityJSONValueRejectsOversizeValue(t *testing.T) {
 	}
 }
 
+// TestValidateSecurityLimitErrorsUseSentinel 验证对应场景符合预期。
 func TestValidateSecurityLimitErrorsUseSentinel(t *testing.T) {
 	err := ValidateSecurityScalarValue("响应签名", "profile", map[string]any{"name": "demo"})
 	if !errors.Is(err, ErrSecurityPayloadTooLarge) {

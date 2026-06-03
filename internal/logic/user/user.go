@@ -87,7 +87,7 @@ func (l *UserLogic) Profile() *types.BizResult {
 	}
 	profile, err := l.GetUserProfile(ctxUser.ID)
 	if err != nil {
-		return types.DBError(i18n.MsgKeyDBError, err, "UserLogic.Profile 用户ID[%d]", ctxUser.ID).ToBizResult()
+		return types.DBError(i18n.MsgKeyDBError, err, "UserLogic.Profile 用户 ID[%d]", ctxUser.ID).ToBizResult()
 	}
 	return types.NewBizResult(codes.FetchSuccess).
 		SetI18nMessage(i18n.MsgKeyFetchSuccess).
@@ -97,7 +97,7 @@ func (l *UserLogic) Profile() *types.BizResult {
 // GetUserProfile 获取用户公开资料，优先读 Redis 缓存。
 func (l *UserLogic) GetUserProfile(userID int64) (*types.UserProfile, error) {
 	if userID <= 0 {
-		return nil, errors.Errorf("用户ID不能为空")
+		return nil, errors.Errorf("用户 ID不能为空")
 	}
 	cacheKey := l.userProfileKey(userID)
 	if l.Redis() != nil {

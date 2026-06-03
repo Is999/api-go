@@ -2,6 +2,7 @@ package keys
 
 import "testing"
 
+// TestTableCachePrefix 验证对应场景符合预期。
 func TestTableCachePrefix(t *testing.T) {
 	useAppID(t, "site-a")
 	if got, want := TableCachePrefix(), "app:site-a:table:"; got != want {
@@ -9,12 +10,13 @@ func TestTableCachePrefix(t *testing.T) {
 	}
 }
 
+// TestIsTableCacheKey 验证对应场景符合预期。
 func TestIsTableCacheKey(t *testing.T) {
 	tests := []struct {
-		name  string
-		appID string
-		key   string
-		want  bool
+		name  string // name 表示测试场景名称。
+		appID string // appID 表示测试应用 ID。
+		key   string // key 表示待验证 key。
+		want  bool   // want 表示期望结果。
 	}{
 		{name: "current app table key", appID: "site-a", key: "app:site-a:table:config_uuid:featureFlag", want: true},
 		{name: "other app table key", appID: "site-a", key: "app:site-b:table:config_uuid:featureFlag", want: false},
@@ -33,12 +35,13 @@ func TestIsTableCacheKey(t *testing.T) {
 	}
 }
 
+// TestTrimTableCachePrefix 验证对应场景符合预期。
 func TestTrimTableCachePrefix(t *testing.T) {
 	tests := []struct {
-		name  string
-		appID string
-		key   string
-		want  string
+		name  string // name 表示测试场景名称。
+		appID string // appID 表示测试应用 ID。
+		key   string // key 表示待验证 key。
+		want  string // want 表示期望结果。
 	}{
 		{name: "trims table key", appID: "site-a", key: "app:site-a:table:config_uuid:featureFlag", want: "config_uuid:featureFlag"},
 		{name: "keeps other app table key", appID: "site-a", key: "app:site-b:table:config_uuid:featureFlag", want: "app:site-b:table:config_uuid:featureFlag"},

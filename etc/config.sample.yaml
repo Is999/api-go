@@ -15,6 +15,16 @@ app_key: "replace-with-strong-app-key"
 # 当前实例 ID；为空时使用主机名，建议容器环境注入 Pod 名。
 instance_id: ""
 
+# 基于 github.com/bwmarrin/snowflake 的分布式雪花 ID；所有会写 user 表的 api/admin 实例 worker_id 必须全局唯一。
+snowflake:
+  # 范围 0-1023；建议按服务预留号段，例如 api=0-511、admin=512-767；成熟库不会自动分配 worker_id。
+  worker_id: 1
+
+# 业务用户写入路由；提升前必须完成 user_account 回填、目标表创建和多实例同步重启。
+user:
+  # 新增用户默认物理表数量，仅支持 1/10/100/1000。
+  route_shard_count: 1
+
 # JWT 密钥，请替换为强随机字符串，并保证多实例配置一致。
 jwt_secret: "replace-with-strong-secret"
 # JWT 过期时间，单位秒。

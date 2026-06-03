@@ -8,6 +8,7 @@ import (
 	"api/internal/svc"
 )
 
+// TestSecretKeyLogicUsesConfigVersion 验证对应场景符合预期。
 func TestSecretKeyLogicUsesConfigVersion(t *testing.T) {
 	cfg := config.Config{
 		AppID: "demo-app",
@@ -44,6 +45,7 @@ func TestSecretKeyLogicUsesConfigVersion(t *testing.T) {
 	}
 }
 
+// TestSecretKeyLogicRejectsWrongAppID 验证对应场景符合预期。
 func TestSecretKeyLogicRejectsWrongAppID(t *testing.T) {
 	cfg := config.Config{
 		AppID: "demo-app",

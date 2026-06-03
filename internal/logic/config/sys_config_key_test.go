@@ -128,10 +128,12 @@ func TestTypedSysConfigRejectsActualTypeMismatch(t *testing.T) {
 	}
 }
 
+// newSysConfigLogicForKeyTest 构造测试依赖。
 func newSysConfigLogicForKeyTest(client redis.UniversalClient) *SysConfigLogic {
 	return NewSysConfigLogic(context.Background(), svc.NewServiceContext(appconfig.Config{AppID: "site-a"}, "v1", svc.Dependencies{Rds: client}))
 }
 
+// seedTypedSysConfigCache 写入测试数据。
 func seedTypedSysConfigCache(t *testing.T, client redis.UniversalClient, logicObj *SysConfigLogic, uuid string, typ int, value string) {
 	t.Helper()
 	cacheKey := logicObj.sysConfigCacheKey(uuid)

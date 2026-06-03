@@ -152,8 +152,8 @@ func (l *BaseLogic) RdsDelKeys(keys ...string) error {
 	return errors.Tag(l.Svc.Rds.Del(l.Ctx, normalized...).Err())
 }
 
-// wrapLogicError 给业务错误补充调用点上下文。
-func wrapLogicError(err error, format string, args ...any) error {
+// WrapLogicError 给业务错误补充调用点上下文。
+func WrapLogicError(err error, format string, args ...any) error {
 	if err == nil {
 		return nil
 	}
@@ -165,11 +165,6 @@ func wrapLogicError(err error, format string, args ...any) error {
 		return errors.Wrapf(err, format, args...)
 	}
 	return errors.Wrap(err, format)
-}
-
-// WrapLogicError 给业务错误补充调用点上下文。
-func WrapLogicError(err error, format string, args ...any) error {
-	return wrapLogicError(err, format, args...)
 }
 
 // FormatDateTime 将时间格式化为前端稳定展示字符串。

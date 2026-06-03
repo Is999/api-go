@@ -13,12 +13,12 @@ import (
 	"gorm.io/gorm"
 )
 
-const integrationMySQLDSNEnv = "INTEGRATION_MYSQL_DSN"
+const integrationMySQLDSNEnv = "INTEGRATION_MYSQL_DSN" // integrationMySQLDSNEnv 表示集成测试使用的 MySQL DSN 环境变量。
 
 // TestAPIMigrationRunWithMySQL 使用真实 MySQL 校验迁移执行、幂等和 checksum 防篡改。
 func TestAPIMigrationRunWithMySQL(t *testing.T) {
 	db := openIntegrationMySQL(t)
-	resetIntegrationTables(t, db, "schema_migrations", "user", "sys_config")
+	resetIntegrationTables(t, db, "schema_migrations", "user", "user_account", "sys_config")
 	store := NewGormMigrationStore(db)
 
 	results, err := RunMigrations(context.Background(), store, DefaultMigrations(), MigrationRunOptions{})
@@ -40,6 +40,7 @@ func TestAPIMigrationRunWithMySQL(t *testing.T) {
 	}
 }
 
+// assertMigrationStatus 校验所有迁移执行结果符合期望状态。
 func assertMigrationStatus(t *testing.T, results []MigrationRunItem, status string) {
 	t.Helper()
 	if len(results) != len(DefaultMigrations()) {
@@ -52,6 +53,7 @@ func assertMigrationStatus(t *testing.T, results []MigrationRunItem, status stri
 	}
 }
 
+// openIntegrationMySQL 打开集成测试 MySQL，并在未配置 DSN 时跳过。
 func openIntegrationMySQL(t *testing.T) *gorm.DB {
 	t.Helper()
 	dsn := strings.TrimSpace(os.Getenv(integrationMySQLDSNEnv))
@@ -82,6 +84,7 @@ func openIntegrationMySQL(t *testing.T) *gorm.DB {
 	return nil
 }
 
+// resetIntegrationTables 清理迁移集成测试涉及的表，保证每轮执行从空库开始。
 func resetIntegrationTables(t *testing.T, db *gorm.DB, tables ...string) {
 	t.Helper()
 	for _, table := range tables {

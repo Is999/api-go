@@ -426,7 +426,7 @@ func normalizeHotReloadFailureCategory(category string) string {
 
 // buildHotReloadConfigSummary 生成运行期配置摘要，便于接口展示和日志排查。
 func buildHotReloadConfigSummary(cfg config.Config) string {
-	return fmt.Sprintf("mode=%s app_id=%s sign=%d crypto=%d collector=%t", cfg.Mode, strings.TrimSpace(cfg.AppID), cfg.Security.SecretKey.SignStatus, cfg.Security.SecretKey.CryptoStatus, cfg.Collector.Enabled)
+	return fmt.Sprintf("mode=%s app_id=%s user_route=%d sign=%d crypto=%d collector=%t", cfg.Mode, strings.TrimSpace(cfg.AppID), cfg.User.RouteShardCount, cfg.Security.SecretKey.SignStatus, cfg.Security.SecretKey.CryptoStatus, cfg.Collector.Enabled)
 }
 
 // hotReloadRestartChanged 判断一个配置边界是否发生变化。
@@ -452,6 +452,24 @@ func hotReloadRestartSpecs() []hotReloadRestartSpec {
 			},
 			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
 				effective.RestConf = oldCfg.RestConf
+			},
+		},
+		{
+			Reason: "雪花ID worker 配置变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return !reflect.DeepEqual(oldCfg.Snowflake, newCfg.Snowflake)
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
+				effective.Snowflake = oldCfg.Snowflake
+			},
+		},
+		{
+			Reason: "用户写入分表路由配置变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return oldCfg.User.RouteShardCount != newCfg.User.RouteShardCount
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
+				effective.User = oldCfg.User
 			},
 		},
 		{

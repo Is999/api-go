@@ -7,6 +7,7 @@ import (
 	appconfig "api/internal/config"
 )
 
+// TestBuildMaskedConfigViewMasksSensitiveValues 验证对应场景符合预期。
 func TestBuildMaskedConfigViewMasksSensitiveValues(t *testing.T) {
 	cfg := appconfig.Config{
 		AppID:        "site-a",
@@ -37,6 +38,7 @@ func TestBuildMaskedConfigViewMasksSensitiveValues(t *testing.T) {
 	}
 }
 
+// TestBuildMaskedRuntimeYAMLOnlyIncludesRuntimeSections 验证对应场景符合预期。
 func TestBuildMaskedRuntimeYAMLOnlyIncludesRuntimeSections(t *testing.T) {
 	cfg := appconfig.Config{
 		JwtSecret: "jwt-secret-value",

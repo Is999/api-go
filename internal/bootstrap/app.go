@@ -70,6 +70,9 @@ func New(ctx context.Context, c config.Config, version string) (*App, error) {
 // BuildServiceContext 统一完成基础设施初始化。
 func BuildServiceContext(ctx context.Context, c config.Config, version string) (*svc.ServiceContext, func(context.Context) error, error) {
 	loggerx.Setup(c)
+	if err := configureSnowflakeWorkerID(c.Snowflake); err != nil {
+		return nil, nil, errors.Wrap(err, "配置雪花 ID worker 失败")
+	}
 	shutdown, err := tracing.Setup(ctx, c.Observability)
 	if err != nil {
 		return nil, nil, errors.Tag(err)

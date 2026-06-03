@@ -27,6 +27,11 @@ type RedisConfig struct {
 	TLSInsecureSkipVerify bool              `json:"tls_insecure_skip_verify,optional"` // 是否跳过 TLS 证书校验
 }
 
+// SnowflakeConfig 定义基于 bwmarrin/snowflake 的分布式雪花 ID 配置。
+type SnowflakeConfig struct {
+	WorkerID *int64 `json:"worker_id,optional"` // 当前实例全局唯一 worker_id/node_id，范围 0-1023
+}
+
 // SecuritySecretKeyVersionConfig 定义配置文件中的单个秘钥版本材料。
 type SecuritySecretKeyVersionConfig struct {
 	KeyVersion             string `json:"key_version"`                         // 秘钥版本号
@@ -129,6 +134,11 @@ type AuthRateLimitConfig struct {
 	LockSeconds   int  `json:"lock_seconds,optional"`   // 超限后的锁定时间，单位秒
 }
 
+// UserConfig 定义业务用户写入和后续拆表路由配置。
+type UserConfig struct {
+	RouteShardCount int `json:"route_shard_count,optional,default=1"` // 新增用户默认物理表数量：1/10/100/1000
+}
+
 // OpsConfig 定义运维级接口保护配置。
 type OpsConfig struct {
 	ConfigReloadToken      string   `json:"config_reload_token,optional"`       // 配置热加载接口运维令牌
@@ -141,9 +151,11 @@ type Config struct {
 	AppID         string              `json:"app_id,optional"`                       // 站点/应用 ID
 	AppKey        string              `json:"app_key,optional"`                      // 全局应用密钥，用于安全链路扩展
 	InstanceID    string              `json:"instance_id,optional"`                  // 当前实例 ID；为空时使用主机名
+	Snowflake     SnowflakeConfig     `json:"snowflake,optional"`                    // 分布式雪花 ID 配置
 	JwtSecret     string              `json:"jwt_secret"`                            // JWT 签名密钥
 	JwtExpiresIn  int64               `json:"jwt_expires_in,optional,default=86400"` // JWT 过期时间，单位秒
 	Auth          AuthConfig          `json:"auth,optional"`                         // 前台用户认证配置
+	User          UserConfig          `json:"user,optional"`                         // 业务用户写入路由配置
 	HotReload     HotReloadConfig     `json:"hot_reload,optional"`                   // 配置热加载配置
 	ConfigFiles   ConfigFilesConfig   `json:"config_files,optional"`                 // 外部配置文件入口
 	Security      SecurityConfig      `json:"security,optional"`                     // 签名验签和加解密配置

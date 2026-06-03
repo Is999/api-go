@@ -18,7 +18,7 @@ import (
 
 // 加密链路请求头和字段标记常量。
 const (
-	cipherWholeBody        = security.CipherWholeBody  // 整包加解密标记
+	cipherWholeBody        = security.CipherWholeBody  // 禁用的整包加解密标记
 	cipherJSONPrefix       = security.CipherJSONPrefix // 字段值 JSON 编解码前缀
 	secretKeyVersionHeader = "X-Key-Version"           // 本次命中的秘钥版本头
 	secretKeyGrayKeyHeader = "X-Gray-Key"              // 灰度分桶键请求头

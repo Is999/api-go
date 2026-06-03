@@ -39,9 +39,9 @@ func TestMessageKeyUnknown(t *testing.T) {
 // TestHTTPStatus 验证业务码到 HTTP 状态码的映射。
 func TestHTTPStatus(t *testing.T) {
 	tests := []struct {
-		name string
-		code int
-		want int
+		name string // name 表示测试场景名称。
+		code int    // code 表示待验证业务码。
+		want int    // want 表示期望结果。
 	}{
 		{name: "success", code: Success, want: OK},
 		{name: "token invalid", code: TokenInvalid, want: Unauthorized},

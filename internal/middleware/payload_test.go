@@ -11,6 +11,7 @@ import (
 	"github.com/Is999/go-utils/errors"
 )
 
+// TestReadRequestBodyRejectsOversizeContentLength 验证对应场景符合预期。
 func TestReadRequestBodyRejectsOversizeContentLength(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/demo", strings.NewReader("{}"))
 	req.ContentLength = security.MaxSecurityRequestBodyBytes + 1
@@ -20,6 +21,7 @@ func TestReadRequestBodyRejectsOversizeContentLength(t *testing.T) {
 	}
 }
 
+// TestReadRequestBodyRejectsOversizeStream 验证对应场景符合预期。
 func TestReadRequestBodyRejectsOversizeStream(t *testing.T) {
 	body := strings.Repeat("x", security.MaxSecurityRequestBodyBytes+1)
 	req := httptest.NewRequest(http.MethodPost, "/api/demo", strings.NewReader(body))
@@ -30,6 +32,7 @@ func TestReadRequestBodyRejectsOversizeStream(t *testing.T) {
 	}
 }
 
+// TestReadRequestBodyKeepsReadableBody 验证对应场景符合预期。
 func TestReadRequestBodyKeepsReadableBody(t *testing.T) {
 	req := httptest.NewRequest(http.MethodPost, "/api/demo", strings.NewReader(`{"name":"demo"}`))
 

@@ -152,9 +152,9 @@ func TestAuthSecurityContracts(t *testing.T) {
 // TestNormalizeAuthSecurityCategory 确保认证安全指标按低基数分类聚合。
 func TestNormalizeAuthSecurityCategory(t *testing.T) {
 	tests := []struct {
-		name   string
-		reason string
-		want   string
+		name   string // name 表示测试场景名称。
+		reason string // reason 表示安全失败原因。
+		want   string // want 表示期望结果。
 	}{
 		{
 			name:   "auth",

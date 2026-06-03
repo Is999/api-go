@@ -19,7 +19,7 @@ import (
 const (
 	// SignFieldAll 表示签名时所有首层字段参与排序签名。
 	SignFieldAll = "*"
-	// CipherWholeBody 表示已废弃的整包加密标记，仅用于识别并拒绝非法输入。
+	// CipherWholeBody 表示禁用的整包加密标记，仅用于识别并拒绝非法输入。
 	CipherWholeBody = "cipher"
 	// CipherJSONPrefix 表示字段值在加解密前需要按 JSON 编解码。
 	CipherJSONPrefix = "json:"

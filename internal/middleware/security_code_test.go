@@ -10,13 +10,14 @@ import (
 	"github.com/Is999/go-utils/errors"
 )
 
+// TestResolveSecurityFailureCodeMapsReasons 验证对应场景符合预期。
 func TestResolveSecurityFailureCodeMapsReasons(t *testing.T) {
 	tests := []struct {
-		name     string
-		reason   string
-		fallback int
-		err      error
-		want     int
+		name     string // name 表示测试场景名称。
+		reason   string // reason 表示安全失败原因。
+		fallback int    // fallback 表示兜底业务码。
+		err      error  // err 表示待验证错误。
+		want     int    // want 表示期望结果。
 	}{
 		{
 			name:     "app id invalid",
@@ -64,6 +65,7 @@ func TestResolveSecurityFailureCodeMapsReasons(t *testing.T) {
 	}
 }
 
+// TestResolveSecurityFailureCodePrefersPayloadLimit 验证对应场景符合预期。
 func TestResolveSecurityFailureCodePrefersPayloadLimit(t *testing.T) {
 	err := errors.Wrapf(security.ErrSecurityPayloadTooLarge, "响应字段超过上限")
 	got := resolveSecurityFailureCode(authlogic.AuthEventReasonResponseSignFailed, codes.InternalError, err)
@@ -72,6 +74,7 @@ func TestResolveSecurityFailureCodePrefersPayloadLimit(t *testing.T) {
 	}
 }
 
+// TestResolveSecurityFailureReasonPrefersPayloadLimit 验证对应场景符合预期。
 func TestResolveSecurityFailureReasonPrefersPayloadLimit(t *testing.T) {
 	err := errors.Wrapf(security.ErrSecurityPayloadTooLarge, "请求字段超过上限")
 	got := resolveSecurityFailureReason(authlogic.AuthEventReasonSignatureFailed, err)
@@ -80,6 +83,7 @@ func TestResolveSecurityFailureReasonPrefersPayloadLimit(t *testing.T) {
 	}
 }
 
+// TestResolveSecurityFailureReasonFallback 验证对应场景符合预期。
 func TestResolveSecurityFailureReasonFallback(t *testing.T) {
 	if got := resolveSecurityFailureReason("", nil); got != authlogic.AuthEventReasonSecurityFailed {
 		t.Fatalf("resolveSecurityFailureReason(empty) = %q, want %q", got, authlogic.AuthEventReasonSecurityFailed)

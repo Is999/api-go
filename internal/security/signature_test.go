@@ -8,6 +8,7 @@ import (
 	utils "github.com/Is999/go-utils"
 )
 
+// TestBuildSignStringUsesStableOrder 验证对应场景符合预期。
 func TestBuildSignStringUsesStableOrder(t *testing.T) {
 	data := map[string]any{
 		"b":       2,
@@ -23,6 +24,7 @@ func TestBuildSignStringUsesStableOrder(t *testing.T) {
 	}
 }
 
+// TestEncodeCipherParams 验证对应场景符合预期。
 func TestEncodeCipherParams(t *testing.T) {
 	if got := EncodeCipherParams([]string{CipherWholeBody}); got != "" {
 		t.Fatalf("EncodeCipherParams whole body = %q, want empty", got)
@@ -48,6 +50,7 @@ func TestEncodeCipherParams(t *testing.T) {
 	}
 }
 
+// TestPolicyByRouteUnknownKeepsEmptyPolicy 验证对应场景符合预期。
 func TestPolicyByRouteUnknownKeepsEmptyPolicy(t *testing.T) {
 	policy := PolicyByRoute("unknown.route")
 	if len(policy.RequestSign) != 0 || len(policy.RequestCipher) != 0 || len(policy.ResponseSign) != 0 || len(policy.ResponseCipher) != 0 {
@@ -55,6 +58,7 @@ func TestPolicyByRouteUnknownKeepsEmptyPolicy(t *testing.T) {
 	}
 }
 
+// TestNormalizeSecurityHeaderTypes 验证对应场景符合预期。
 func TestNormalizeSecurityHeaderTypes(t *testing.T) {
 	signCases := map[string]string{
 		"":    SignatureTypeRSA,

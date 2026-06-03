@@ -13,11 +13,11 @@ import (
 
 // 迁移 SQL 资产文件名。
 const (
-	userSchemaAsset           = "user_schema.sql.tmpl"          // 前台用户表 DDL 资产
-	sysConfigSchemaAsset      = "sys_config_schema.sql.tmpl"    // 系统配置表 DDL 资产
-	userSnowflakeShardAsset   = "user_snowflake_shard.sql.tmpl" // 前台用户雪花 ID 与分片 DDL 资产
-	schemaMigrationsAsset     = "schema_migrations.sql.tmpl"    // 迁移版本表 DDL 资产
-	databaseMigrationAssetDir = "assets"                        // go:embed 中的迁移资产目录
+	userSchemaAsset           = "user_schema.sql.tmpl"         // 业务用户表 DDL 资产
+	userAccountSchemaAsset    = "user_account_schema.sql.tmpl" // 业务用户全局账号索引表 DDL 资产
+	sysConfigSchemaAsset      = "sys_config_schema.sql.tmpl"   // 系统配置表 DDL 资产
+	schemaMigrationsAsset     = "schema_migrations.sql.tmpl"   // 迁移版本表 DDL 资产
+	databaseMigrationAssetDir = "assets"                       // go:embed 中的迁移资产目录
 )
 
 // databaseMigrationAssets 嵌入数据库迁移 SQL 资产。
@@ -25,9 +25,14 @@ const (
 //go:embed assets/*.sql.tmpl
 var databaseMigrationAssets embed.FS
 
-// UserSchemaSQL 返回剥离文件头说明后的前台用户表 DDL。
+// UserSchemaSQL 返回剥离文件头说明后的业务用户表 DDL。
 func UserSchemaSQL() string {
 	return readMigrationSQL(userSchemaAsset)
+}
+
+// UserAccountSchemaSQL 返回剥离文件头说明后的业务用户全局账号索引表 DDL。
+func UserAccountSchemaSQL() string {
+	return readMigrationSQL(userAccountSchemaAsset)
 }
 
 // SysConfigSchemaSQL 返回剥离文件头说明后的系统配置表 DDL。

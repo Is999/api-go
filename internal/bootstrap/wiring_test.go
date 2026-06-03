@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestLoadConfigSampleRequiresProductionSecrets 验证生产示例配置仍会拒绝占位密钥。
 func TestLoadConfigSampleRequiresProductionSecrets(t *testing.T) {
 	file := filepath.Join("..", "..", "etc", "config.sample.yaml")
 	if _, _, err := LoadConfig(file); err == nil {
@@ -13,6 +14,7 @@ func TestLoadConfigSampleRequiresProductionSecrets(t *testing.T) {
 	}
 }
 
+// TestLoadConfigDNMPSample 验证 DNMP 本地示例配置可加载并生成配置版本。
 func TestLoadConfigDNMPSample(t *testing.T) {
 	file := filepath.Join("..", "..", "etc", "config.dnmp.sample.yaml")
 	cfg, version, err := LoadConfig(file)
@@ -27,6 +29,7 @@ func TestLoadConfigDNMPSample(t *testing.T) {
 	}
 }
 
+// TestLoadConfigMergesRuntimeConfigFile 验证主配置可合并外置运行时配置文件。
 func TestLoadConfigMergesRuntimeConfigFile(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "config.d"), 0o755); err != nil {
@@ -40,6 +43,8 @@ Host: "0.0.0.0"
 Port: 8890
 Mode: "dev"
 app_id: "1"
+snowflake:
+  worker_id: 1
 jwt_secret: "test-secret-please-change"
 auth:
   password_min_length: 8
@@ -103,6 +108,7 @@ unknown_block:
 	}
 }
 
+// TestRuntimeConfigSectionSpecsValid 验证运行时配置分段注册完整且 key 集合同步。
 func TestRuntimeConfigSectionSpecsValid(t *testing.T) {
 	specs := runtimeConfigSectionSpecs()
 	if len(specs) == 0 {
@@ -127,6 +133,7 @@ func TestRuntimeConfigSectionSpecsValid(t *testing.T) {
 	}
 }
 
+// TestConfigBundleFingerprintIncludesRuntimeFile 验证配置包指纹会纳入外置运行时配置文件。
 func TestConfigBundleFingerprintIncludesRuntimeFile(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "config.d"), 0o755); err != nil {

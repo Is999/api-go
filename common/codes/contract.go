@@ -116,10 +116,10 @@ type CodeContract struct {
 
 // codeSpec 是内部响应码契约源，元素按通用、认证、用户和依赖分段维护。
 type codeSpec struct {
-	code       int
-	httpStatus int
-	success    bool
-	messageKey string
+	code       int    // code 表示唯一业务码。
+	httpStatus int    // httpStatus 表示建议返回的 HTTP 状态码。
+	success    bool   // success 表示统一响应是否按成功处理。
+	messageKey string // messageKey 表示默认多语言文案 key。
 }
 
 // defaultCodeSpecs 是业务码默认契约源，派生成功码集合、HTTP 状态和默认文案 key。

@@ -187,6 +187,7 @@ func TestRouteSecurityPoliciesUseContractAliases(t *testing.T) {
 	}
 }
 
+// routeSet 返回路由测试辅助数据。
 func routeSet(routes []rest.Route) map[string]struct{} {
 	result := make(map[string]struct{}, len(routes))
 	for _, route := range routes {
@@ -199,6 +200,7 @@ func routeSet(routes []rest.Route) map[string]struct{} {
 	return result
 }
 
+// routeDocumentSection 返回路由测试辅助数据。
 func routeDocumentSection(document string, key string) (string, bool) {
 	lines := strings.Split(document, "\n")
 	start := -1
@@ -223,6 +225,7 @@ func routeDocumentSection(document string, key string) (string, bool) {
 	return strings.Join(lines[start:end], "\n"), true
 }
 
+// routeSecurityDocumentRows 返回路由测试辅助数据。
 func routeSecurityDocumentRows(policy security.RouteSecurityPolicy) map[string]string {
 	return map[string]string{
 		"请求签名字段": securityDocumentFieldValue(policy.RequestSign, "不参与签名"),
@@ -232,6 +235,7 @@ func routeSecurityDocumentRows(policy security.RouteSecurityPolicy) map[string]s
 	}
 }
 
+// securityDocumentFieldValue 返回安全测试辅助数据。
 func securityDocumentFieldValue(fields []string, empty string) string {
 	if len(fields) == 0 {
 		return empty
@@ -239,6 +243,7 @@ func securityDocumentFieldValue(fields []string, empty string) string {
 	return strings.Join(fields, ", ")
 }
 
+// routeKey 返回路由测试辅助数据。
 func routeKey(method, path string) string {
 	return strings.ToUpper(strings.TrimSpace(method)) + " " + strings.TrimSpace(path)
 }

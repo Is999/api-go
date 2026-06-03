@@ -10,6 +10,7 @@ import (
 	"time"
 
 	codes "api/common/codes"
+	"api/common/idgen"
 	"api/internal/config"
 	"api/internal/infra/collectorx"
 	userlogic "api/internal/logic/user"
@@ -62,6 +63,13 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 	if user == nil || user.LastLoginIP != "10.0.0.9" {
 		t.Fatalf("user after login = %+v, want last_login_ip 10.0.0.9", user)
 	}
+	account, err := model.FindUserAccountByUsername(svcCtx.WriteDB(svc.DatabaseMain), "demo_user")
+	if err != nil {
+		t.Fatalf("FindUserAccountByUsername() error = %v", err)
+	}
+	if account == nil || account.UserID != user.ID || account.ShardNo != user.ShardNo || account.RouteShardCount != model.UserRouteShardCountDefault {
+		t.Fatalf("user account = %+v, want user_id=%d shard_no=%d route=1", account, user.ID, user.ShardNo)
+	}
 	if err := model.UpdateUser(svcCtx.WriteDB(svc.DatabaseMain), user.ID, map[string]any{"email": "changed@example.com"}); err != nil {
 		t.Fatalf("UpdateUser(email) error = %v", err)
 	}
@@ -100,21 +108,26 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 	})
 }
 
+// authFlowEventWant 表示认证主流程期望采集到的风控事件关键字段。
 type authFlowEventWant struct {
 	action string // 期望事件动作
 	reason string // 期望事件原因
 	route  string // 期望路由别名
 }
 
+// newAuthFlowTestService 创建认证主流程测试所需的 SQLite、Redis 和采集器依赖。
 func newAuthFlowTestService(t *testing.T) (*svc.ServiceContext, redis.UniversalClient, *[]collectorx.Event) {
 	t.Helper()
+	if err := idgen.ConfigureWorkerID(1); err != nil {
+		t.Fatalf("ConfigureWorkerID() error = %v", err)
+	}
 	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		t.Fatalf("gorm.Open(sqlite) error = %v", err)
 	}
-	if err := db.AutoMigrate(&authFlowUserSQLite{}); err != nil {
+	if err := db.AutoMigrate(&authFlowUserSQLite{}, &authFlowUserAccountSQLite{}); err != nil {
 		t.Fatalf("AutoMigrate(User) error = %v", err)
 	}
 
@@ -165,25 +178,43 @@ func newAuthFlowTestService(t *testing.T) (*svc.ServiceContext, redis.UniversalC
 
 // authFlowUserSQLite 使用 SQLite 创建用户表，业务读写仍走 model.User。
 type authFlowUserSQLite struct {
-	ID           int64     `gorm:"column:id;type:integer;primaryKey;autoIncrement:true"` // 主键
-	ShardNo      int       `gorm:"column:shard_no;type:int;not null;default:0"`          // 取模分片
-	Username     string    `gorm:"column:username;type:varchar(32);not null;uniqueIndex:uk_user_username"`
-	Nickname     string    `gorm:"column:nickname;type:varchar(64);not null;default:''"`
-	PasswordHash string    `gorm:"column:password_hash;type:varchar(255);not null"`
-	Email        string    `gorm:"column:email;type:varchar(128);not null;default:'';index:idx_user_email"`
-	Phone        string    `gorm:"column:phone;type:varchar(32);not null;default:'';index:idx_user_phone"`
-	Avatar       string    `gorm:"column:avatar;type:varchar(255);not null;default:''"`
-	Status       int       `gorm:"column:status;type:tinyint;not null;default:1;index:idx_user_status"`
-	LastLoginAt  time.Time `gorm:"column:last_login_at;type:timestamp"`
-	LastLoginIP  string    `gorm:"column:last_login_ip;type:varchar(45);not null;default:''"`
-	CreatedAt    time.Time `gorm:"column:created_at;type:timestamp;not null;default:CURRENT_TIMESTAMP"`
-	UpdatedAt    time.Time `gorm:"column:updated_at;type:timestamp;not null;default:CURRENT_TIMESTAMP"`
+	ID           int64     `gorm:"column:id;type:integer;primaryKey;autoIncrement:true;index:idx_user_shard_no_id,priority:2;index:idx_user_status_id,priority:2"` // 主键
+	ShardNo      int       `gorm:"column:shard_no;type:int;not null;default:0;index:idx_user_shard_no_id,priority:1"`                                              // ID 哈希分片
+	Username     string    `gorm:"column:username;type:varchar(32);not null;uniqueIndex:uk_user_username"`                                                         // 用户名
+	Nickname     string    `gorm:"column:nickname;type:varchar(64);not null;default:''"`                                                                           // 用户昵称
+	PasswordHash string    `gorm:"column:password_hash;type:varchar(255);not null"`                                                                                // 密码哈希
+	Email        string    `gorm:"column:email;type:varchar(128);not null;default:'';index:idx_user_email"`                                                        // 邮箱
+	Phone        string    `gorm:"column:phone;type:varchar(32);not null;default:'';index:idx_user_phone"`                                                         // 手机号
+	Avatar       string    `gorm:"column:avatar;type:varchar(255);not null;default:''"`                                                                            // 头像
+	Status       int       `gorm:"column:status;type:tinyint;not null;default:1;index:idx_user_status_id,priority:1"`                                              // 用户状态
+	LastLoginAt  time.Time `gorm:"column:last_login_at;type:timestamp"`                                                                                            // 最后登录时间
+	LastLoginIP  string    `gorm:"column:last_login_ip;type:varchar(45);not null;default:''"`                                                                      // 最后登录 IP
+	CreatedAt    time.Time `gorm:"column:created_at;type:timestamp;not null;default:CURRENT_TIMESTAMP"`                                                            // 创建时间
+	UpdatedAt    time.Time `gorm:"column:updated_at;type:timestamp;not null;default:CURRENT_TIMESTAMP"`                                                            // 更新时间
 }
 
+// TableName 返回认证流程 SQLite 用户测试模型映射的真实表名。
 func (*authFlowUserSQLite) TableName() string {
 	return model.TableNameUser
 }
 
+// authFlowUserAccountSQLite 使用 SQLite 创建用户账号索引表，业务读写仍走 model.UserAccount。
+type authFlowUserAccountSQLite struct {
+	ID              uint64    `gorm:"column:id;type:integer;primaryKey;autoIncrement:true"`                                                                  // 主键
+	Username        string    `gorm:"column:username;type:varchar(32);not null;uniqueIndex:uk_user_account_username"`                                        // 用户名
+	UserID          int64     `gorm:"column:user_id;type:integer;not null;uniqueIndex:uk_user_account_user_id;index:idx_user_account_shard_user,priority:2"` // 用户 ID
+	ShardNo         int       `gorm:"column:shard_no;type:int;not null;index:idx_user_account_shard_user,priority:1"`                                        // 逻辑分片
+	RouteShardCount int       `gorm:"column:route_shard_count;type:int;not null;default:1"`                                                                  // 物理表数量
+	CreatedAt       time.Time `gorm:"column:created_at;type:timestamp;not null;default:CURRENT_TIMESTAMP"`                                                   // 创建时间
+	UpdatedAt       time.Time `gorm:"column:updated_at;type:timestamp;not null;default:CURRENT_TIMESTAMP"`                                                   // 更新时间
+}
+
+// TableName 返回认证流程 SQLite 账号索引测试模型映射的真实表名。
+func (*authFlowUserAccountSQLite) TableName() string {
+	return model.TableNameUserAccount
+}
+
+// authFlowContext 构造带路由、请求和链路信息的认证测试上下文。
 func authFlowContext(action string, route string, method string, path string, clientIP string) context.Context {
 	ctx, _ := requestctx.New(context.Background())
 	requestctx.SetRoute(ctx, route)
@@ -194,6 +225,7 @@ func authFlowContext(action string, route string, method string, path string, cl
 	return ctx
 }
 
+// authFlowAuthenticatedContext 构造带当前用户和访问令牌的认证测试上下文。
 func authFlowAuthenticatedContext(route string, method string, path string, clientIP string, tokenResp *types.AuthTokenResp) context.Context {
 	ctx := authFlowContext(route, route, method, path, clientIP)
 	if tokenResp != nil && tokenResp.User != nil {
@@ -203,6 +235,7 @@ func authFlowAuthenticatedContext(route string, method string, path string, clie
 	return ctx
 }
 
+// requireAuthTokenResp 断言业务结果为成功的认证令牌响应。
 func requireAuthTokenResp(t *testing.T, result *types.BizResult, code int) *types.AuthTokenResp {
 	t.Helper()
 	if result == nil || !result.IsSuccess() || result.Code != code {
@@ -215,6 +248,7 @@ func requireAuthTokenResp(t *testing.T, result *types.BizResult, code int) *type
 	return resp
 }
 
+// requireUserProfile 断言业务结果为成功的用户资料响应。
 func requireUserProfile(t *testing.T, result *types.BizResult, code int) *types.UserProfile {
 	t.Helper()
 	if result == nil || !result.IsSuccess() || result.Code != code {
@@ -227,6 +261,7 @@ func requireUserProfile(t *testing.T, result *types.BizResult, code int) *types.
 	return profile
 }
 
+// requireSessionToken 断言 Redis session token 存在并返回 token 中的 jti。
 func requireSessionToken(t *testing.T, svcCtx *svc.ServiceContext, rds redis.UniversalClient, userID int64, token string) string {
 	t.Helper()
 	jti := tokenJTI(token, svcCtx.CurrentConfig().JwtSecret)
@@ -244,6 +279,7 @@ func requireSessionToken(t *testing.T, svcCtx *svc.ServiceContext, rds redis.Uni
 	return jti
 }
 
+// requireSessionMissing 断言指定 jti 对应的 Redis session 已不存在。
 func requireSessionMissing(t *testing.T, svcCtx *svc.ServiceContext, rds redis.UniversalClient, userID int64, jti string) {
 	t.Helper()
 	logicObj := NewAuthLogic(context.Background(), svcCtx)
@@ -253,6 +289,7 @@ func requireSessionMissing(t *testing.T, svcCtx *svc.ServiceContext, rds redis.U
 	}
 }
 
+// requireSessionIndexMembers 断言用户 session 索引中仅包含期望的 jti 集合。
 func requireSessionIndexMembers(t *testing.T, svcCtx *svc.ServiceContext, rds redis.UniversalClient, userID int64, want []string) {
 	t.Helper()
 	logicObj := NewAuthLogic(context.Background(), svcCtx)
@@ -265,6 +302,7 @@ func requireSessionIndexMembers(t *testing.T, svcCtx *svc.ServiceContext, rds re
 	}
 }
 
+// requireAuthFlowEvents 断言认证流程采集事件顺序、字段和脱敏结果。
 func requireAuthFlowEvents(t *testing.T, events []collectorx.Event, wants []authFlowEventWant) {
 	t.Helper()
 	if len(events) != len(wants) {
@@ -287,6 +325,7 @@ func requireAuthFlowEvents(t *testing.T, events []collectorx.Event, wants []auth
 	}
 }
 
+// sameStringSet 判断两个字符串切片是否包含相同元素集合。
 func sameStringSet(got []string, want []string) bool {
 	if len(got) != len(want) {
 		return false

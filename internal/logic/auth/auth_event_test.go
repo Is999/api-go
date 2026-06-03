@@ -114,6 +114,7 @@ func TestRuntimeRegistrySpecsValid(t *testing.T) {
 	}
 }
 
+// authEventTestConfig 表示测试辅助逻辑。
 func authEventTestConfig(enabled bool) config.Config {
 	return config.Config{
 		AppID:     "site-a",
@@ -126,6 +127,7 @@ func authEventTestConfig(enabled bool) config.Config {
 	}
 }
 
+// newAuthEventTestService 构造测试依赖。
 func newAuthEventTestService(t *testing.T, cfg config.Config, registerProcessor bool) (*svc.ServiceContext, *[]collectorx.Event) {
 	t.Helper()
 	manager, err := collectorx.New(config.CollectorConfig{

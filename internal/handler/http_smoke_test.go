@@ -30,6 +30,7 @@ type httpSmokeEnvelope struct {
 	SpanID  string         `json:"spanId"`  // 当前服务 span ID
 }
 
+// TestWriteBizResponseUsesUnifiedEnvelope 验证对应场景符合预期。
 func TestWriteBizResponseUsesUnifiedEnvelope(t *testing.T) {
 	req := newSmokeRequest(http.MethodGet, "/api/user/profile", nil)
 	rec := httptest.NewRecorder()
@@ -59,6 +60,7 @@ func TestWriteBizResponseUsesUnifiedEnvelope(t *testing.T) {
 	}
 }
 
+// TestAuthMiddlewareMissingBearerUsesUnifiedEnvelope 验证对应场景符合预期。
 func TestAuthMiddlewareMissingBearerUsesUnifiedEnvelope(t *testing.T) {
 	svcCtx := svc.NewServiceContext(smokeConfig(), "test-version", svc.Dependencies{})
 	authMw := middleware.NewAuthMiddleware(svcCtx)
@@ -92,6 +94,7 @@ func TestAuthMiddlewareMissingBearerUsesUnifiedEnvelope(t *testing.T) {
 	}
 }
 
+// TestPublicSecurityChainAllowsPlainJSONWithoutSecret 验证对应场景符合预期。
 func TestPublicSecurityChainAllowsPlainJSONWithoutSecret(t *testing.T) {
 	svcCtx := svc.NewServiceContext(smokeConfig(), "test-version", svc.Dependencies{})
 	authMw := middleware.NewAuthMiddleware(svcCtx)
@@ -126,6 +129,7 @@ func TestPublicSecurityChainAllowsPlainJSONWithoutSecret(t *testing.T) {
 	}
 }
 
+// smokeConfig 表示测试辅助逻辑。
 func smokeConfig() config.Config {
 	return config.Config{
 		AppID:     "site-smoke",
@@ -133,6 +137,7 @@ func smokeConfig() config.Config {
 	}
 }
 
+// newSmokeRequest 构造测试依赖。
 func newSmokeRequest(method string, path string, body *bytes.Buffer) *http.Request {
 	if body == nil {
 		body = bytes.NewBuffer(nil)
@@ -145,6 +150,7 @@ func newSmokeRequest(method string, path string, body *bytes.Buffer) *http.Reque
 	return req
 }
 
+// decodeSmokeEnvelope 表示测试辅助逻辑。
 func decodeSmokeEnvelope(t *testing.T, rec *httptest.ResponseRecorder) httpSmokeEnvelope {
 	t.Helper()
 	var envelope httpSmokeEnvelope

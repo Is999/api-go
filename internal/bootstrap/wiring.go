@@ -84,6 +84,9 @@ func normalizeConfig(c *config.Config) {
 	if c.Auth.PasswordMinLength <= 0 {
 		c.Auth.PasswordMinLength = 8
 	}
+	if c.User.RouteShardCount <= 0 {
+		c.User.RouteShardCount = defaultUserRouteShardCount
+	}
 }
 
 // configVersion 计算配置文件指纹，用于健康检查展示当前配置版本。

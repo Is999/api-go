@@ -161,6 +161,7 @@ func TestVerifyUserTokenRejectsEmptyAppIDClaim(t *testing.T) {
 	}
 }
 
+// signedUserToken 表示测试辅助逻辑。
 func signedUserToken(t *testing.T, secret string, appID string) string {
 	t.Helper()
 	claims := jwt.MapClaims{

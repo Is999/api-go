@@ -20,7 +20,7 @@ func TestDefaultMigrationsContainCoreTables(t *testing.T) {
 			t.Fatalf("migration checksum length = %d, want 64: %+v", len(item.Checksum), item)
 		}
 	}
-	if migrations[0].Name != "create_user" || migrations[1].Name != "create_sys_config" || migrations[2].Name != "user_snowflake_shard" {
+	if migrations[0].Name != "create_user" || migrations[1].Name != "create_sys_config" || migrations[2].Name != "create_user_account" {
 		t.Fatalf("DefaultMigrations() order mismatch: %+v", migrations)
 	}
 	if migrations[0].Version != "202606220001" || migrations[1].Version != "202606220002" || migrations[2].Version != "202606220003" {

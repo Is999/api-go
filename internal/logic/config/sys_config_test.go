@@ -16,10 +16,10 @@ import (
 // TestDecodeSysConfigValue 校验系统配置缓存值按类型还原为业务值。
 func TestDecodeSysConfigValue(t *testing.T) {
 	tests := []struct {
-		name string
-		typ  int
-		raw  string
-		want any
+		name string // name 表示测试场景名称。
+		typ  int    // typ 表示配置类型。
+		raw  string // raw 表示原始输入值。
+		want any    // want 表示期望结果。
 	}{
 		{name: "object", typ: model.SysConfigTypeObject, raw: `{"a":1}`, want: map[string]any{"a": float64(1)}},
 		{name: "array", typ: model.SysConfigTypeArray, raw: `[1,"b"]`, want: []any{float64(1), "b"}},

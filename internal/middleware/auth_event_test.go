@@ -130,6 +130,7 @@ func TestEmitSecurityFailureEvent(t *testing.T) {
 	}
 }
 
+// newAuthMiddlewareEventService 构造测试依赖。
 func newAuthMiddlewareEventService(t *testing.T) (*svc.ServiceContext, *[]collectorx.Event) {
 	t.Helper()
 	cfg := config.Config{

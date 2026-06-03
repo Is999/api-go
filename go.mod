@@ -5,6 +5,7 @@ go 1.26.4
 require (
 	github.com/Is999/go-utils v1.26.26
 	github.com/alicebob/miniredis/v2 v2.38.0
+	github.com/bwmarrin/snowflake v0.3.0
 	github.com/dgraph-io/ristretto/v2 v2.4.0
 	github.com/go-redsync/redsync/v4 v4.16.0
 	github.com/go-sql-driver/mysql v1.10.0

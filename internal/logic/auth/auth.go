@@ -25,12 +25,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-// 前台账号输入长度边界。
-const (
-	usernameMinLength = 3  // 用户名最小长度
-	usernameMaxLength = 32 // 用户名最大长度
-)
-
 // 认证入口限流动作名称。
 const (
 	authRateLimitActionLoginIP       = "login_ip"       // 登录 IP 维度
@@ -63,13 +57,18 @@ func NewAuthLogic(ctx context.Context, svcCtx *svc.ServiceContext) *AuthLogic {
 
 // Register 注册前台用户并创建登录态。
 func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
+	if err := req.Validate(); err != nil {
+		return types.ParamErrorResult(err).
+			WithError(err)
+	}
 	cfg := l.Svc.CurrentConfig()
 	if !cfg.Auth.RegisterEnabled {
 		return types.NewBizResult(codes.RegisterDisabled).
 			SetI18nMessage(i18n.MsgKeyRegisterDisabled).
 			WithError(errors.New("AuthLogic.Register 注册入口未开放"))
 	}
-	if err := l.validateRegisterReq(req); err != nil {
+	if len(req.Password) < l.passwordMinLength() {
+		err := errors.Errorf("密码长度不能少于 %d 位", l.passwordMinLength())
 		return types.ParamErrorResult(err).
 			WithError(err)
 	}
@@ -98,17 +97,17 @@ func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
 	}
 	userID, err := idgen.NextID(userIDNamespace)
 	if err != nil {
-		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Register 生成用户ID失败").ToBizResult()
+		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Register 生成用户 ID失败").ToBizResult()
 	}
 	now := time.Now()
 	user := &model.User{
 		ID:           userID,
 		ShardNo:      idgen.ShardNo(userID),
-		Username:     strings.TrimSpace(req.Username),
-		Nickname:     strings.TrimSpace(req.Nickname),
+		Username:     req.Username,
+		Nickname:     req.Nickname,
 		PasswordHash: string(passwordHash),
-		Email:        strings.TrimSpace(req.Email),
-		Phone:        strings.TrimSpace(req.Phone),
+		Email:        req.Email,
+		Phone:        req.Phone,
 		Status:       model.UserStatusEnabled,
 		LastLoginAt:  now,
 		LastLoginIP:  l.ClientIP(),
@@ -118,7 +117,12 @@ func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
 	if user.Nickname == "" {
 		user.Nickname = user.Username
 	}
-	if err = model.CreateUser(l.Svc.WriteDB(svc.DatabaseMain), user); err != nil {
+	if err = model.CreateUserWithAccount(l.Svc.WriteDB(svc.DatabaseMain), user, cfg.User.RouteShardCount); err != nil {
+		if corelogic.IsMySQLDuplicateEntryError(err) {
+			return types.NewBizResult(codes.UserAlreadyExists).
+				SetI18nMessage(i18n.MsgKeyUserAlreadyExists).
+				WithError(errors.Errorf("AuthLogic.Register 用户名[%s]已存在", req.Username))
+		}
 		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Register 创建用户[%s]", req.Username).ToBizResult()
 	}
 	created, err := l.createSessionWithJTI(user)
@@ -139,7 +143,7 @@ func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
 
 // Login 校验账号密码并创建登录态。
 func (l *AuthLogic) Login(req *types.LoginReq) *types.BizResult {
-	if err := l.validateLoginReq(req); err != nil {
+	if err := req.Validate(); err != nil {
 		return types.ParamErrorResult(err).
 			WithError(err)
 	}
@@ -238,11 +242,11 @@ func (l *AuthLogic) Refresh() *types.BizResult {
 		if errors.Is(err, userlogic.ErrUserNotFound) {
 			return types.NewBizResult(codes.TokenInvalid).
 				SetI18nMessage(i18n.MsgKeyTokenInvalid).
-				WithError(corelogic.WrapLogicError(err, "AuthLogic.Refresh 用户ID[%d]不存在", ctxUser.ID))
+				WithError(corelogic.WrapLogicError(err, "AuthLogic.Refresh 用户 ID[%d]不存在", ctxUser.ID))
 		}
 		return types.NewBizResult(codes.UserDisabled).
 			SetI18nMessage(i18n.MsgKeyUserDisabled).
-			WithError(corelogic.WrapLogicError(err, "AuthLogic.Refresh 用户ID[%d]状态无效", ctxUser.ID))
+			WithError(corelogic.WrapLogicError(err, "AuthLogic.Refresh 用户 ID[%d]状态无效", ctxUser.ID))
 	}
 	oldJTI := ""
 	if meta := l.Meta(); meta != nil {
@@ -250,7 +254,7 @@ func (l *AuthLogic) Refresh() *types.BizResult {
 	}
 	resp, err := l.rotateSession(user, oldJTI)
 	if err != nil {
-		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Refresh 用户ID[%d]轮换会话", ctxUser.ID).ToBizResult()
+		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Refresh 用户 ID[%d]轮换会话", ctxUser.ID).ToBizResult()
 	}
 	l.emitAuthEvent(AuthEventInput{
 		Action:   AuthEventActionRefreshSuccess,
@@ -279,7 +283,7 @@ func (l *AuthLogic) Logout() *types.BizResult {
 			WithError(errors.New("AuthLogic.Logout 当前 token 缺少 jti"))
 	}
 	if err := l.deleteUserSession(ctxUser.ID, jti); err != nil {
-		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Logout 用户ID[%d]清理会话", ctxUser.ID).ToBizResult()
+		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Logout 用户 ID[%d]清理会话", ctxUser.ID).ToBizResult()
 	}
 	l.emitAuthEvent(AuthEventInput{
 		Action:   AuthEventActionLogoutSuccess,
@@ -290,33 +294,6 @@ func (l *AuthLogic) Logout() *types.BizResult {
 	})
 	return types.NewBizResult(codes.Success).
 		SetI18nMessage(i18n.MsgKeyLogoutSuccess)
-}
-
-// validateRegisterReq 校验注册请求并规范化用户名。
-func (l *AuthLogic) validateRegisterReq(req *types.RegisterReq) error {
-	if req == nil {
-		return errors.New("请求不能为空")
-	}
-	req.Username = strings.TrimSpace(req.Username)
-	if len(req.Username) < usernameMinLength || len(req.Username) > usernameMaxLength {
-		return errors.Errorf("用户名长度必须为 %d-%d 位", usernameMinLength, usernameMaxLength)
-	}
-	if len(req.Password) < l.passwordMinLength() {
-		return errors.Errorf("密码长度不能少于 %d 位", l.passwordMinLength())
-	}
-	return nil
-}
-
-// validateLoginReq 校验登录请求并规范化用户名。
-func (l *AuthLogic) validateLoginReq(req *types.LoginReq) error {
-	if req == nil {
-		return errors.New("请求不能为空")
-	}
-	req.Username = strings.TrimSpace(req.Username)
-	if req.Username == "" || req.Password == "" {
-		return errors.New("用户名和密码不能为空")
-	}
-	return nil
 }
 
 // createdSession 表示已写入 Redis 的新会话。

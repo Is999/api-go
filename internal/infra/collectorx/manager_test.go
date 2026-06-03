@@ -8,6 +8,7 @@ import (
 	"api/internal/config"
 )
 
+// TestManagerEnqueueSyncProcessor 验证对应场景符合预期。
 func TestManagerEnqueueSyncProcessor(t *testing.T) {
 	manager, err := New(config.CollectorConfig{
 		Enabled:   true,
@@ -43,6 +44,7 @@ func TestManagerEnqueueSyncProcessor(t *testing.T) {
 	}
 }
 
+// TestManagerEnqueueRejectsInvalidPayload 验证对应场景符合预期。
 func TestManagerEnqueueRejectsInvalidPayload(t *testing.T) {
 	manager, err := New(config.CollectorConfig{
 		Enabled:   true,

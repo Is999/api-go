@@ -154,19 +154,19 @@ func validateSecuritySecretKeyVersion(item securitySecretKeyVersionItem, signEna
 	}
 	if signEnabled || cryptoEnabled {
 		if _, err := resolveSecurityRSAPublicKey(versionCfg.RSAPublicKeyUser, versionCfg.RSAPublicKeyUserRef, item.source+".rsa_public_key_user", production); err != nil {
-			return errors.Wrap(err, "用户RSA公钥不可用")
+			return errors.Wrap(err, "用户 RSA公钥不可用")
 		}
 		serverPrivatePEM, err := resolveSecurityRSAPrivateKey(versionCfg.RSAPrivateKeyServer, versionCfg.RSAPrivateKeyServerRef, item.source+".rsa_private_key_server", production)
 		if err != nil {
-			return errors.Wrap(err, "服务端RSA私钥不可用")
+			return errors.Wrap(err, "服务端 RSA私钥不可用")
 		}
 		if hasSecuritySecretValue(versionCfg.RSAPublicKeyServer, versionCfg.RSAPublicKeyServerRef) {
 			if _, err := resolveSecurityRSAPublicKey(versionCfg.RSAPublicKeyServer, versionCfg.RSAPublicKeyServerRef, item.source+".rsa_public_key_server", production); err != nil {
-				return errors.Wrap(err, "服务端RSA公钥不可用")
+				return errors.Wrap(err, "服务端 RSA公钥不可用")
 			}
 		} else if signEnabled {
 			if _, err := security.ParseRSAPrivateKey(serverPrivatePEM); err != nil {
-				return errors.Wrap(err, "服务端RSA公钥派生失败")
+				return errors.Wrap(err, "服务端 RSA公钥派生失败")
 			}
 		}
 	}
