@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -82,6 +83,32 @@ func TestDefaultRouteContractsMatchRegisteredRoutes(t *testing.T) {
 		if _, ok := registered[key]; !ok {
 			t.Fatalf("contract route is not registered: %s", key)
 		}
+	}
+}
+
+// TestRegisterHandlersAppendsRouteModules 确保外部路由模块可以通过统一入口追加注册。
+func TestRegisterHandlersAppendsRouteModules(t *testing.T) {
+	server := rest.MustNewServer(rest.RestConf{Host: "127.0.0.1", Port: 0})
+	defer server.Stop()
+
+	module := NewRouteModuleFunc("custom", func(scope *RouteScope) {
+		scope.Server.AddRoute(rest.Route{
+			Method: http.MethodGet,
+			Path:   "/api/custom",
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_ = r
+				w.WriteHeader(http.StatusNoContent)
+			}),
+		})
+	})
+	RegisterHandlers(server, svc.NewServiceContext(config.Config{}, "test-version", svc.Dependencies{}), module)
+
+	routeSet := make(map[string]struct{}, len(server.Routes()))
+	for _, route := range server.Routes() {
+		routeSet[route.Method+" "+route.Path] = struct{}{}
+	}
+	if _, ok := routeSet[http.MethodGet+" /api/custom"]; !ok {
+		t.Fatal("期望外部路由模块已注册")
 	}
 }
 

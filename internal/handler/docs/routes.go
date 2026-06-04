@@ -5,7 +5,6 @@ import (
 
 	apidocs "api/docs"
 	"api/internal/handler/shared"
-	"api/internal/middleware"
 	"api/internal/svc"
 )
 
@@ -18,9 +17,8 @@ func RouteSpecs() []shared.RouteSpec {
 			Meta:         shared.SystemDocsFile,
 			DocumentPath: shared.RouteDocSystem,
 			Chain:        shared.RouteSecurityInternal,
-			Handler: func(svcCtx *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
-				opsMw := middleware.NewOpsMiddleware(svcCtx)
-				return opsMw.Handle(apidocs.Handler())
+			Handler: func(_ *svc.ServiceContext) http.HandlerFunc {
+				return apidocs.Handler()
 			},
 		},
 		{
@@ -29,9 +27,8 @@ func RouteSpecs() []shared.RouteSpec {
 			Meta:         shared.SystemDocsNestedFile,
 			DocumentPath: shared.RouteDocSystem,
 			Chain:        shared.RouteSecurityInternal,
-			Handler: func(svcCtx *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
-				opsMw := middleware.NewOpsMiddleware(svcCtx)
-				return opsMw.Handle(apidocs.Handler())
+			Handler: func(_ *svc.ServiceContext) http.HandlerFunc {
+				return apidocs.Handler()
 			},
 		},
 	}

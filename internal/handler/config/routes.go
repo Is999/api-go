@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"api/internal/handler/shared"
-	"api/internal/middleware"
 	"api/internal/svc"
 )
 
@@ -17,9 +16,8 @@ func RouteSpecs() []shared.RouteSpec {
 			Meta:         shared.SystemConfigReloadStatus,
 			DocumentPath: shared.RouteDocSystem,
 			Chain:        shared.RouteSecurityInternal,
-			Handler: func(svcCtx *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
-				opsMw := middleware.NewOpsMiddleware(svcCtx)
-				return opsMw.Handle(ConfigReloadStatusHandler(svcCtx))
+			Handler: func(svcCtx *svc.ServiceContext) http.HandlerFunc {
+				return ConfigReloadStatusHandler(svcCtx)
 			},
 		},
 		{
@@ -28,9 +26,8 @@ func RouteSpecs() []shared.RouteSpec {
 			Meta:         shared.SystemConfigReloadItems,
 			DocumentPath: shared.RouteDocSystem,
 			Chain:        shared.RouteSecurityInternal,
-			Handler: func(svcCtx *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
-				opsMw := middleware.NewOpsMiddleware(svcCtx)
-				return opsMw.Handle(ConfigReloadItemsHandler(svcCtx))
+			Handler: func(svcCtx *svc.ServiceContext) http.HandlerFunc {
+				return ConfigReloadItemsHandler(svcCtx)
 			},
 		},
 		{
@@ -39,9 +36,8 @@ func RouteSpecs() []shared.RouteSpec {
 			Meta:         shared.SystemConfigReloadRun,
 			DocumentPath: shared.RouteDocSystem,
 			Chain:        shared.RouteSecurityInternal,
-			Handler: func(svcCtx *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
-				opsMw := middleware.NewOpsMiddleware(svcCtx)
-				return opsMw.Handle(RunConfigReloadHandler(svcCtx))
+			Handler: func(svcCtx *svc.ServiceContext) http.HandlerFunc {
+				return RunConfigReloadHandler(svcCtx)
 			},
 		},
 	}

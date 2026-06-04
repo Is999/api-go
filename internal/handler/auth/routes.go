@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"api/internal/handler/shared"
-	"api/internal/middleware"
 	"api/internal/svc"
 )
 
@@ -17,8 +16,8 @@ func RouteSpecs() []shared.RouteSpec {
 			Meta:         shared.AuthRegister,
 			DocumentPath: shared.RouteDocAuth,
 			Chain:        shared.RouteSecurityPublic,
-			Handler: func(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware) http.HandlerFunc {
-				return authMw.PublicHandle(RegisterHandler(svcCtx), shared.AuthRegister.Alias)
+			Handler: func(svcCtx *svc.ServiceContext) http.HandlerFunc {
+				return RegisterHandler(svcCtx)
 			},
 		},
 		{
@@ -27,8 +26,8 @@ func RouteSpecs() []shared.RouteSpec {
 			Meta:         shared.AuthLogin,
 			DocumentPath: shared.RouteDocAuth,
 			Chain:        shared.RouteSecurityPublic,
-			Handler: func(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware) http.HandlerFunc {
-				return authMw.PublicHandle(LoginHandler(svcCtx), shared.AuthLogin.Alias)
+			Handler: func(svcCtx *svc.ServiceContext) http.HandlerFunc {
+				return LoginHandler(svcCtx)
 			},
 		},
 		{
@@ -37,8 +36,8 @@ func RouteSpecs() []shared.RouteSpec {
 			Meta:         shared.AuthRefresh,
 			DocumentPath: shared.RouteDocAuth,
 			Chain:        shared.RouteSecurityAuth,
-			Handler: func(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware) http.HandlerFunc {
-				return authMw.Handle(RefreshHandler(svcCtx), shared.AuthRefresh.Alias)
+			Handler: func(svcCtx *svc.ServiceContext) http.HandlerFunc {
+				return RefreshHandler(svcCtx)
 			},
 		},
 		{
@@ -47,8 +46,8 @@ func RouteSpecs() []shared.RouteSpec {
 			Meta:         shared.AuthLogout,
 			DocumentPath: shared.RouteDocAuth,
 			Chain:        shared.RouteSecurityAuth,
-			Handler: func(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware) http.HandlerFunc {
-				return authMw.Handle(LogoutHandler(svcCtx), shared.AuthLogout.Alias)
+			Handler: func(svcCtx *svc.ServiceContext) http.HandlerFunc {
+				return LogoutHandler(svcCtx)
 			},
 		},
 	}

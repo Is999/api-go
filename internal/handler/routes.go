@@ -26,6 +26,7 @@ type RouteScope struct {
 	Server         *rest.Server               // HTTP 服务实例
 	ServiceContext *svc.ServiceContext        // 全局服务上下文
 	AuthMiddleware *middleware.AuthMiddleware // 前台鉴权中间件
+	OpsMiddleware  *middleware.OpsMiddleware  // 内网 Ops 中间件
 }
 
 // RouteModuleFunc 允许通过函数快速声明路由模块。
@@ -58,6 +59,19 @@ func (m RouteModuleFunc) Register(scope *RouteScope) {
 	if m.register != nil {
 		m.register(scope)
 	}
+}
+
+// ComposeRouteModules 合并多组路由模块，保持注册顺序。
+func ComposeRouteModules(groups ...[]RouteModule) []RouteModule {
+	total := 0
+	for _, group := range groups {
+		total += len(group)
+	}
+	modules := make([]RouteModule, 0, total)
+	for _, group := range groups {
+		modules = append(modules, group...)
+	}
+	return modules
 }
 
 // BuiltinRouteModules 返回当前进程默认启用的路由模块集合。
@@ -103,12 +117,19 @@ func newRouteModule(spec RouteModuleSpec) RouteModule {
 		if spec.Routes == nil {
 			return
 		}
-		shared.AddRouteSpecs(scope.Server, scope.ServiceContext, scope.AuthMiddleware, spec.Routes())
+		shared.AddRouteSpecs(scope.Server, scope.ServiceContext, scope.AuthMiddleware, scope.OpsMiddleware, spec.Routes())
 	})
 }
 
-// RegisterHandlers 统一注册全局中间件和各领域路由模块。
+// RegisterHandlers 统一注册全局中间件、内置路由模块和调用方追加的路由模块。
 func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext, modules ...RouteModule) {
+	moduleGroups := [][]RouteModule{BuiltinRouteModules(), modules}
+	RegisterHandlersWithModules(server, serverCtx, ComposeRouteModules(moduleGroups...)...)
+}
+
+// RegisterHandlersWithModules 按调用方传入的完整模块清单注册全局中间件和 HTTP 路由。
+// bootstrap 使用该入口，避免已经由注册清单派生的内置路由再次被隐式追加。
+func RegisterHandlersWithModules(server *rest.Server, serverCtx *svc.ServiceContext, modules ...RouteModule) {
 	// 中间件顺序固定为 outer recover -> trace -> access log -> inner recover：
 	// 1. outer recover 兜底保护入口中间件自身异常；
 	// 2. trace 创建上下文和 span；
@@ -119,14 +140,13 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext, module
 	server.Use(middleware.NewAccessLogMiddleware().Handle)
 	server.Use(middleware.NewRecoverMiddleware().Handle)
 
-	if len(modules) == 0 {
-		modules = BuiltinRouteModules()
-	}
 	authMw := middleware.NewAuthMiddleware(serverCtx)
+	opsMw := middleware.NewOpsMiddleware(serverCtx)
 	scope := &RouteScope{
 		Server:         server,
 		ServiceContext: serverCtx,
 		AuthMiddleware: authMw,
+		OpsMiddleware:  opsMw,
 	}
 	for _, module := range modules {
 		if module == nil {

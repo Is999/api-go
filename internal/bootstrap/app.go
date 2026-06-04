@@ -63,7 +63,7 @@ func New(ctx context.Context, c config.Config, version string) (*App, error) {
 		shutdown:       shutdown,
 	}
 	svcCtx.ConfigReload = app
-	handler.RegisterHandlers(server, svcCtx, routeModules...)
+	handler.RegisterHandlersWithModules(server, svcCtx, routeModules...)
 	return app, nil
 }
 

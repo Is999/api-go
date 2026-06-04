@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"api/internal/handler/shared"
-	"api/internal/middleware"
 	"api/internal/svc"
 )
 
@@ -18,7 +17,7 @@ func RouteSpecs() []shared.RouteSpec {
 			DocumentPath:  shared.RouteDocHealth,
 			Chain:         shared.RouteSecurityNone,
 			SkipAccessLog: true,
-			Handler: func(svcCtx *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
+			Handler: func(svcCtx *svc.ServiceContext) http.HandlerFunc {
 				return LiveHandler(svcCtx)
 			},
 		},
@@ -29,7 +28,7 @@ func RouteSpecs() []shared.RouteSpec {
 			DocumentPath:  shared.RouteDocHealth,
 			Chain:         shared.RouteSecurityNone,
 			SkipAccessLog: true,
-			Handler: func(svcCtx *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
+			Handler: func(svcCtx *svc.ServiceContext) http.HandlerFunc {
 				return ReadyHandler(svcCtx)
 			},
 		},
@@ -40,7 +39,7 @@ func RouteSpecs() []shared.RouteSpec {
 			DocumentPath:  shared.RouteDocHealth,
 			Chain:         shared.RouteSecurityNone,
 			SkipAccessLog: true,
-			Handler: func(_ *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
+			Handler: func(_ *svc.ServiceContext) http.HandlerFunc {
 				return MetricsHandler()
 			},
 		},

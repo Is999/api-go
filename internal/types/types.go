@@ -121,3 +121,24 @@ func (r *BizResult) ResolveMessage(ctx context.Context) string {
 	}
 	return i18n.MessageByCode(r.Code, locale)
 }
+
+const (
+	// defaultPageNumber 表示分页默认页码，未传或非法时回到第一页。
+	defaultPageNumber = 1
+	// maxPageSize 表示通用查询最大单页数量，避免异常请求放大数据库压力。
+	maxPageSize = 100
+)
+
+// normalizePage 归一化页码和每页数量，调用方按业务场景指定默认每页数量。
+func normalizePage(page, pageSize, defaultSize int) (int, int) {
+	if page < 1 {
+		page = defaultPageNumber
+	}
+	if pageSize < 1 {
+		pageSize = defaultSize
+	}
+	if pageSize > maxPageSize {
+		pageSize = maxPageSize
+	}
+	return page, pageSize
+}

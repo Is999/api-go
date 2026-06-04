@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"api/internal/middleware"
 	"api/internal/requestctx"
 	"api/internal/svc"
 )
@@ -20,8 +19,9 @@ func TestRouteSpecRestRouteWritesRequestMeta(t *testing.T) {
 		Method:        http.MethodGet,
 		Path:          "/api/live",
 		Meta:          HealthLive,
+		Chain:         RouteSecurityNone,
 		SkipAccessLog: true,
-		Handler: func(_ *svc.ServiceContext, _ *middleware.AuthMiddleware) http.HandlerFunc {
+		Handler: func(_ *svc.ServiceContext) http.HandlerFunc {
 			return func(w http.ResponseWriter, r *http.Request) {
 				_ = w
 				called = true
@@ -39,7 +39,7 @@ func TestRouteSpecRestRouteWritesRequestMeta(t *testing.T) {
 		},
 	}
 
-	route := spec.RestRoute(nil, nil)
+	route := spec.RestRoute(nil, nil, nil)
 	route.Handler(httptest.NewRecorder(), req)
 	if !called {
 		t.Fatal("期望执行路由 handler")

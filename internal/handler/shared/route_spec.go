@@ -37,8 +37,8 @@ const (
 	RouteSecurityInternal RouteSecurityChain = "internal"
 )
 
-// RouteHandler 根据服务上下文和鉴权中间件构造真实 HTTP Handler。
-type RouteHandler func(*svc.ServiceContext, *middleware.AuthMiddleware) http.HandlerFunc
+// RouteHandler 根据服务上下文构造未包裹安全链路的业务 Handler。
+type RouteHandler func(*svc.ServiceContext) http.HandlerFunc
 
 // RouteSpec 是路由注册、契约、安全链路和文档同步的单一规格。
 type RouteSpec struct {
@@ -51,12 +51,23 @@ type RouteSpec struct {
 	Handler       RouteHandler       // 真实 Handler 构造函数
 }
 
-// RestRoute 将路由规格转换为 go-zero 路由。
-func (s RouteSpec) RestRoute(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware) rest.Route {
+// RestRoute 将路由规格转换为 go-zero 路由，并按 Chain 统一挂载安全链路。
+func (s RouteSpec) RestRoute(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware, opsMw *middleware.OpsMiddleware) rest.Route {
 	if s.Handler == nil {
 		panic("路由规格缺少 Handler: " + s.Method + " " + s.Path)
 	}
-	handler := s.Handler(svcCtx, authMw)
+	handler := s.Handler(svcCtx)
+	switch s.Chain {
+	case RouteSecurityNone:
+	case RouteSecurityPublic:
+		handler = authMw.PublicHandle(handler, s.Meta.Alias)
+	case RouteSecurityAuth:
+		handler = authMw.Handle(handler, s.Meta.Alias)
+	case RouteSecurityInternal:
+		handler = opsMw.Handle(handler)
+	default:
+		panic("未知路由安全链路: " + string(s.Chain))
+	}
 	return rest.Route{
 		Method: s.Method,
 		Path:   s.Path,
@@ -73,10 +84,10 @@ func (s RouteSpec) RestRoute(svcCtx *svc.ServiceContext, authMw *middleware.Auth
 }
 
 // AddRouteSpecs 按声明顺序注册一组路由规格。
-func AddRouteSpecs(server *rest.Server, svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware, specs []RouteSpec) {
+func AddRouteSpecs(server *rest.Server, svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware, opsMw *middleware.OpsMiddleware, specs []RouteSpec) {
 	routes := make([]rest.Route, 0, len(specs))
 	for _, spec := range specs {
-		routes = append(routes, spec.RestRoute(svcCtx, authMw))
+		routes = append(routes, spec.RestRoute(svcCtx, authMw, opsMw))
 	}
 	server.AddRoutes(routes)
 }

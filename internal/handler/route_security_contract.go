@@ -16,7 +16,7 @@ const (
 	RouteSecurityPublic = shared.RouteSecurityPublic
 	// RouteSecurityAuth 表示路由必须校验 JWT 与 Redis session。
 	RouteSecurityAuth = shared.RouteSecurityAuth
-	// RouteSecurityInternal 表示路由必须校验 JWT、Redis session 和内网 Ops 令牌。
+	// RouteSecurityInternal 表示路由必须校验内网来源和 Ops 令牌。
 	RouteSecurityInternal = shared.RouteSecurityInternal
 )
 
