@@ -64,10 +64,12 @@ var (
 	SystemConfigReloadItems = newRouteMeta(routealias.SystemConfigReloadItems, RouteAccessInternal, "内网查询运行态配置项")
 	// SystemConfigReloadRun 表示内网手动触发配置热加载路由。
 	SystemConfigReloadRun = newRouteMeta(routealias.SystemConfigReloadRun, RouteAccessInternal, "内网手动触发配置热加载")
-	// SystemDocsFile 表示内网读取 API 接口文档二级资源。
-	SystemDocsFile = newRouteMeta(routealias.SystemDocsFile, RouteAccessInternal, "内网读取API接口文档二级资源")
-	// SystemDocsNestedFile 表示内网读取 API 接口文档三级资源。
-	SystemDocsNestedFile = newRouteMeta(routealias.SystemDocsNestedFile, RouteAccessInternal, "内网读取API接口文档三级资源")
+	// SystemDocsRootFile 表示内网读取 API 文档站根级资源。
+	SystemDocsRootFile = newRouteMeta(routealias.SystemDocsRootFile, RouteAccessInternal, "内网读取API文档站根级资源")
+	// SystemDocsFile 表示内网读取 API 文档二级资源。
+	SystemDocsFile = newRouteMeta(routealias.SystemDocsFile, RouteAccessInternal, "内网读取API文档二级资源")
+	// SystemDocsNestedFile 表示内网读取 API 文档三级资源。
+	SystemDocsNestedFile = newRouteMeta(routealias.SystemDocsNestedFile, RouteAccessInternal, "内网读取API文档三级资源")
 )
 
 // DefaultRouteMetas 返回内置路由元数据集合，供测试和文档防漂移复用。

@@ -42,8 +42,10 @@ const (
 	SystemConfigReloadItems Alias = "system.config_reload.items"
 	// SystemConfigReloadRun 表示内网手动触发配置热加载路由别名。
 	SystemConfigReloadRun Alias = "system.config_reload.run"
-	// SystemDocsFile 表示内网读取 API 接口文档二级资源路由别名。
+	// SystemDocsRootFile 表示内网读取 API 文档站根级资源路由别名。
+	SystemDocsRootFile Alias = "system.docs.root_file"
+	// SystemDocsFile 表示内网读取 API 文档二级资源路由别名。
 	SystemDocsFile Alias = "system.docs.file"
-	// SystemDocsNestedFile 表示内网读取 API 接口文档三级资源路由别名。
+	// SystemDocsNestedFile 表示内网读取 API 文档三级资源路由别名。
 	SystemDocsNestedFile Alias = "system.docs.nested_file"
 )

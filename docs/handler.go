@@ -49,10 +49,13 @@ func Handler() http.HandlerFunc {
 	}
 }
 
-// internalDocsAssetPath 清洗内网文档路径，并只放行可展示给后台的接口文档。
+// internalDocsAssetPath 清洗内网文档路径，并只放行可展示给后台的文档站资源。
 func internalDocsAssetPath(requestPath string) (string, bool) {
 	if text, err := url.PathUnescape(strings.TrimSpace(requestPath)); err == nil {
 		requestPath = text
+	}
+	if hasDocsPathTraversal(requestPath) {
+		return "", false
 	}
 	cleanPath := pathpkg.Clean("/" + strings.TrimLeft(strings.TrimSpace(requestPath), "/"))
 	if cleanPath == internalDocsPathPrefix || cleanPath == internalDocsPathPrefix+"/" {
@@ -68,11 +71,24 @@ func internalDocsAssetPath(requestPath string) (string, bool) {
 	return docsPath, true
 }
 
-// allowedInternalDocsAsset 限定后台可代理的 API 文档范围，避免暴露角色文档和安全清单。
+// hasDocsPathTraversal 判断请求路径是否包含显式穿越片段。
+func hasDocsPathTraversal(requestPath string) bool {
+	for _, part := range strings.Split(requestPath, "/") {
+		if part == "." || part == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+// allowedInternalDocsAsset 限定后台可代理的 API 文档范围，避免暴露安全清单等机器资产。
 func allowedInternalDocsAsset(docsPath string) bool {
 	docsPath = strings.Trim(strings.TrimSpace(docsPath), "/")
-	if docsPath == "接口文档/接口文档统一规范.md" {
+	if docsPath == "_sidebar.md" {
 		return true
 	}
-	return strings.HasPrefix(docsPath, "接口文档/前台系统/") && strings.HasSuffix(docsPath, ".md")
+	if !strings.HasSuffix(docsPath, ".md") {
+		return false
+	}
+	return strings.HasPrefix(docsPath, "接口文档/") || strings.HasPrefix(docsPath, "角色文档/")
 }
