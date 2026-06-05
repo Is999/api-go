@@ -32,22 +32,25 @@ func main() {
 
 // runApp 执行应用装配、启动和停止，并返回进程退出码。
 func runApp(ctx context.Context, configFile string) int {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	app, err := bootstrap.Wire(ctx, configFile)
 	if err != nil {
-		loggerx.Errorw(nil, "应用启动装配失败", err)
+		loggerx.Errorw(ctx, "应用启动装配失败", err)
 		return 1
 	}
 	defer func() {
 		// 退出时统一关闭 server、tracer provider、连接池等资源。
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		stopCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := app.Stop(ctx); err != nil {
-			loggerx.Errorw(nil, "应用停止失败", err)
+		if err := app.Stop(stopCtx); err != nil {
+			loggerx.Errorw(stopCtx, "应用停止失败", err)
 		}
 	}()
 
 	if err = app.Start(); err != nil {
-		loggerx.Errorw(nil, "应用启动失败", err)
+		loggerx.Errorw(ctx, "应用启动失败", err)
 		return 1
 	}
 	return 0

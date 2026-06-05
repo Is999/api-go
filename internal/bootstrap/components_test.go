@@ -14,9 +14,9 @@ import (
 func TestBuildDefaultComponentRegistryIncludesCoreDependencies(t *testing.T) {
 	svcCtx := svc.NewServiceContext(config.Config{}, "test-version", svc.Dependencies{
 		SiteDBs: svc.SiteDatabases{
-			NamedDBs: map[svc.DbName]*gorm.DB{
-				svc.DbName("user"):    nil,
-				svc.DbName("archive"): nil,
+			NamedDBs: map[svc.DBName]*gorm.DB{
+				svc.DBName("user"):    nil,
+				svc.DBName("archive"): nil,
 			},
 		},
 	})

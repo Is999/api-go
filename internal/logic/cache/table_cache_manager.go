@@ -60,7 +60,7 @@ func TableCachePhysicalKey(base *corelogic.BaseLogic, key string) string {
 }
 
 // tableCacheWriteDB 获取表缓存回源主库连接。
-func tableCacheWriteDB(base *corelogic.BaseLogic, database svc.DbName, databaseLabel string) (*gorm.DB, error) {
+func tableCacheWriteDB(base *corelogic.BaseLogic, database svc.DBName, databaseLabel string) (*gorm.DB, error) {
 	if base == nil || base.Svc == nil {
 		return nil, errors.Errorf("服务上下文未初始化")
 	}

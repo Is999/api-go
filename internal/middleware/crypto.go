@@ -438,8 +438,8 @@ func (m *CryptoMiddleware) fail(w http.ResponseWriter, r *http.Request, code int
 	code = resolveSecurityFailureCode(reason, code, err)
 	reason = resolveSecurityFailureReason(reason, err)
 	emitSecurityFailureEvent(r.Context(), m.svc, reason)
-	helper.NewJsonResp(r.Context(), w).
-		SetHttpStatus(http.StatusOK).
+	helper.NewJSONResp(r.Context(), w).
+		SetHTTPStatus(http.StatusOK).
 		SetCode(code).
 		SetError(err).
 		Fail("")

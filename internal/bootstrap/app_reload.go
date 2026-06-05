@@ -347,7 +347,7 @@ func (a *App) markHotReloadFailure(message string, err error, fingerprint, sourc
 	a.hotReload.lastError = errorKey
 	a.hotReload.lastLogAt = now
 	a.hotReload.logMu.Unlock()
-	loggerx.ErrorTextw(nil, "配置 热加载失败", errText,
+	loggerx.ErrorTextw(context.Background(), "配置 热加载失败", errText,
 		logx.Field("file", configFile),
 		logx.Field("detail", message),
 		logx.Field("version", fingerprint),

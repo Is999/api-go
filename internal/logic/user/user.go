@@ -102,7 +102,7 @@ func (l *UserLogic) GetUserProfile(userID int64) (*types.UserProfile, error) {
 	cacheKey := l.userProfileKey(userID)
 	if l.Redis() != nil {
 		profile := &types.UserProfile{}
-		if err := l.RdsGetJsonObj(cacheKey, profile); err == nil && profile.ID > 0 {
+		if err := l.RdsGetJSONObj(cacheKey, profile); err == nil && profile.ID > 0 {
 			return profile, nil
 		} else if err != nil && !errors.Is(err, redis.Nil) {
 			return nil, errors.Wrapf(err, "读取用户资料缓存失败 user_id=%d", userID)

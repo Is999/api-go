@@ -23,7 +23,7 @@ cmd/api
   -> handler/shared.RespHandler 解析请求并触发 go-zero Validate
   -> logic 执行业务编排
   -> model / cache / infra 访问数据库、Redis 和基础设施
-  -> helper.JsonResp 输出统一 status/code/message/data
+  -> helper.JSONResp 输出统一 status/code/message/data
 ```
 
 所有 HTTP 响应保持统一结构：

@@ -68,8 +68,8 @@ func (m *AuthMiddleware) Handle(next http.HandlerFunc, alias RouteAlias) http.Ha
 
 		failUnauthorized := func(code int, messageKey string, err error, reason string, identity *UserTokenIdentity) {
 			m.emitAuthFailureEvent(ctx, reason, identity)
-			resp := helper.NewJsonResp(ctx, w).
-				SetHttpStatus(http.StatusUnauthorized).
+			resp := helper.NewJSONResp(ctx, w).
+				SetHTTPStatus(http.StatusUnauthorized).
 				SetCode(code)
 			if err != nil {
 				resp = resp.SetError(err)

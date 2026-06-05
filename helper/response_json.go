@@ -29,8 +29,8 @@ type ResponseJSON struct {
 	SpanID  string `json:"spanId,omitempty"`  // 当前服务 span ID
 }
 
-// JsonResp 用链式写法封装统一响应。
-type JsonResp struct {
+// JSONResp 用链式写法封装统一响应。
+type JSONResp struct {
 	ctx        context.Context     // 当前响应绑定的请求上下文
 	write      http.ResponseWriter // HTTP 响应写入器
 	httpStatus *int                // 显式 HTTP 状态码，nil 时按业务码推导
@@ -39,40 +39,40 @@ type JsonResp struct {
 	err        error               // 内部错误对象，仅写入日志和 trace
 }
 
-// NewJsonResp 创建响应写入器。
-func NewJsonResp(ctx context.Context, w http.ResponseWriter) *JsonResp {
-	return &JsonResp{
+// NewJSONResp 创建响应写入器。
+func NewJSONResp(ctx context.Context, w http.ResponseWriter) *JSONResp {
+	return &JSONResp{
 		ctx:   ctx,
 		write: w,
 	}
 }
 
-// SetHttpStatus 设置本次响应的 HTTP 状态码。
-func (r *JsonResp) SetHttpStatus(status int) *JsonResp {
+// SetHTTPStatus 设置本次响应的 HTTP 状态码。
+func (r *JSONResp) SetHTTPStatus(status int) *JSONResp {
 	r.httpStatus = &status
 	return r
 }
 
 // SetCode 设置业务状态码。
-func (r *JsonResp) SetCode(code int) *JsonResp {
+func (r *JSONResp) SetCode(code int) *JSONResp {
 	r.code = &code
 	return r
 }
 
 // SetMessage 设置响应消息，可传多语言 key 或最终展示文案。
-func (r *JsonResp) SetMessage(message string) *JsonResp {
+func (r *JSONResp) SetMessage(message string) *JSONResp {
 	r.message = &message
 	return r
 }
 
 // SetError 设置仅供内部日志、审计和 trace 使用的错误对象。
-func (r *JsonResp) SetError(err error) *JsonResp {
+func (r *JSONResp) SetError(err error) *JSONResp {
 	r.err = err
 	return r
 }
 
 // Success 构造成功响应，并把请求结果同步写入 request meta。
-func (r *JsonResp) Success(data any) {
+func (r *JSONResp) Success(data any) {
 	locale := responseLocale(r.ctx)
 	code := RespCodeSuccess
 	if r.code != nil {
@@ -95,7 +95,7 @@ func (r *JsonResp) Success(data any) {
 }
 
 // Fail 构造失败响应，并同步 request meta 供日志与 trace 使用。
-func (r *JsonResp) Fail(message string, data ...any) {
+func (r *JSONResp) Fail(message string, data ...any) {
 	locale := responseLocale(r.ctx)
 	code := RespCodeFail
 	if r.code != nil {
@@ -127,7 +127,7 @@ func (r *JsonResp) Fail(message string, data ...any) {
 }
 
 // Write 允许业务显式指定成功/失败标志。
-func (r *JsonResp) Write(success bool, data ...any) {
+func (r *JSONResp) Write(success bool, data ...any) {
 	locale := responseLocale(r.ctx)
 	code := RespCodeUndefined
 	if r.code != nil {

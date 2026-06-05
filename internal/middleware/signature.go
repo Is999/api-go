@@ -237,8 +237,8 @@ func (m *SignatureMiddleware) fail(w http.ResponseWriter, r *http.Request, httpS
 		logx.Field("biz_code", code),
 	)
 	loggerx.Errorw(r.Context(), "签名 处理失败", err, fields...)
-	helper.NewJsonResp(r.Context(), w).
-		SetHttpStatus(httpStatus).
+	helper.NewJSONResp(r.Context(), w).
+		SetHTTPStatus(httpStatus).
 		SetCode(code).
 		SetError(err).
 		Fail("")

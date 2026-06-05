@@ -117,7 +117,7 @@ func siteMySQLComponents(ctx componentBuildContext) []svc.Component {
 	sort.Strings(names)
 	components := make([]svc.Component, 0, len(names))
 	for _, name := range names {
-		db := ctx.ServiceContext.SiteDBs.NamedDBs[svc.DbName(name)]
+		db := ctx.ServiceContext.SiteDBs.NamedDBs[svc.DBName(name)]
 		components = append(components, mysqlComponent("mysql_"+name, db, ctx.CloseGuard))
 	}
 	return components

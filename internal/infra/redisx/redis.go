@@ -30,7 +30,7 @@ func New(ctx context.Context, cfg config.RedisConfig, obs config.ObservabilityCo
 		return nil, errors.Tag(err)
 	}
 	addrMap := resolveAddrMap(cfg.AddrMap)
-	if err := pingConfiguredAddrs(ctx, cfg, addrs, addrMap, obs); err != nil {
+	if err := pingConfiguredAddrs(ctx, cfg, addrs, addrMap); err != nil {
 		return nil, errors.Tag(err)
 	}
 
@@ -68,7 +68,6 @@ func New(ctx context.Context, cfg config.RedisConfig, obs config.ObservabilityCo
 			},
 		}
 		applyClusterTLSConfig(clusterOpts, cfg, obs)
-		applyDevClusterProxySlots(clusterOpts, addrMap, obs)
 		if len(addrMap) > 0 {
 			clusterOpts.NewClient = func(opt *redis.Options) *redis.Client {
 				cloned := *opt
@@ -112,13 +111,10 @@ func resolveAddrs(addrs []string) ([]string, error) {
 }
 
 // pingConfiguredAddrs 在启动期探测声明的 Redis 地址，提前暴露不可达配置。
-func pingConfiguredAddrs(ctx context.Context, cfg config.RedisConfig, addrs []string, addrMap map[string]string, obs config.ObservabilityConfig) error {
+func pingConfiguredAddrs(ctx context.Context, cfg config.RedisConfig, addrs []string, addrMap map[string]string) error {
 	db := cfg.DB
 	if isClusterMode(cfg, addrs) {
 		db = 0
-	}
-	if isClusterMode(cfg, addrs) && shouldUseDevClusterProxySlots(addrs, obs) {
-		return nil
 	}
 	for idx, addr := range addrs {
 		pingAddr := addr
@@ -203,26 +199,6 @@ func applyClusterTLSConfig(option *redis.ClusterOptions, cfg config.RedisConfig,
 		MinVersion:         tls.VersionTLS12,
 		InsecureSkipVerify: insecureSkipVerify,
 	}
-}
-
-// applyDevClusterProxySlots 兼容本地代理单入口访问 Redis Cluster 的开发场景。
-func applyDevClusterProxySlots(option *redis.ClusterOptions, addrMap map[string]string, obs config.ObservabilityConfig) {
-	if option == nil || !shouldUseDevClusterProxySlots(option.Addrs, obs) {
-		return
-	}
-	entryAddr := rewriteClusterAddr(option.Addrs[0], addrMap)
-	option.ClusterSlots = func(context.Context) ([]redis.ClusterSlot, error) {
-		return []redis.ClusterSlot{{
-			Start: 0,
-			End:   16383,
-			Nodes: []redis.ClusterNode{{Addr: entryAddr}},
-		}}, nil
-	}
-}
-
-// shouldUseDevClusterProxySlots 判断是否启用开发环境单入口 slots 覆盖。
-func shouldUseDevClusterProxySlots(addrs []string, obs config.ObservabilityConfig) bool {
-	return isDevEnvironment(obs) && len(addrs) == 1 && strings.TrimSpace(addrs[0]) != ""
 }
 
 // isDevEnvironment 判断当前观测配置是否声明为开发环境。

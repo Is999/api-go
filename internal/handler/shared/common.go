@@ -60,12 +60,12 @@ func WriteBizResponse(w http.ResponseWriter, r *http.Request, resp *types.BizRes
 		if resp.Error != nil && !errors.Is(resp.Error, types.Nil) {
 			loggerx.Errorw(r.Context(), "请求 业务处理失败", resp.Error)
 		}
-		jsonResp := helper.NewJsonResp(r.Context(), w).SetCode(resp.Code)
+		jsonResp := helper.NewJSONResp(r.Context(), w).SetCode(resp.Code)
 		if resp.Error != nil && !errors.Is(resp.Error, types.Nil) {
 			jsonResp = jsonResp.SetError(resp.Error)
 		}
 		jsonResp.Fail(message)
 		return
 	}
-	helper.NewJsonResp(r.Context(), w).SetCode(resp.Code).SetMessage(message).Success(resp.Data)
+	helper.NewJSONResp(r.Context(), w).SetCode(resp.Code).SetMessage(message).Success(resp.Data)
 }

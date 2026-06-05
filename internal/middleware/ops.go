@@ -41,8 +41,8 @@ func (m *OpsMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 			cfg = m.svc.CurrentConfig().Ops
 		}
 		if err := validateConfigReloadOps(r, cfg); err != nil {
-			helper.NewJsonResp(r.Context(), w).
-				SetHttpStatus(http.StatusForbidden).
+			helper.NewJSONResp(r.Context(), w).
+				SetHTTPStatus(http.StatusForbidden).
 				SetCode(codes.Forbidden).
 				SetError(err).
 				Fail(i18n.MsgKeyForbidden)

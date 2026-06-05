@@ -32,8 +32,8 @@ func (m *RecoverMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 				message := i18n.MessageByKey(i18n.MsgKeyInternalError, i18n.LocaleZHCN)
 				requestctx.SetErrorResponse(ctx, http.StatusInternalServerError, codes.InternalError, message, panicErr, panicErr.Error())
 				loggerx.Errorw(ctx, "请求 发生异常", panicErr, logx.Field("stacktrace", string(debug.Stack())))
-				helper.NewJsonResp(ctx, w).
-					SetHttpStatus(http.StatusInternalServerError).
+				helper.NewJSONResp(ctx, w).
+					SetHTTPStatus(http.StatusInternalServerError).
 					SetCode(codes.InternalError).
 					Fail(i18n.MsgKeyInternalError)
 			}
