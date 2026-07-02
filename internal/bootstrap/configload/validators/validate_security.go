@@ -1,4 +1,4 @@
-package bootstrap
+package validators
 
 import (
 	"os"
@@ -22,8 +22,8 @@ type securitySecretKeyVersionItem struct {
 	value  config.SecuritySecretKeyVersionConfig // value 表示待校验的单版本秘钥材料
 }
 
-// validateSecurityConfig 校验前台签名验签和加解密配置的版本路由与材料。
-func validateSecurityConfig(c config.Config) error {
+// ValidateSecurity 校验前台签名验签和加解密配置的版本路由与材料。
+func ValidateSecurity(c config.Config) error {
 	secretCfg := c.Security.SecretKey
 	if configSecuritySecretKeyIsEmpty(secretCfg) {
 		return nil

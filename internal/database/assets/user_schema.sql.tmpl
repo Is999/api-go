@@ -5,7 +5,7 @@
 -- 安全边界：仅用于初始化或迁移；上线前确认目标库、字符集和唯一索引不会与历史数据冲突。
 CREATE TABLE IF NOT EXISTS `user` (
   `id` bigint NOT NULL COMMENT '雪花ID',
-  `shard_no` int NOT NULL DEFAULT 0 COMMENT 'ID哈希分片，CRC32(id字符串)%1000，用于分表和分片游标查询',
+  `shard_no` int NOT NULL DEFAULT 0 COMMENT 'ID哈希分片，CRC32(id字符串)%1024，用于分表和分片游标查询',
   `username` varchar(32) NOT NULL COMMENT '用户名',
   `nickname` varchar(64) NOT NULL DEFAULT '' COMMENT '昵称',
   `password_hash` varchar(255) NOT NULL COMMENT '密码哈希',
@@ -23,5 +23,5 @@ CREATE TABLE IF NOT EXISTS `user` (
   KEY `idx_user_email` (`email`),
   KEY `idx_user_phone` (`phone`),
   KEY `idx_user_status_id` (`status`, `id`),
-  CONSTRAINT `chk_user_shard_no` CHECK (`shard_no` BETWEEN 0 AND 999)
+  CONSTRAINT `chk_user_shard_no` CHECK (`shard_no` BETWEEN 0 AND 1023)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='业务用户表';

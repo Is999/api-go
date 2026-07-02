@@ -55,11 +55,6 @@ func PendingMigrations(applied map[string]struct{}) []Migration {
 	return pending
 }
 
-// ValidateDefaultMigrations 校验默认迁移清单完整性。
-func ValidateDefaultMigrations() error {
-	return validateMigrationList(DefaultMigrations())
-}
-
 // newMigration 创建带摘要的迁移项。
 func newMigration(version string, name string, asset string, sqlText string) Migration {
 	sqlText = strings.TrimSpace(sqlText)

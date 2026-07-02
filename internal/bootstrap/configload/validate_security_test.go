@@ -1,4 +1,4 @@
-package bootstrap
+package configload
 
 import (
 	"crypto/rand"
@@ -19,7 +19,7 @@ func TestValidateConfigRejectsSecurityWithoutAppID(t *testing.T) {
 		SignStatus:   0,
 		CryptoStatus: 0,
 	}
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected configured security without app_id to be rejected")
 	}
 }
@@ -33,7 +33,7 @@ func TestValidateConfigRejectsSecurityMissingRSAWhenSignEnabled(t *testing.T) {
 		SignStatus:   1,
 		CryptoStatus: 0,
 	}
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected sign-enabled security without rsa material to be rejected")
 	}
 }
@@ -50,7 +50,7 @@ func TestValidateConfigRejectsSecurityMissingAESWhenCryptoEnabled(t *testing.T) 
 		RSAPublicKeyUser:    userPublicPEM,
 		RSAPrivateKeyServer: serverPrivatePEM,
 	}
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected crypto-enabled security without aes material to be rejected")
 	}
 }
@@ -60,8 +60,8 @@ func TestValidateConfigAcceptsSecuritySingleVersion(t *testing.T) {
 	cfg := validBootstrapConfig()
 	cfg.AppID = "demo-app"
 	cfg.Security.SecretKey = validSecuritySecretKey(t, "v1")
-	if err := validateConfig(cfg); err != nil {
-		t.Fatalf("validateConfig() error = %v", err)
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 
@@ -82,8 +82,8 @@ func TestValidateConfigAcceptsSecurityMultiVersionGray(t *testing.T) {
 			validSecuritySecretKeyVersion(t, "v2"),
 		},
 	}
-	if err := validateConfig(cfg); err != nil {
-		t.Fatalf("validateConfig() error = %v", err)
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 
@@ -100,7 +100,7 @@ func TestValidateConfigRejectsSecurityDuplicateVersion(t *testing.T) {
 			{KeyVersion: "v1"},
 		},
 	}
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected duplicate security key version to be rejected")
 	}
 }
@@ -118,7 +118,7 @@ func TestValidateConfigRejectsSecurityUnknownStableVersion(t *testing.T) {
 			{KeyVersion: "v1"},
 		},
 	}
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected unknown stable security key version to be rejected")
 	}
 }
@@ -139,7 +139,7 @@ func TestValidateConfigRejectsProductionSecurityGrayWithoutSalt(t *testing.T) {
 			validSecuritySecretKeyVersion(t, "v2"),
 		},
 	}
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected production gray security key without salt to be rejected")
 	}
 }

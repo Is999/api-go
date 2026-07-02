@@ -25,21 +25,6 @@ const (
 //go:embed assets/*.sql.tmpl
 var databaseMigrationAssets embed.FS
 
-// UserSchemaSQL 返回剥离文件头说明后的业务用户表 DDL。
-func UserSchemaSQL() string {
-	return readMigrationSQL(userSchemaAsset)
-}
-
-// UserAccountSchemaSQL 返回剥离文件头说明后的业务用户全局账号索引表 DDL。
-func UserAccountSchemaSQL() string {
-	return readMigrationSQL(userAccountSchemaAsset)
-}
-
-// SysConfigSchemaSQL 返回剥离文件头说明后的系统配置表 DDL。
-func SysConfigSchemaSQL() string {
-	return readMigrationSQL(sysConfigSchemaAsset)
-}
-
 // SchemaMigrationsSQL 返回剥离文件头说明后的迁移版本表 DDL。
 func SchemaMigrationsSQL() string {
 	return readMigrationSQL(schemaMigrationsAsset)

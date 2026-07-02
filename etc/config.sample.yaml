@@ -22,7 +22,7 @@ snowflake:
 
 # 业务用户写入路由；提升前必须完成 user_account 回填、目标表创建和多实例同步重启。
 user:
-  # 新增用户默认物理表数量，仅支持 1/10/100/1000。
+  # 新增用户默认物理表数量，仅支持 1/2/4/8/16/32/64/128/256/512/1024。
   route_shard_count: 1
 
 # JWT 密钥，请替换为强随机字符串，并保证多实例配置一致。
@@ -79,7 +79,6 @@ log:
 # 可观测性配置。
 observability:
   service_name: "api"
-  environment: "pro"
   trace_enabled: true
   otlp_protocol: "grpc"
   otlp_endpoint: ""

@@ -118,7 +118,7 @@ func TestNormalizeAuthSecurityLabels(t *testing.T) {
 // TestAuthSecurityContracts 确保认证风控动作、原因和分类都从契约派生。
 func TestAuthSecurityContracts(t *testing.T) {
 	actionSeen := make(map[string]struct{})
-	for _, action := range DefaultAuthSecurityActions() {
+	for _, action := range defaultAuthSecurityActions {
 		if action == "" {
 			t.Fatal("empty auth security action")
 		}
@@ -132,7 +132,7 @@ func TestAuthSecurityContracts(t *testing.T) {
 	}
 
 	reasonSeen := make(map[string]struct{})
-	for _, contract := range DefaultAuthSecurityReasonContracts() {
+	for _, contract := range defaultAuthSecurityReasonContracts {
 		if contract.Reason == "" || contract.Category == "" {
 			t.Fatalf("invalid auth security reason contract=%+v", contract)
 		}

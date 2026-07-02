@@ -127,16 +127,6 @@ var (
 	authSecurityReasonCategories = buildAuthSecurityReasonCategoryMap(defaultAuthSecurityReasonContracts)
 )
 
-// DefaultAuthSecurityActions 返回认证风控事件动作契约快照。
-func DefaultAuthSecurityActions() []string {
-	return append([]string(nil), defaultAuthSecurityActions...)
-}
-
-// DefaultAuthSecurityReasonContracts 返回认证风控事件原因分类契约快照。
-func DefaultAuthSecurityReasonContracts() []AuthSecurityReasonContract {
-	return append([]AuthSecurityReasonContract(nil), defaultAuthSecurityReasonContracts...)
-}
-
 // defaultProcessorSpecs 是内置 Processor 规格源，元素按启动注册顺序排列。
 var defaultProcessorSpecs = []DefaultProcessorSpec{
 	{

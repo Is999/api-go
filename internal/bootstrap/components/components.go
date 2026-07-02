@@ -1,4 +1,4 @@
-package bootstrap
+package components
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	codes "api/common/codes"
+	"api/internal/bootstrap/register"
 	"api/internal/svc"
 
 	"github.com/Is999/go-utils/errors"
@@ -13,12 +14,15 @@ import (
 	"gorm.io/gorm"
 )
 
-// 默认组件生命周期名称。
 const (
-	componentNameServiceContext = "service_context" // ServiceContext 为空时的兜底组件
-	componentNameMySQL          = "mysql"           // 默认主库组件
-	componentNameRedis          = "redis"           // 默认 Redis 组件
-	componentSourceSiteMySQL    = "site_mysql"      // 命名扩展库组件来源
+	// nameServiceContext 表示 ServiceContext 为空时的兜底组件。
+	nameServiceContext = "service_context"
+	// nameMySQL 表示默认主库组件。
+	nameMySQL = "mysql"
+	// nameRedis 表示默认 Redis 组件。
+	nameRedis = "redis"
+	// sourceSiteMySQL 表示命名扩展库组件来源。
+	sourceSiteMySQL = "site_mysql"
 )
 
 // gormDBCloseGuard 避免同一 GORM 连接池被重复关闭。
@@ -26,63 +30,66 @@ type gormDBCloseGuard struct {
 	closed map[*gorm.DB]struct{} // 已关闭的连接池
 }
 
-// componentBuildContext 表示构造默认组件时需要的共享依赖。
-type componentBuildContext struct {
+// buildContext 表示构造默认组件时需要的共享依赖。
+type buildContext struct {
 	ServiceContext *svc.ServiceContext // 全局服务上下文
 	CloseGuard     *gormDBCloseGuard   // MySQL 连接池关闭去重器
 }
 
-// componentSpec 描述一个默认组件来源及其构造逻辑。
-type componentSpec struct {
-	Name        string                                      // 注册名称，必须在内置组件来源中唯一
-	File        string                                      // 组件来源所在文件
-	Method      string                                      // 组件构造入口
-	Description string                                      // 组件来源中文说明
-	Build       func(componentBuildContext) []svc.Component // 构造该来源下的实际组件
+// Spec 描述一个默认组件来源及其构造逻辑。
+type Spec struct {
+	register.Spec                                    // 组件注册清单元信息
+	build         func(buildContext) []svc.Component // 构造该来源下的实际组件
 }
 
-// buildDefaultComponentRegistry 构造启动期核心组件注册表。
-func buildDefaultComponentRegistry(svcCtx *svc.ServiceContext) (*svc.ComponentRegistry, error) {
+// NewRegistry 构造启动期核心组件注册表。
+func NewRegistry(svcCtx *svc.ServiceContext) (*svc.ComponentRegistry, error) {
 	if svcCtx == nil {
 		return svc.NewComponentRegistry(serviceContextComponent())
 	}
 
 	closeGuard := &gormDBCloseGuard{closed: make(map[*gorm.DB]struct{}, 4)}
-	components := defaultComponents(componentBuildContext{
+	items := defaultComponents(buildContext{
 		ServiceContext: svcCtx,
 		CloseGuard:     closeGuard,
 	})
-	return svc.NewComponentRegistry(components...)
+	return svc.NewComponentRegistry(items...)
 }
 
-// defaultComponentSpecs 返回默认组件生命周期来源，顺序即注册和关闭顺序。
-func defaultComponentSpecs() []componentSpec {
-	return []componentSpec{
+// DefaultSpecs 返回默认组件生命周期来源，顺序即注册和关闭顺序。
+func DefaultSpecs() []Spec {
+	return []Spec{
 		{
-			Name:        componentNameMySQL,
-			File:        "internal/bootstrap/components.go",
-			Method:      "mysqlComponent / buildDefaultComponentRegistry",
-			Description: "注册默认主库健康探测和关闭入口",
-			Build: func(ctx componentBuildContext) []svc.Component {
+			Spec: register.Spec{
+				Name:        nameMySQL,
+				File:        "internal/bootstrap/components/components.go",
+				Method:      "mysqlComponent / NewRegistry",
+				Description: "注册默认主库健康探测和关闭入口",
+			},
+			build: func(ctx buildContext) []svc.Component {
 				if ctx.ServiceContext == nil {
 					return nil
 				}
-				return []svc.Component{mysqlComponent(componentNameMySQL, ctx.ServiceContext.SiteDBs.MainDB, ctx.CloseGuard)}
+				return []svc.Component{mysqlComponent(nameMySQL, ctx.ServiceContext.SiteDBs.MainDB, ctx.CloseGuard)}
 			},
 		},
 		{
-			Name:        componentSourceSiteMySQL,
-			File:        "internal/bootstrap/components.go",
-			Method:      "siteMySQLComponents / buildDefaultComponentRegistry",
-			Description: "按名称注册扩展库健康探测和关闭入口",
-			Build:       siteMySQLComponents,
+			Spec: register.Spec{
+				Name:        sourceSiteMySQL,
+				File:        "internal/bootstrap/components/components.go",
+				Method:      "siteMySQLComponents / NewRegistry",
+				Description: "按名称注册扩展库健康探测和关闭入口",
+			},
+			build: siteMySQLComponents,
 		},
 		{
-			Name:        componentNameRedis,
-			File:        "internal/bootstrap/components.go",
-			Method:      "redisComponent / buildDefaultComponentRegistry",
-			Description: "注册默认 Redis 健康探测和关闭入口",
-			Build: func(ctx componentBuildContext) []svc.Component {
+			Spec: register.Spec{
+				Name:        nameRedis,
+				File:        "internal/bootstrap/components/components.go",
+				Method:      "redisComponent / NewRegistry",
+				Description: "注册默认 Redis 健康探测和关闭入口",
+			},
+			build: func(ctx buildContext) []svc.Component {
 				if ctx.ServiceContext == nil {
 					return nil
 				}
@@ -93,20 +100,20 @@ func defaultComponentSpecs() []componentSpec {
 }
 
 // defaultComponents 从默认组件规格派生组件生命周期清单。
-func defaultComponents(ctx componentBuildContext) []svc.Component {
-	specs := defaultComponentSpecs()
+func defaultComponents(ctx buildContext) []svc.Component {
+	specs := DefaultSpecs()
 	components := make([]svc.Component, 0, len(specs))
 	for _, spec := range specs {
-		if spec.Build == nil {
+		if spec.build == nil {
 			continue
 		}
-		components = append(components, spec.Build(ctx)...)
+		components = append(components, spec.build(ctx)...)
 	}
 	return components
 }
 
 // siteMySQLComponents 按名称排序生成扩展库组件，保证启动与关闭顺序稳定。
-func siteMySQLComponents(ctx componentBuildContext) []svc.Component {
+func siteMySQLComponents(ctx buildContext) []svc.Component {
 	if ctx.ServiceContext == nil {
 		return nil
 	}
@@ -126,7 +133,7 @@ func siteMySQLComponents(ctx componentBuildContext) []svc.Component {
 // serviceContextComponent 返回 ServiceContext 缺失时的启动健康兜底组件。
 func serviceContextComponent() svc.Component {
 	return svc.Component{
-		Name:      componentNameServiceContext,
+		Name:      nameServiceContext,
 		ErrorCode: codes.DependencyUnavailable,
 		Check: func(context.Context) error {
 			return errors.Errorf("ServiceContext未初始化")
@@ -151,7 +158,7 @@ func mysqlComponent(name string, db *gorm.DB, closeGuard *gormDBCloseGuard) svc.
 // redisComponent 创建 Redis 组件探测和释放入口。
 func redisComponent(rds redis.UniversalClient) svc.Component {
 	return svc.Component{
-		Name:      componentNameRedis,
+		Name:      nameRedis,
 		ErrorCode: codes.RedisUnavailable,
 		Check: func(ctx context.Context) error {
 			if rds == nil {

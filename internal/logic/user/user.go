@@ -45,11 +45,6 @@ func (l *UserLogic) GetActiveUserForAuth(userID int64) (*model.User, error) {
 	return l.getActiveUserByDB(l.Svc.WriteDB(svc.DatabaseMain), userID)
 }
 
-// GetUserByID 根据用户 ID 查询用户。
-func (l *UserLogic) GetUserByID(userID int64) (*model.User, error) {
-	return l.getUserByID(l.Svc.ReadDB(svc.DatabaseMain), userID)
-}
-
 // getActiveUserByDB 使用指定数据库连接查询启用用户，调用方决定读写一致性。
 func (l *UserLogic) getActiveUserByDB(db *gorm.DB, userID int64) (*model.User, error) {
 	user, err := l.getUserByID(db, userID)

@@ -17,7 +17,7 @@
 7. 需求任务和拆解后的小任务必须按真实入口、调用链和交付面逐项闭环，禁止只搭骨架、只写样例、只实现基础能力、单一分支或 happy path 后宣称完成；确实无法完成时必须说明未完成项、阻塞原因、影响范围和下一步。
 8. 注释、配置和文档必须简洁清晰，只说明用途、取值边界、默认行为或风险点，不写冗长背景。
 9. 配置热加载必须区分运行参数和启动期注册开关；路由、handler、插件、基础设施连接等启动期能力不能在线补注册或重建，需通过 restartRequired/restartReason 提示重启。
-10. 新增启动期核心组件必须先维护 `internal/bootstrap/components.go:defaultComponentSpecs`；新增默认路由模块必须同步 `internal/handler/routes.go:builtinRouteModuleSpecs`；新增轻量运行时扩展必须先维护能力归属包的 `RuntimeRegistrySpecs`；新增启动期默认 Collector Processor 必须维护 `collectorx.DefaultProcessorSpecs`，注册清单由这些规格派生。
+10. 新增启动期核心组件必须先维护 `internal/bootstrap/components:DefaultSpecs`；新增默认路由模块必须同步 `internal/handler/routes.go:builtinRouteModuleSpecs`；新增轻量运行时扩展必须先维护能力归属包的 `RuntimeRegistrySpecs`；新增启动期默认 Collector Processor 必须维护 `collectorx.DefaultProcessorSpecs`，注册清单由这些规格派生。
 
 二、代码规则
 1. 命名短而准确，贴合业务语境和当前职责；目录、变量、方法、常量、结构体、接口和字段禁止随意命名、泛名、错名、过度缩写、超长描述名、职责变化后沿用旧名和含糊的 `DefaultValue`。代码必须简洁、逻辑清晰、易读易维护；合理封装只能用于降低真实复杂度、复用稳定边界或隔离外部依赖，不能过度封装破坏清晰性。

@@ -12,7 +12,7 @@ const userRuntimeSyncReasonMaxLength = 128
 // UserProfile 表示业务用户公开资料。
 type UserProfile struct {
 	ID          int64  `json:"id,string"`   // 用户 ID，JSON 以字符串返回，避免前端丢失精度
-	ShardNo     int    `json:"shardNo"`     // ID 哈希分片，来源 CRC32(id字符串)%1000，便于分表和分片游标查询
+	ShardNo     int    `json:"shardNo"`     // ID 哈希分片，来源 CRC32(id字符串)%1024，便于分表和分片游标查询
 	Username    string `json:"username"`    // 用户名
 	Nickname    string `json:"nickname"`    // 昵称
 	Email       string `json:"email"`       // 邮箱

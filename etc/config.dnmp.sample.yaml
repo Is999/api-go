@@ -22,7 +22,7 @@ snowflake:
 
 # 业务用户写入路由；本地保持单表，拆分演练需先创建目标物理表。
 user:
-  # 新增用户默认物理表数量，仅支持 1/10/100/1000。
+  # 新增用户默认物理表数量，仅支持 1/2/4/8/16/32/64/128/256/512/1024。
   route_shard_count: 1
 
 # JWT 密钥仅供本地示例使用，部署前必须替换。
@@ -73,7 +73,6 @@ log:
 # 可观测性配置。
 observability:
   service_name: "api"
-  environment: "dev"
   trace_enabled: true
   otlp_protocol: "grpc"
   otlp_endpoint: ""

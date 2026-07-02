@@ -1,4 +1,4 @@
-package bootstrap
+package configload
 
 import (
 	"testing"
@@ -10,7 +10,7 @@ import (
 func TestValidateConfigRejectsWeakJWTSecret(t *testing.T) {
 	cfg := validBootstrapConfig()
 	cfg.JwtSecret = "short"
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected weak jwt_secret to be rejected")
 	}
 }
@@ -25,7 +25,7 @@ func TestValidateConfigRejectsInvalidCollectorRedis(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected redis collector without stream to be rejected")
 	}
 }
@@ -34,7 +34,7 @@ func TestValidateConfigRejectsInvalidCollectorRedis(t *testing.T) {
 func TestValidateConfigRejectsMissingAppID(t *testing.T) {
 	cfg := validBootstrapConfig()
 	cfg.AppID = ""
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected missing app_id to be rejected")
 	}
 }
@@ -44,7 +44,7 @@ func TestValidateConfigRejectsMissingSnowflakeWorkerID(t *testing.T) {
 	cfg := validBootstrapConfig()
 	cfg.Snowflake.WorkerID = nil
 	t.Setenv("SNOWFLAKE_WORKER_ID", "")
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected missing snowflake.worker_id to be rejected")
 	}
 }
@@ -53,7 +53,7 @@ func TestValidateConfigRejectsMissingSnowflakeWorkerID(t *testing.T) {
 func TestValidateConfigRejectsInvalidSnowflakeWorkerID(t *testing.T) {
 	cfg := validBootstrapConfig()
 	cfg.Snowflake.WorkerID = int64Ptr(1024)
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected invalid snowflake.worker_id to be rejected")
 	}
 }
@@ -61,8 +61,8 @@ func TestValidateConfigRejectsInvalidSnowflakeWorkerID(t *testing.T) {
 // TestValidateConfigRejectsInvalidUserRouteShardCount 确保业务用户写入路由只允许平滑拆分档位。
 func TestValidateConfigRejectsInvalidUserRouteShardCount(t *testing.T) {
 	cfg := validBootstrapConfig()
-	cfg.User.RouteShardCount = 64
-	if err := validateConfig(cfg); err == nil {
+	cfg.User.RouteShardCount = 3
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected invalid user.route_shard_count to be rejected")
 	}
 }
@@ -70,7 +70,7 @@ func TestValidateConfigRejectsInvalidUserRouteShardCount(t *testing.T) {
 // TestNormalizeConfigDefaultsUserRouteShardCount 确保业务用户写入路由缺省时稳定回落单表。
 func TestNormalizeConfigDefaultsUserRouteShardCount(t *testing.T) {
 	cfg := config.Config{}
-	normalizeConfig(&cfg)
+	Normalize(&cfg)
 	if cfg.User.RouteShardCount != defaultUserRouteShardCount {
 		t.Fatalf("route_shard_count = %d, want %d", cfg.User.RouteShardCount, defaultUserRouteShardCount)
 	}
@@ -80,7 +80,7 @@ func TestNormalizeConfigDefaultsUserRouteShardCount(t *testing.T) {
 func TestValidateConfigRejectsCollectorRedisEnabledWithoutStream(t *testing.T) {
 	cfg := validBootstrapConfig()
 	cfg.Collector.Redis.Enabled = true
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected collector.redis.enabled without stream to be rejected")
 	}
 }
@@ -90,7 +90,7 @@ func TestValidateConfigRejectsForeignCollectorStream(t *testing.T) {
 	cfg := validBootstrapConfig()
 	cfg.AppID = "site-2"
 	cfg.Collector.Redis.Stream = "app:site-1:collector:events"
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected foreign collector.redis.stream to be rejected")
 	}
 }
@@ -99,7 +99,7 @@ func TestValidateConfigRejectsForeignCollectorStream(t *testing.T) {
 func TestValidateConfigRejectsPublicOpsAllowedIP(t *testing.T) {
 	cfg := validBootstrapConfig()
 	cfg.Ops.ConfigReloadAllowedIPs = []string{"8.8.8.8"}
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected public ops allowed IP to be rejected")
 	}
 }
@@ -108,8 +108,8 @@ func TestValidateConfigRejectsPublicOpsAllowedIP(t *testing.T) {
 func TestValidateConfigAcceptsPrivateOpsCIDR(t *testing.T) {
 	cfg := validBootstrapConfig()
 	cfg.Ops.ConfigReloadAllowedIPs = []string{"10.0.0.0/8", "127.0.0.1"}
-	if err := validateConfig(cfg); err != nil {
-		t.Fatalf("validateConfig() error = %v", err)
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 
@@ -122,7 +122,7 @@ func TestValidateConfigRejectsLargeAuthRateLimit(t *testing.T) {
 		MaxAttempts:   5,
 		LockSeconds:   300,
 	}
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected oversized auth rate limit window to be rejected")
 	}
 }
@@ -131,7 +131,7 @@ func TestValidateConfigRejectsLargeAuthRateLimit(t *testing.T) {
 func TestValidateConfigRejectsProductionPlaceholderJWTSecret(t *testing.T) {
 	cfg := validProductionBootstrapConfig()
 	cfg.JwtSecret = "replace-with-strong-secret"
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected production placeholder jwt_secret to be rejected")
 	}
 }
@@ -140,7 +140,7 @@ func TestValidateConfigRejectsProductionPlaceholderJWTSecret(t *testing.T) {
 func TestValidateConfigRejectsProductionMissingOpsToken(t *testing.T) {
 	cfg := validProductionBootstrapConfig()
 	cfg.Ops.ConfigReloadToken = ""
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected missing production ops token to be rejected")
 	}
 }
@@ -149,7 +149,7 @@ func TestValidateConfigRejectsProductionMissingOpsToken(t *testing.T) {
 func TestValidateConfigRejectsProductionRedisTLSInsecure(t *testing.T) {
 	cfg := validProductionBootstrapConfig()
 	cfg.Redis.TLSInsecureSkipVerify = true
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected production redis tls insecure skip verify to be rejected")
 	}
 }
@@ -158,7 +158,7 @@ func TestValidateConfigRejectsProductionRedisTLSInsecure(t *testing.T) {
 func TestValidateConfigRejectsProductionDisabledLoginRateLimit(t *testing.T) {
 	cfg := validProductionBootstrapConfig()
 	cfg.Auth.LoginRateLimit.Enabled = false
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected production disabled login rate limit to be rejected")
 	}
 }
@@ -168,7 +168,7 @@ func TestValidateConfigRejectsProductionRegisterWithoutRateLimit(t *testing.T) {
 	cfg := validProductionBootstrapConfig()
 	cfg.Auth.RegisterEnabled = true
 	cfg.Auth.RegisterRateLimit.Enabled = false
-	if err := validateConfig(cfg); err == nil {
+	if err := Validate(cfg); err == nil {
 		t.Fatal("expected production register without rate limit to be rejected")
 	}
 }
@@ -176,8 +176,8 @@ func TestValidateConfigRejectsProductionRegisterWithoutRateLimit(t *testing.T) {
 // TestValidateConfigAcceptsProductionSafeConfig 确保生产安全配置可以通过启动校验。
 func TestValidateConfigAcceptsProductionSafeConfig(t *testing.T) {
 	cfg := validProductionBootstrapConfig()
-	if err := validateConfig(cfg); err != nil {
-		t.Fatalf("validateConfig() error = %v", err)
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
 	}
 }
 

@@ -71,11 +71,6 @@ func (l *SecretKeyLogic) SecurityConfigured(appID string) bool {
 	return ok && !configSecretKeyIsEmpty(secretCfg)
 }
 
-// GetRouteConfig 读取指定 AppID 的运行时路由配置。
-func (l *SecretKeyLogic) GetRouteConfig(appID string) (*SecretKeyRouteConfig, error) {
-	return l.getConfigSecretKeyRoute(appID)
-}
-
 // GetAESKey 读取指定 AppID 在当前路由命中的 AES KEY 与 IV。
 func (l *SecretKeyLogic) GetAESKey(appID string, versionHint string, grayKey string) (*AESKey, string, error) {
 	version, err := l.ResolveSecretKeyVersion(appID, versionHint, grayKey)
@@ -134,7 +129,7 @@ func (l *SecretKeyLogic) GetRSAKey(appID string, versionHint string, grayKey str
 
 // ResolveSecretKeyVersion 返回当前请求最终命中的秘钥版本。
 func (l *SecretKeyLogic) ResolveSecretKeyVersion(appID string, versionHint string, grayKey string) (string, error) {
-	route, err := l.getConfigSecretKeyRoute(appID)
+	route, err := l.GetRouteConfig(appID)
 	if err != nil {
 		return "", errors.Tag(err)
 	}
@@ -167,8 +162,8 @@ func (l *SecretKeyLogic) currentConfigSecretKey(appID string) (config.SecuritySe
 	return cfg.Security.SecretKey, true
 }
 
-// getConfigSecretKeyRoute 从配置文件读取当前 AppID 的版本选路和链路开关。
-func (l *SecretKeyLogic) getConfigSecretKeyRoute(appID string) (*SecretKeyRouteConfig, error) {
+// GetRouteConfig 从配置文件读取当前 AppID 的版本选路和链路开关。
+func (l *SecretKeyLogic) GetRouteConfig(appID string) (*SecretKeyRouteConfig, error) {
 	secretCfg, ok := l.currentConfigSecretKey(appID)
 	if !ok {
 		return nil, errors.Errorf("AppID未命中配置文件秘钥: %s", appID)

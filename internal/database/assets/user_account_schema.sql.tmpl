@@ -6,8 +6,8 @@ CREATE TABLE IF NOT EXISTS `user_account` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
   `username` varchar(32) NOT NULL COMMENT '用户名',
   `user_id` bigint NOT NULL COMMENT '业务用户雪花ID',
-  `shard_no` int NOT NULL COMMENT 'ID哈希分片，CRC32(id字符串)%1000',
-  `route_shard_count` smallint unsigned NOT NULL DEFAULT 1 COMMENT '当前物理用户表数量：1/10/100/1000',
+  `shard_no` int NOT NULL COMMENT 'ID哈希分片，CRC32(id字符串)%1024',
+  `route_shard_count` smallint unsigned NOT NULL DEFAULT 1 COMMENT '当前物理用户表数量：1/2/4/.../1024',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`),
@@ -15,6 +15,6 @@ CREATE TABLE IF NOT EXISTS `user_account` (
   UNIQUE KEY `uk_user_account_user_id` (`user_id`),
   KEY `idx_user_account_shard_user` (`shard_no`, `user_id`),
   KEY `idx_user_account_route_shard_user` (`route_shard_count`, `shard_no`, `user_id`),
-  CONSTRAINT `chk_user_account_shard_no` CHECK (`shard_no` BETWEEN 0 AND 999),
-  CONSTRAINT `chk_user_account_route_shard_count` CHECK (`route_shard_count` IN (1, 10, 100, 1000))
+  CONSTRAINT `chk_user_account_shard_no` CHECK (`shard_no` BETWEEN 0 AND 1023),
+  CONSTRAINT `chk_user_account_route_shard_count` CHECK (`route_shard_count` IN (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='业务用户全局账号索引表';

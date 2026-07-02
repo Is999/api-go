@@ -104,7 +104,7 @@ type CollectorConfig struct {
 // ObservabilityConfig 聚合日志、链路追踪相关配置。
 type ObservabilityConfig struct {
 	ServiceName     string  `json:"service_name,optional"`       // 服务名
-	Environment     string  `json:"environment,optional"`        // 环境名
+	Environment     string  `json:"environment,optional"`        // 观测环境，由顶层 Mode 填充
 	TraceEnabled    bool    `json:"trace_enabled,optional"`      // 是否启用 trace 采样/上报
 	OTLPProtocol    string  `json:"otlp_protocol,optional"`      // OTLP 协议：grpc/http
 	OTLPEndpoint    string  `json:"otlp_endpoint,optional"`      // OTLP endpoint
@@ -136,7 +136,7 @@ type AuthRateLimitConfig struct {
 
 // UserConfig 定义业务用户写入和后续拆表路由配置。
 type UserConfig struct {
-	RouteShardCount int `json:"route_shard_count,optional,default=1"` // 新增用户默认物理表数量：1/10/100/1000
+	RouteShardCount int `json:"route_shard_count,optional,default=1"` // 新增用户默认物理表数量：1/2/4/.../1024
 }
 
 // OpsConfig 定义运维级接口保护配置。

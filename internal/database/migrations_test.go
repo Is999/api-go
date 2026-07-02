@@ -2,10 +2,10 @@ package database
 
 import "testing"
 
-// TestValidateDefaultMigrations 确保默认迁移清单完整、版本递增且资产存在。
-func TestValidateDefaultMigrations(t *testing.T) {
-	if err := ValidateDefaultMigrations(); err != nil {
-		t.Fatalf("ValidateDefaultMigrations() error = %v", err)
+// TestDefaultMigrationsValid 确保默认迁移清单完整、版本递增且资产存在。
+func TestDefaultMigrationsValid(t *testing.T) {
+	if err := validateMigrationList(DefaultMigrations()); err != nil {
+		t.Fatalf("validateMigrationList(DefaultMigrations()) error = %v", err)
 	}
 }
 

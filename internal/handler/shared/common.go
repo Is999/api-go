@@ -26,7 +26,7 @@ func RespHandler[Req any](exec RespExec[Req]) func(*svc.ServiceContext) http.Han
 		return respHandler(func(r *http.Request) *types.BizResult {
 			var req Req
 			if err := httpx.Parse(r, &req); err != nil {
-				return paramErrorResult(err)
+				return types.ParamErrorResult(err)
 			}
 			resp := exec(r, sCtx, &req)
 			if resp == nil {
@@ -43,11 +43,6 @@ func respHandler(fn handlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		WriteBizResponse(w, r, fn(r))
 	}
-}
-
-// paramErrorResult 把请求解析错误转换为统一参数错误响应。
-func paramErrorResult(err error) *types.BizResult {
-	return types.ParamErrorResult(err)
 }
 
 // WriteBizResponse 在 handler 最外层统一输出响应和错误日志。

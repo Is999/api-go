@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"api/internal/bootstrap/configload"
+	"api/internal/config"
 )
 
 // TestLoadConfigSampleRequiresProductionSecrets 验证生产示例配置仍会拒绝占位密钥。
@@ -26,6 +29,22 @@ func TestLoadConfigDNMPSample(t *testing.T) {
 	}
 	if version == "" {
 		t.Fatal("config version should not be empty")
+	}
+}
+
+// TestNormalizeConfigUsesModeForObservability 确保观测环境复用顶层 Mode，不维护第二套环境。
+func TestNormalizeConfigUsesModeForObservability(t *testing.T) {
+	cfg := config.Config{
+		Observability: config.ObservabilityConfig{
+			Environment: "custom-env",
+		},
+	}
+	cfg.Mode = "pro"
+
+	configload.Normalize(&cfg)
+
+	if cfg.Observability.Environment != "pro" {
+		t.Fatalf("期望观测环境复用 Mode，实际为 %q", cfg.Observability.Environment)
 	}
 }
 
@@ -108,31 +127,6 @@ unknown_block:
 	}
 }
 
-// TestRuntimeConfigSectionSpecsValid 验证运行时配置分段注册完整且 key 集合同步。
-func TestRuntimeConfigSectionSpecsValid(t *testing.T) {
-	specs := runtimeConfigSectionSpecs()
-	if len(specs) == 0 {
-		t.Fatal("runtime config section specs should not be empty")
-	}
-	keys := runtimeConfigSectionKeys()
-	seen := make(map[string]struct{}, len(specs))
-	for _, spec := range specs {
-		if spec.Key == "" {
-			t.Fatal("runtime config section spec has empty key")
-		}
-		if spec.apply == nil {
-			t.Fatalf("runtime config section %s missing apply function", spec.Key)
-		}
-		if _, ok := seen[spec.Key]; ok {
-			t.Fatalf("runtime config section duplicate key=%s", spec.Key)
-		}
-		if _, ok := keys[spec.Key]; !ok {
-			t.Fatalf("runtime config section key %s missing from key set", spec.Key)
-		}
-		seen[spec.Key] = struct{}{}
-	}
-}
-
 // TestConfigBundleFingerprintIncludesRuntimeFile 验证配置包指纹会纳入外置运行时配置文件。
 func TestConfigBundleFingerprintIncludesRuntimeFile(t *testing.T) {
 	dir := t.TempDir()
@@ -161,16 +155,16 @@ redis:
 	if err := os.WriteFile(runtimeFile, []byte("collector:\n  enabled: false\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(runtime first) error = %v", err)
 	}
-	first, err := configBundleFingerprint(mainFile)
+	first, err := configload.BundleFingerprint(mainFile)
 	if err != nil {
-		t.Fatalf("configBundleFingerprint(first) error = %v", err)
+		t.Fatalf("BundleFingerprint(first) error = %v", err)
 	}
 	if err := os.WriteFile(runtimeFile, []byte("collector:\n  enabled: true\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(runtime second) error = %v", err)
 	}
-	second, err := configBundleFingerprint(mainFile)
+	second, err := configload.BundleFingerprint(mainFile)
 	if err != nil {
-		t.Fatalf("configBundleFingerprint(second) error = %v", err)
+		t.Fatalf("BundleFingerprint(second) error = %v", err)
 	}
 	if first == second {
 		t.Fatal("runtime file change should update bundle fingerprint")

@@ -91,8 +91,8 @@ api
 
 | 注册对象 | 统一入口 | 说明 |
 | --- | --- | --- |
-| 启动组件 | `internal/bootstrap/components.go:defaultComponentSpecs` | MySQL、命名扩展库、Redis 等组件从规格派生健康检查和关闭顺序 |
-| 注册清单 | `internal/bootstrap/registrations.go:DefaultRegistrationManifest` | 从启动组件、路由模块和运行时扩展派生，不手写第二套清单 |
+| 启动组件 | `internal/bootstrap/components:DefaultSpecs` | MySQL、命名扩展库、Redis 等组件从规格派生健康检查和关闭顺序 |
+| 注册清单 | `internal/bootstrap/manifest:Default` | 从启动组件、路由模块和运行时扩展派生，不手写第二套清单 |
 | HTTP 路由 | `internal/handler/routes.go:builtinRouteModuleSpecs` + 各模块 `RouteSpecs` | 真实路由、RouteContract 和安全链路都从路由规格派生 |
 | 路由安全清单 | `internal/handler/route_security_manifest.go:DefaultRouteSecurityManifest` | 汇总 method、path、chain 和字段级签名加密策略，用于文档和前端同步 |
 | 运行时扩展 | 各能力归属包 `RuntimeRegistrySpecs` | `collectorx`、`auth`、`config`、`logic` 分别声明自身轻量扩展入口 |
@@ -175,7 +175,7 @@ make migrate-up
 - `etc/config.dnmp.sample.yaml`：本地 dnmp 环境样例。
 - `etc/config.yaml`：本地实际运行配置，不应提交生产秘钥。
 
-`config_files.runtime` 只允许外置部分运行期配置段，当前由 `internal/bootstrap/config_files.go` 明确声明。新增配置时必须区分：
+`config_files.runtime` 只允许外置部分运行期配置段，当前由 `internal/bootstrap/configload/runtimefile:sectionSpecs` 明确声明。新增配置时必须区分：
 
 - 运行期参数：可热加载，例如部分认证、安全、Collector、运维令牌等配置。
 - 启动期能力：必须重启，例如 HTTP 监听、MySQL、Redis、OTLP、路由和组件注册。

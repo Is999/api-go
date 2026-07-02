@@ -127,7 +127,7 @@ func (l *BaseLogic) RdsSetJSONValue(key string, value any, expireSec int64) erro
 	if err != nil {
 		return errors.Tag(err)
 	}
-	return errors.Tag(l.Svc.Rds.Set(l.Ctx, key, data, jitterTTL(time.Duration(expireSec)*time.Second)).Err())
+	return errors.Tag(l.Svc.Rds.Set(l.Ctx, key, data, JitterTTL(time.Duration(expireSec)*time.Second)).Err())
 }
 
 // RdsDelKeys 批量删除当前 app_id 命名空间下的 Redis 键。
