@@ -25,6 +25,7 @@ const (
 type Manager struct {
 	cfg        config.CollectorConfig // 收集器运行配置
 	redis      redis.UniversalClient  // Redis 客户端，用于 Redis Stream 载体
+	alertHook  AlertHook              // 运行异常告警钩子
 	mu         sync.RWMutex           // 保护 processors 注册表
 	processors map[string]Processor   // bizType 到批量处理器的映射
 }
@@ -40,6 +41,16 @@ func New(cfg config.CollectorConfig, rds redis.UniversalClient) (*Manager, error
 		redis:      rds,
 		processors: make(map[string]Processor),
 	}, nil
+}
+
+// SetAlertHook 设置 Collector 运行异常告警钩子。
+func (m *Manager) SetAlertHook(hook AlertHook) {
+	if m == nil {
+		return
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.alertHook = hook
 }
 
 // RegisterProcessor 注册指定 bizType 的批量消费处理器。
@@ -91,15 +102,95 @@ func (m *Manager) Enqueue(ctx context.Context, event Event) (string, error) {
 			return event.EventID, nil
 		} else if transport == collectorTransportRedis {
 			recordCollectorEnqueue(collectorTransportRedis, "failed")
+			m.reportRuntimeAlert(ctx, RuntimeAlert{
+				Kind:      RuntimeAlertKindEnqueueFailed,
+				Title:     "【P1 Collector 投递失败】",
+				Status:    "Collector 事件未写入 Redis Stream，前台请求已继续处理",
+				Component: "collector",
+				Operation: "publish_redis",
+				BizType:   event.BizType,
+				Transport: collectorTransportRedis,
+				UniqueKey: collectorAlertUniqueKey(RuntimeAlertKindEnqueueFailed, event.BizType, collectorTransportRedis),
+				Reason:    err.Error(),
+				Advice:    "请检查 Redis Stream 配置、Redis 连接和当前 app_id 命名空间；修复后确认认证风控事件指标恢复。",
+				Count:     1,
+			})
 			return "", errors.Tag(err)
 		}
 	}
 	if err := m.processSync(ctx, event); err != nil {
 		recordCollectorEnqueue(collectorTransportSync, "failed")
+		m.reportRuntimeAlert(ctx, RuntimeAlert{
+			Kind:      RuntimeAlertKindProcessorFailed,
+			Title:     "【P1 Collector 同步处理失败】",
+			Status:    "Collector 同步 Processor 处理失败，当前事件未完成采集",
+			Component: "collector",
+			Operation: "process_sync",
+			BizType:   event.BizType,
+			Transport: collectorTransportSync,
+			UniqueKey: collectorAlertUniqueKey(RuntimeAlertKindProcessorFailed, event.BizType, collectorTransportSync),
+			Reason:    err.Error(),
+			Advice:    "请检查对应 bizType 的 Processor 注册、业务依赖和最近发布；修复后观察 Collector 指标是否恢复。",
+			Count:     1,
+		})
 		return "", errors.Tag(err)
 	}
 	recordCollectorEnqueue(collectorTransportSync, "success")
 	return event.EventID, nil
+}
+
+// reportRuntimeAlert 上报 Collector 运行异常；未设置 hook 时保持原返回语义。
+func (m *Manager) reportRuntimeAlert(ctx context.Context, alert RuntimeAlert) {
+	if m == nil {
+		return
+	}
+	m.mu.RLock()
+	hook := m.alertHook
+	m.mu.RUnlock()
+	if hook == nil {
+		return
+	}
+	if alert.OccurredAt.IsZero() {
+		alert.OccurredAt = time.Now()
+	}
+	hook(ctx, normalizeRuntimeAlert(alert))
+}
+
+// normalizeRuntimeAlert 清洗告警字段，避免空类型或高基数指纹。
+func normalizeRuntimeAlert(alert RuntimeAlert) RuntimeAlert {
+	alert.Kind = strings.TrimSpace(alert.Kind)
+	if alert.Kind == "" {
+		alert.Kind = RuntimeAlertKindProcessorFailed
+	}
+	alert.Component = strings.TrimSpace(alert.Component)
+	if alert.Component == "" {
+		alert.Component = "collector"
+	}
+	alert.Operation = strings.TrimSpace(alert.Operation)
+	alert.BizType = strings.TrimSpace(alert.BizType)
+	alert.Transport = strings.TrimSpace(alert.Transport)
+	alert.UniqueKey = strings.TrimSpace(alert.UniqueKey)
+	if alert.UniqueKey == "" {
+		alert.UniqueKey = collectorAlertUniqueKey(alert.Kind, alert.BizType, alert.Transport)
+	}
+	alert.Reason = strings.TrimSpace(alert.Reason)
+	alert.Advice = strings.TrimSpace(alert.Advice)
+	if alert.Count <= 0 {
+		alert.Count = 1
+	}
+	return alert
+}
+
+// collectorAlertUniqueKey 生成低基数告警指纹，避免事件 ID 导致 Lark 刷屏。
+func collectorAlertUniqueKey(kind, bizType, transport string) string {
+	parts := make([]string, 0, 3)
+	for _, item := range []string{kind, bizType, transport} {
+		item = strings.TrimSpace(item)
+		if item != "" {
+			parts = append(parts, item)
+		}
+	}
+	return strings.Join(parts, ":")
 }
 
 // processSync 直接调用已注册 Processor，适合前台 API 的轻量收集场景。

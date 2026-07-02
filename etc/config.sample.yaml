@@ -88,6 +88,18 @@ observability:
   redis_slow_ms: 100
   log_body_max_bytes: 4096
 
+# 外部运行异常告警，当前支持 Lark 群机器人。
+alert:
+  lark:
+    enabled: false
+    webhook_url: ""
+    webhook_url_ref: ""
+    secret: ""
+    secret_ref: ""
+    timeout_seconds: 5
+    at_all: false
+    max_error_bytes: 800
+
 # 签名验签和加解密配置。未配置密钥时按普通请求处理；配置后启动期会校验版本路由和 AES/RSA 材料。
 security:
   secret_key: {}

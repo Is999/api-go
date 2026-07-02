@@ -104,6 +104,31 @@ func TestValidateConfigRejectsPublicOpsAllowedIP(t *testing.T) {
 	}
 }
 
+// TestValidateConfigRejectsLarkWithoutWebhook 确保启用 Lark 告警时必须配置发送端点。
+func TestValidateConfigRejectsLarkWithoutWebhook(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Alert.Lark.Enabled = true
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected lark alert without webhook to be rejected")
+	}
+}
+
+// TestValidateConfigRejectsNegativeLarkOptions 确保 Lark 数值配置不能使用负数。
+func TestValidateConfigRejectsNegativeLarkOptions(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Alert.Lark.Enabled = true
+	cfg.Alert.Lark.WebhookURL = "https://open.larksuite.com/open-apis/bot/v2/hook/test"
+	cfg.Alert.Lark.TimeoutSeconds = -1
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected negative lark timeout to be rejected")
+	}
+	cfg.Alert.Lark.TimeoutSeconds = 1
+	cfg.Alert.Lark.MaxErrorBytes = -1
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected negative lark max_error_bytes to be rejected")
+	}
+}
+
 // TestValidateConfigAcceptsPrivateOpsCIDR 确保内网 CIDR 白名单配置可启动。
 func TestValidateConfigAcceptsPrivateOpsCIDR(t *testing.T) {
 	cfg := validBootstrapConfig()

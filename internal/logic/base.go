@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	i18n "api/common/i18n"
 	keys "api/common/rediskeys"
 	"api/common/runtimecfg"
 	"api/helper"
@@ -71,6 +72,19 @@ func (l *BaseLogic) AppRedisKey(key string) string {
 // Meta 返回当前请求链路元数据。
 func (l *BaseLogic) Meta() *requestctx.Meta {
 	return requestctx.FromContext(l.Ctx)
+}
+
+// Locale 返回当前请求语言，缺省时使用中文。
+func (l *BaseLogic) Locale() string {
+	if meta := l.Meta(); meta != nil && meta.Locale != "" {
+		return meta.Locale
+	}
+	return i18n.LocaleZHCN
+}
+
+// Message 按当前请求语言解析多语言文案。
+func (l *BaseLogic) Message(key string, args ...any) string {
+	return i18n.MessageByKey(key, l.Locale(), args...)
 }
 
 // ClientIP 返回当前请求的客户端 IP。

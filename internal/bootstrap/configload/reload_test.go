@@ -41,6 +41,7 @@ func TestHotReloadRestartSpecsValid(t *testing.T) {
 		"MySQL连接配置变更",
 		"Redis连接配置变更",
 		"OTLP导出配置变更",
+		"Lark告警配置变更",
 	}
 	if len(specs) != len(wantReasons) {
 		t.Fatalf("热加载重启边界数量不符合预期: got=%d want=%d", len(specs), len(wantReasons))
@@ -106,6 +107,9 @@ func TestBuildReloadEffectiveConfigPreservesRestartOnlyFields(t *testing.T) {
 	newCfg.Observability.ServiceName = "new-service"
 	newCfg.Observability.OTLPEndpoint = "new-collector:4317"
 	newCfg.Observability.OTLPProtocol = "http"
+	oldCfg.Alert.Lark.Enabled = false
+	newCfg.Alert.Lark.Enabled = true
+	newCfg.Alert.Lark.WebhookURL = "https://open.larksuite.com/open-apis/bot/v2/hook/test"
 
 	effective := BuildReloadEffectiveConfig(oldCfg, newCfg)
 	if effective.Host != oldCfg.Host || effective.Port != oldCfg.Port || effective.Mode != oldCfg.Mode {
@@ -132,6 +136,9 @@ func TestBuildReloadEffectiveConfigPreservesRestartOnlyFields(t *testing.T) {
 	}
 	if effective.Observability.ServiceName != newCfg.Observability.ServiceName {
 		t.Fatalf("期望观测运行参数刷新为新值，实际 service_name=%s", effective.Observability.ServiceName)
+	}
+	if effective.Alert.Lark.Enabled != oldCfg.Alert.Lark.Enabled || effective.Alert.Lark.WebhookURL != oldCfg.Alert.Lark.WebhookURL {
+		t.Fatalf("期望 Lark 告警配置保持原值，实际为 %+v", effective.Alert.Lark)
 	}
 	if effective.AppID != newCfg.AppID {
 		t.Fatalf("期望普通运行期配置刷新为新值，实际 app_id=%s", effective.AppID)

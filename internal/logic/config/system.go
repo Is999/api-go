@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"strings"
 
 	codes "api/common/codes"
 	i18n "api/common/i18n"
@@ -31,7 +32,7 @@ func (l *SystemLogic) ConfigReloadStatus() *types.BizResult {
 	}
 	return types.NewBizResult(codes.FetchSuccess).
 		SetI18nMessage(i18n.MsgKeyFetchSuccess).
-		WithData(configReloadStatusResp(l.Svc.CurrentHotReloadStatus()))
+		WithData(l.configReloadStatusResp(l.Svc.CurrentHotReloadStatus()))
 }
 
 // RunConfigReload 手动触发一次 config.yaml 重载，并返回最新状态。
@@ -48,7 +49,7 @@ func (l *SystemLogic) RunConfigReload() *types.BizResult {
 }
 
 // configReloadStatusResp 转换热加载状态快照为接口响应。
-func configReloadStatusResp(status svc.HotReloadStatus) *types.ConfigReloadStatusResp {
+func (l *SystemLogic) configReloadStatusResp(status svc.HotReloadStatus) *types.ConfigReloadStatusResp {
 	return &types.ConfigReloadStatusResp{
 		Enabled:                status.Enabled,
 		Watching:               status.Watching,
@@ -59,7 +60,7 @@ func configReloadStatusResp(status svc.HotReloadStatus) *types.ConfigReloadStatu
 		RestartRequired:        status.RestartRequired,
 		RestartReason:          status.RestartReason,
 		LastStatus:             status.LastStatus,
-		LastMessage:            status.LastMessage,
+		LastMessage:            l.messageFromKeyOrRaw(status.LastMessageKey, status.LastMessage),
 		LastTriggerSource:      status.LastTriggerSource,
 		LastFailureCategory:    status.LastFailureCategory,
 		LastCheckedAt:          status.LastCheckedAt,
@@ -69,4 +70,13 @@ func configReloadStatusResp(status svc.HotReloadStatus) *types.ConfigReloadStatu
 		ReloadCount:            status.ReloadCount,
 		SuppressedFailureCount: status.SuppressedFailureCount,
 	}
+}
+
+// messageFromKeyOrRaw 优先使用状态源头保存的 key 翻译，动态错误说明保留原文。
+func (l *SystemLogic) messageFromKeyOrRaw(messageKey, fallback string) string {
+	messageKey = strings.TrimSpace(messageKey)
+	if messageKey != "" {
+		return l.Message(messageKey)
+	}
+	return strings.TrimSpace(fallback)
 }

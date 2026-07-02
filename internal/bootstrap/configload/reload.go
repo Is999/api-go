@@ -80,6 +80,15 @@ func hotReloadRestartSpecs() []hotReloadRestartSpec {
 				effective.Observability.OTLPProtocol = oldCfg.Observability.OTLPProtocol
 			},
 		},
+		{
+			Reason: "Lark告警配置变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return !reflect.DeepEqual(oldCfg.Alert.Lark, newCfg.Alert.Lark)
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
+				effective.Alert.Lark = oldCfg.Alert.Lark
+			},
+		},
 	}
 }
 

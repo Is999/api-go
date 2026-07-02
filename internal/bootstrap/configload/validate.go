@@ -57,11 +57,31 @@ func Validate(c config.Config) error {
 	if err := validateOpsConfig(c.Ops); err != nil {
 		return errors.Tag(err)
 	}
+	if err := validateAlertConfig(c.Alert); err != nil {
+		return errors.Tag(err)
+	}
 	if err := validators.ValidateSecurity(c); err != nil {
 		return errors.Tag(err)
 	}
 	if err := validators.ValidateProduction(c); err != nil {
 		return errors.Tag(err)
+	}
+	return nil
+}
+
+// validateAlertConfig 校验外部告警通道的最小可用配置。
+func validateAlertConfig(cfg config.AlertConfig) error {
+	if !cfg.Lark.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(cfg.Lark.WebhookURL) == "" && strings.TrimSpace(cfg.Lark.WebhookURLRef) == "" {
+		return errors.Errorf("alert.lark.enabled=true 时必须配置 webhook_url 或 webhook_url_ref")
+	}
+	if cfg.Lark.TimeoutSeconds < 0 {
+		return errors.Errorf("alert.lark.timeout_seconds 不能小于 0")
+	}
+	if cfg.Lark.MaxErrorBytes < 0 {
+		return errors.Errorf("alert.lark.max_error_bytes 不能小于 0")
 	}
 	return nil
 }

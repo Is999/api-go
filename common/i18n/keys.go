@@ -109,4 +109,31 @@ const (
 	MsgKeyMySQLUnavailable = codes.MsgKeyMySQLUnavailable
 	// MsgKeyRedisUnavailable 表示 Redis 不可用的文案 key。
 	MsgKeyRedisUnavailable = codes.MsgKeyRedisUnavailable
+
+	// MsgKeyHotReloadFailed 表示配置热加载失败状态说明 key。
+	MsgKeyHotReloadFailed = "hot_reload.failed"
+	// MsgKeyHotReloadFingerprintInitFailed 表示初始化配置指纹失败状态说明 key。
+	MsgKeyHotReloadFingerprintInitFailed = "hot_reload.fingerprint_init_failed"
+	// MsgKeyHotReloadFingerprintReadFailed 表示读取配置指纹失败状态说明 key。
+	MsgKeyHotReloadFingerprintReadFailed = "hot_reload.fingerprint_read_failed"
+	// MsgKeyHotReloadFileStatusReadFailed 表示读取配置文件状态失败说明 key。
+	MsgKeyHotReloadFileStatusReadFailed = "hot_reload.file_status_read_failed"
+	// MsgKeyHotReloadNotBound 表示配置热加载未绑定文件说明 key。
+	MsgKeyHotReloadNotBound = "hot_reload.not_bound"
+	// MsgKeyHotReloadCancelled 表示配置热加载被取消说明 key。
+	MsgKeyHotReloadCancelled = "hot_reload.cancelled"
+	// MsgKeyHotReloadSuccess 表示配置热加载成功说明 key。
+	MsgKeyHotReloadSuccess = "hot_reload.success"
+	// MsgKeyHotReloadSuccessRestart 表示热加载成功但需重启说明 key。
+	MsgKeyHotReloadSuccessRestart = "hot_reload.success_restart"
+	// MsgKeyHotReloadUnchanged 表示配置无变化说明 key。
+	MsgKeyHotReloadUnchanged = "hot_reload.unchanged"
+	// MsgKeyHotReloadWatcherNotStarted 表示热加载 watcher 未启动说明 key。
+	MsgKeyHotReloadWatcherNotStarted = "hot_reload.watcher_not_started"
+	// MsgKeyHotReloadWatcherRunning 表示热加载 watcher 运行中说明 key。
+	MsgKeyHotReloadWatcherRunning = "hot_reload.watcher_running"
+	// MsgKeyHotReloadWatcherClosed 表示热加载 watcher 已关闭说明 key。
+	MsgKeyHotReloadWatcherClosed = "hot_reload.watcher_closed"
+	// MsgKeyHotReloadWatcherStopped 表示热加载 watcher 已停止说明 key。
+	MsgKeyHotReloadWatcherStopped = "hot_reload.watcher_stopped"
 )

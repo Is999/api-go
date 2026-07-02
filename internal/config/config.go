@@ -115,6 +115,23 @@ type ObservabilityConfig struct {
 	LogBodyMaxBytes int     `json:"log_body_max_bytes,optional"` // 日志负载最大长度
 }
 
+// LarkAlertConfig 定义 Lark 群机器人告警配置。
+type LarkAlertConfig struct {
+	Enabled        bool   `json:"enabled,optional"`         // 是否启用 Lark 告警
+	WebhookURL     string `json:"webhook_url,optional"`     // Lark 机器人 webhook URL；为空时读取 webhook_url_ref
+	WebhookURLRef  string `json:"webhook_url_ref,optional"` // webhook URL 文件路径
+	Secret         string `json:"secret,optional"`          // Lark 签名密钥；为空时读取 secret_ref
+	SecretRef      string `json:"secret_ref,optional"`      // Lark 签名密钥文件路径
+	TimeoutSeconds int    `json:"timeout_seconds,optional"` // HTTP 请求超时，单位秒，默认 5 秒
+	AtAll          bool   `json:"at_all,optional"`          // 是否在告警中 @所有人
+	MaxErrorBytes  int    `json:"max_error_bytes,optional"` // 错误摘要最大字节数，默认 800
+}
+
+// AlertConfig 聚合外部告警通道配置。
+type AlertConfig struct {
+	Lark LarkAlertConfig `json:"lark,optional"` // Lark 群机器人告警配置
+}
+
 // AuthConfig 定义前台用户登录态运行参数。
 type AuthConfig struct {
 	RegisterEnabled        bool                `json:"register_enabled,optional"`              // 是否开放注册接口
@@ -162,6 +179,7 @@ type Config struct {
 	Collector     CollectorConfig     `json:"collector,optional"`                    // 通用收集器配置
 	Ops           OpsConfig           `json:"ops,optional"`                          // 运维级接口保护配置
 	Observability ObservabilityConfig `json:"observability,optional"`                // 日志与链路追踪配置
+	Alert         AlertConfig         `json:"alert,optional"`                        // 外部运行异常告警配置
 	MySQL         MySQLConfig         `json:"mysql,optional"`                        // 默认主库 MySQL 配置
 	SiteMySQL     SiteMySQLConfig     `json:"site_mysql,optional"`                   // 可选命名扩展库配置
 	Redis         RedisConfig         `json:"redis"`                                 // Redis 连接与连接池配置

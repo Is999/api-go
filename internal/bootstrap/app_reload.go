@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	i18n "api/common/i18n"
 	"api/internal/bootstrap/configload"
 	"api/internal/bootstrap/hotreload"
 	"api/internal/infra/loggerx"
@@ -38,6 +39,7 @@ func (a *App) startConfigHotReload() {
 		if status.LastStatus == "" {
 			status.LastStatus = "idle"
 			status.LastMessage = "热加载监听尚未启动"
+			status.LastMessageKey = i18n.MsgKeyHotReloadWatcherNotStarted
 		}
 		return status
 	})
@@ -76,7 +78,7 @@ func (a *App) watchConfigFile(ctx context.Context, configFile string) {
 	interval := hotreload.CheckInterval(a.ServiceContext.CurrentConfig().HotReload.CheckIntervalSeconds)
 	lastFingerprint, err := configload.BundleFingerprint(configFile)
 	if err != nil {
-		a.markHotReloadFailure("初始化配置文件指纹失败", err, "", "startup", "fingerprint", configFile)
+		a.markHotReloadFailure(i18n.MsgKeyHotReloadFingerprintInitFailed, "初始化配置文件指纹失败", err, "", "startup", "fingerprint", configFile)
 		a.refreshHotReloadStatus(func(status svc.HotReloadStatus) svc.HotReloadStatus {
 			status.Enabled = a.ServiceContext.CurrentConfig().HotReload.Enabled
 			status.Watching = false
@@ -97,6 +99,7 @@ func (a *App) watchConfigFile(ctx context.Context, configFile string) {
 		if status.LastStatus == "" || status.LastStatus == "idle" {
 			status.LastStatus = "idle"
 			status.LastMessage = "热加载监听运行中"
+			status.LastMessageKey = i18n.MsgKeyHotReloadWatcherRunning
 		}
 		return status
 	})
@@ -109,6 +112,7 @@ func (a *App) watchConfigFile(ctx context.Context, configFile string) {
 				status.Watching = false
 				if status.LastMessage == "" {
 					status.LastMessage = "热加载监听已停止"
+					status.LastMessageKey = i18n.MsgKeyHotReloadWatcherStopped
 				}
 				return status
 			})
@@ -122,7 +126,7 @@ func (a *App) watchConfigFile(ctx context.Context, configFile string) {
 			})
 			currentFingerprint, statErr := configload.BundleFingerprint(configFile)
 			if statErr != nil {
-				a.markHotReloadFailure("读取配置文件状态失败", statErr, "", "watcher", "fingerprint", configFile)
+				a.markHotReloadFailure(i18n.MsgKeyHotReloadFileStatusReadFailed, "读取配置文件状态失败", statErr, "", "watcher", "fingerprint", configFile)
 				timer.Reset(hotreload.CheckInterval(a.ServiceContext.CurrentConfig().HotReload.CheckIntervalSeconds))
 				continue
 			}
@@ -137,6 +141,7 @@ func (a *App) watchConfigFile(ctx context.Context, configFile string) {
 					status.Watching = false
 					status.LastStatus = "idle"
 					status.LastMessage = "热加载监听已关闭"
+					status.LastMessageKey = i18n.MsgKeyHotReloadWatcherClosed
 					return status
 				})
 				return
@@ -157,7 +162,7 @@ func (a *App) reloadConfigFile(ctx context.Context, source string, configFile st
 	configFile = strings.TrimSpace(configFile)
 	if configFile == "" {
 		notBoundErr := errors.Errorf("未绑定配置文件路径")
-		a.markHotReloadFailure("配置热加载未绑定文件", notBoundErr, "", source, "not_bound", configFile)
+		a.markHotReloadFailure(i18n.MsgKeyHotReloadNotBound, "配置热加载未绑定文件", notBoundErr, "", source, "not_bound", configFile)
 		return "", notBoundErr
 	}
 	a.hotReload.LockExec()
@@ -165,7 +170,7 @@ func (a *App) reloadConfigFile(ctx context.Context, source string, configFile st
 	select {
 	case <-ctx.Done():
 		cancelErr := errors.Tag(ctx.Err())
-		a.markHotReloadFailure("配置热加载已取消", cancelErr, "", source, "cancelled", configFile)
+		a.markHotReloadFailure(i18n.MsgKeyHotReloadCancelled, "配置热加载已取消", cancelErr, "", source, "cancelled", configFile)
 		return "", cancelErr
 	default:
 	}
@@ -174,12 +179,12 @@ func (a *App) reloadConfigFile(ctx context.Context, source string, configFile st
 	previousVersion := a.ServiceContext.CurrentVersion()
 	currentFingerprint, err := configload.BundleFingerprint(configFile)
 	if err != nil {
-		a.markHotReloadFailure("读取配置文件指纹失败", err, "", source, "fingerprint", configFile)
+		a.markHotReloadFailure(i18n.MsgKeyHotReloadFingerprintReadFailed, "读取配置文件指纹失败", err, "", source, "fingerprint", configFile)
 		return "", errors.Tag(err)
 	}
 	cfg, version, err := LoadConfig(configFile)
 	if err != nil {
-		a.markHotReloadFailure("配置热加载失败", err, currentFingerprint, source, "load", configFile)
+		a.markHotReloadFailure(i18n.MsgKeyHotReloadFailed, "配置热加载失败", err, currentFingerprint, source, "load", configFile)
 		return "", errors.Tag(err)
 	}
 	if previousVersion != "" && version == previousVersion {
@@ -194,10 +199,13 @@ func (a *App) reloadConfigFile(ctx context.Context, source string, configFile st
 	publishRuntimeConfig(effectiveCfg)
 	a.ServiceContext.UpdateConfig(effectiveCfg)
 	a.ServiceContext.UpdateVersion(version)
+	a.updateRuntimeAlertConfig(effectiveCfg)
 	now := time.Now()
 	message := "配置热加载成功"
+	messageKey := i18n.MsgKeyHotReloadSuccess
 	if restartRequired {
 		message = "配置热加载成功，部分启动期配置需重启后生效"
+		messageKey = i18n.MsgKeyHotReloadSuccessRestart
 	}
 	a.refreshHotReloadStatus(func(status svc.HotReloadStatus) svc.HotReloadStatus {
 		status.Enabled = effectiveCfg.HotReload.Enabled
@@ -209,6 +217,7 @@ func (a *App) reloadConfigFile(ctx context.Context, source string, configFile st
 		status.RestartReason = restartReason
 		status.LastStatus = "success"
 		status.LastMessage = message
+		status.LastMessageKey = messageKey
 		status.LastTriggerSource = hotreload.Source(source)
 		status.LastFailureCategory = ""
 		status.LastReloadAt = now
@@ -245,6 +254,7 @@ func (a *App) markHotReloadUnchanged(configFile, source, version string) {
 		status.ConfigSummary = hotreload.Summary(a.ServiceContext.CurrentConfig())
 		status.LastStatus = "success"
 		status.LastMessage = "配置无变化"
+		status.LastMessageKey = i18n.MsgKeyHotReloadUnchanged
 		status.LastTriggerSource = hotreload.Source(source)
 		status.LastFailureCategory = ""
 		status.LastCheckedAt = now
@@ -269,7 +279,7 @@ func (a *App) refreshHotReloadStatus(mutator func(svc.HotReloadStatus) svc.HotRe
 }
 
 // markHotReloadFailure 记录最近一次热加载失败状态，并对重复错误限频。
-func (a *App) markHotReloadFailure(message string, err error, fingerprint, source, category, configFile string) {
+func (a *App) markHotReloadFailure(messageKey, message string, err error, fingerprint, source, category, configFile string) {
 	if a == nil {
 		return
 	}
@@ -280,6 +290,10 @@ func (a *App) markHotReloadFailure(message string, err error, fingerprint, sourc
 	}
 	a.refreshHotReloadStatus(func(status svc.HotReloadStatus) svc.HotReloadStatus {
 		status.LastStatus = "failed"
+		status.LastMessageKey = strings.TrimSpace(messageKey)
+		if status.LastMessageKey == "" {
+			status.LastMessageKey = i18n.MsgKeyHotReloadFailed
+		}
 		status.LastMessage = strings.TrimSpace(message)
 		status.LastReloadAt = now
 		status.LastFailureAt = now
@@ -305,4 +319,5 @@ func (a *App) markHotReloadFailure(message string, err error, fingerprint, sourc
 		logx.Field("source", hotreload.Source(source)),
 		logx.Field("category", hotreload.FailureCategory(category)),
 	)
+	a.notifyConfigReloadFailure(message, err, source, category, configFile)
 }

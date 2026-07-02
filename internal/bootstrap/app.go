@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"api/internal/bootstrap/appalert"
 	"api/internal/bootstrap/hotreload"
 	"api/internal/bootstrap/register"
 	bootstrapresources "api/internal/bootstrap/resources"
@@ -24,16 +25,23 @@ type App struct {
 	ConfigFile     string                      // 当前应用对应的配置文件路径
 	shutdown       func(context.Context) error // tracing 等基础设施关闭钩子
 	hotReload      hotreload.State             // 配置热加载运行态资源
+	runtimeAlerts  *runtimeAlertSink           // API 运行异常 Lark 告警发送器
 }
 
 // New 负责把依赖装配与 HTTP 服务注册串起来。
 func New(ctx context.Context, c config.Config, version string) (*App, error) {
+	runtimeAlerts, err := newRuntimeAlertSink(c)
+	if err != nil {
+		return nil, errors.Tag(err)
+	}
 	svcCtx, shutdown, err := BuildServiceContext(ctx, c, version)
 	if err != nil {
+		runtimeAlerts.notify(context.Background(), appalert.LifecycleFailure("start", "build_service_context", err))
 		return nil, errors.Tag(err)
 	}
 	routeModules := handler.BuiltinRouteModules()
 	if err := register.ValidateNamesUnique(register.KindRoute, register.RouteModuleNames(routeModules)); err != nil {
+		runtimeAlerts.notify(context.Background(), appalert.LifecycleFailure("start", "route_registry", err))
 		_ = bootstrapresources.CloseServiceContextResources(svcCtx)
 		if shutdown != nil {
 			_ = shutdown(context.Background())
@@ -46,6 +54,7 @@ func New(ctx context.Context, c config.Config, version string) (*App, error) {
 	restConf.Middlewares.Log = false
 	server, err := rest.NewServer(restConf)
 	if err != nil {
+		runtimeAlerts.notify(context.Background(), appalert.LifecycleFailure("start", "http_server", err))
 		_ = bootstrapresources.CloseServiceContextResources(svcCtx)
 		if shutdown != nil {
 			_ = shutdown(context.Background())
@@ -56,8 +65,10 @@ func New(ctx context.Context, c config.Config, version string) (*App, error) {
 		Server:         server,
 		ServiceContext: svcCtx,
 		shutdown:       shutdown,
+		runtimeAlerts:  runtimeAlerts,
 	}
 	svcCtx.ConfigReload = app
+	app.bindCollectorRuntimeAlerts()
 	handler.RegisterHandlersWithModules(server, svcCtx, routeModules...)
 	return app, nil
 }
@@ -65,7 +76,11 @@ func New(ctx context.Context, c config.Config, version string) (*App, error) {
 // Start 启动 HTTP 服务。
 func (a *App) Start() error {
 	if a == nil || a.Server == nil {
-		return errors.Errorf("HTTP 服务未初始化")
+		err := errors.Errorf("HTTP 服务未初始化")
+		if a != nil {
+			a.notifyLifecycleFailure(context.Background(), "start", "http_server", err)
+		}
+		return err
 	}
 	a.startConfigHotReload()
 	cfg := a.ServiceContext.CurrentConfig()
@@ -100,6 +115,9 @@ func (a *App) Stop(ctx context.Context) error {
 	recordErr(bootstrapresources.CloseServiceContextResources(a.ServiceContext))
 	if a.shutdown != nil {
 		recordErr(a.shutdown(ctx))
+	}
+	if firstErr != nil {
+		a.notifyLifecycleFailure(ctx, "stop", "resources", firstErr)
 	}
 	return firstErr
 }

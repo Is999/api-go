@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	i18n "api/common/i18n"
 	"api/common/runtimecfg"
 	"api/internal/config"
 	"api/internal/svc"
@@ -63,6 +64,9 @@ redis:
 	}
 	if status.LastMessage != "配置无变化" {
 		t.Fatalf("期望记录配置无变化，实际为 %q", status.LastMessage)
+	}
+	if status.LastMessageKey != i18n.MsgKeyHotReloadUnchanged {
+		t.Fatalf("期望记录配置无变化 key，实际为 %q", status.LastMessageKey)
 	}
 	if got := runtimecfg.AppID(); got != "stable-app" {
 		t.Fatalf("配置无变化不应重复设置 runtimecfg，实际 app_id=%q", got)
