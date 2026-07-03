@@ -187,10 +187,10 @@ type authFlowUserSQLite struct {
 	Phone        string    `gorm:"column:phone;type:varchar(32);not null;default:'';index:idx_user_phone"`                                                         // 手机号
 	Avatar       string    `gorm:"column:avatar;type:varchar(255);not null;default:''"`                                                                            // 头像
 	Status       int       `gorm:"column:status;type:tinyint;not null;default:1;index:idx_user_status_id,priority:1"`                                              // 用户状态
-	LastLoginAt  time.Time `gorm:"column:last_login_at;type:timestamp"`                                                                                            // 最后登录时间
+	LastLoginAt  time.Time `gorm:"column:last_login_at;type:datetime"`                                                                                             // 最后登录时间
 	LastLoginIP  string    `gorm:"column:last_login_ip;type:varchar(45);not null;default:''"`                                                                      // 最后登录 IP
-	CreatedAt    time.Time `gorm:"column:created_at;type:timestamp;not null;default:CURRENT_TIMESTAMP"`                                                            // 创建时间
-	UpdatedAt    time.Time `gorm:"column:updated_at;type:timestamp;not null;default:CURRENT_TIMESTAMP"`                                                            // 更新时间
+	CreatedAt    time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP"`                                                             // 创建时间
+	UpdatedAt    time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP"`                                                             // 更新时间
 }
 
 // TableName 返回认证流程 SQLite 用户测试模型映射的真实表名。
@@ -205,8 +205,8 @@ type authFlowUserAccountSQLite struct {
 	UserID          int64     `gorm:"column:user_id;type:integer;not null;uniqueIndex:uk_user_account_user_id;index:idx_user_account_shard_user,priority:2"` // 用户 ID
 	ShardNo         int       `gorm:"column:shard_no;type:int;not null;index:idx_user_account_shard_user,priority:1"`                                        // 逻辑分片
 	RouteShardCount int       `gorm:"column:route_shard_count;type:int;not null;default:1"`                                                                  // 物理表数量
-	CreatedAt       time.Time `gorm:"column:created_at;type:timestamp;not null;default:CURRENT_TIMESTAMP"`                                                   // 创建时间
-	UpdatedAt       time.Time `gorm:"column:updated_at;type:timestamp;not null;default:CURRENT_TIMESTAMP"`                                                   // 更新时间
+	CreatedAt       time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP"`                                                    // 创建时间
+	UpdatedAt       time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP"`                                                    // 更新时间
 }
 
 // TableName 返回认证流程 SQLite 账号索引测试模型映射的真实表名。
