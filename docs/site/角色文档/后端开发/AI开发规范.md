@@ -50,6 +50,8 @@
 - 所有新增或调整的 SQL 都必须先评估执行计划、索引、基数、返回行数和目标库压力；禁止用历史遗留 SQL 风格代替性能评估。
 - 原生 SQL 必须保存为 `*.sql.tmpl` 并通过 `go:embed` 加载；禁止在 Go 业务代码中内联多行 SQL、`fmt.Sprintf("SELECT ...")` 或模板外 `Exec("RENAME TABLE ...")`。
 - `.lua` 是 `go:embed` 加载的 Redis Lua 脚本代码资产，必须提交仓库；禁止在 Go 业务代码中使用 `redis.NewScript(...)` 内联 Lua。
+- SQL 资产按稳定表或业务域收口；禁止为少量字段、种子或配置修复新增碎片化 `sync_*`、`*_seed_*`、`*_repair_*` 迁移文件。确需新增迁移时必须是独立 DDL 或补偿边界，并在迁移治理文档说明原因。
+- SQL seed 如果显式保留自增主键 `id`，新增行必须按 `id` 递增放在对应位置，不能为了贴近同类业务行插入到中间。
 - 新增或移动 `*.sql.tmpl`、`.lua` 时，必须同步检查 Go 侧 `//go:embed`、渲染方法和最小单测。
 - Go 调用侧必须使用 `embedasset.StripLeadingLineComments(template, "--")` 或当前包 helper 剥离文件头说明，再交给 MySQL、ClickHouse 或 Redis 执行。
 - 不允许在业务接口中执行 Redis 全库 `SCAN` 或模板通配扫描；高基数缓存必须通过索引集合、精确 Key、白名单模板、登记模板或异步离线任务处理。
