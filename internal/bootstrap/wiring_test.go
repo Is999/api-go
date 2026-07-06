@@ -97,7 +97,12 @@ security:
     gray_percent: 7
 collector:
   enabled: true
-  transport: "sync"
+  kafka:
+    brokers:
+      - "127.0.0.1:9092"
+  tasks:
+    auth.security:
+      topic: "api_collector_auth_security_events"
 ops:
   config_reload_token: "runtime-token"
 unknown_block:
@@ -119,7 +124,7 @@ unknown_block:
 	if cfg.Security.SecretKey.SignStatus != 0 || cfg.Security.SecretKey.CryptoStatus != 0 || cfg.Security.SecretKey.GrayPercent != 7 {
 		t.Fatalf("security config not merged: %+v", cfg.Security)
 	}
-	if !cfg.Collector.Enabled || cfg.Collector.Transport != "sync" {
+	if !cfg.Collector.Enabled || cfg.Collector.Tasks["auth.security"].Topic != "api_collector_auth_security_events" {
 		t.Fatalf("collector config not merged: %+v", cfg.Collector)
 	}
 	if cfg.Ops.ConfigReloadToken != "runtime-token" {

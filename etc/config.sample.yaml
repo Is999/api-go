@@ -1,11 +1,18 @@
 # api 生产配置模板。保留占位密钥时会启动失败，部署前必须替换。
 # admin 管理后台和 cron 不在本服务启动。
 
+# go-zero HTTP 基础配置。
+# 服务名称，用于日志、监控和服务标识。
 Name: "api"
+# HTTP 服务监听地址。
 Host: "0.0.0.0"
+# HTTP 服务监听端口。
 Port: 8890
+# 服务环境：dev / test / rt / pre / pro。
 Mode: "pro"
+# HTTP 接口统一响应超时，单位毫秒。
 Timeout: 30000
+# HTTP 请求体最大字节数。
 MaxBytes: 10485760
 
 # 站点/应用 ID，用于 Redis Key 命名空间。
@@ -15,10 +22,45 @@ app_key: "replace-with-strong-app-key"
 # 当前实例 ID；为空时使用主机名，建议容器环境注入 Pod 名。
 instance_id: ""
 
-# 基于 github.com/bwmarrin/snowflake 的分布式雪花 ID；所有会写 user 表的 api/admin 实例 worker_id 必须全局唯一。
+# 基于 github.com/bwmarrin/snowflake 的分布式雪花 ID；多实例通过 Redis 租约自动分配 node_id。
 snowflake:
-  # 范围 0-1023；建议按服务预留号段，例如 api=0-511、admin=512-767；成熟库不会自动分配 worker_id。
-  worker_id: 1
+  # Redis node_id 租约配置；生产多实例建议开启。
+  redis:
+    # 是否启用 Redis 租约自动分配 node_id。
+    enabled: true
+    # node_id 租约作用域；同一套 api/admin 部署必须一致。
+    scope: "main"
+    # node_id 租约 TTL，单位秒。
+    lease_seconds: 120
+    # node_id 租约续期间隔，单位秒，必须小于 lease_seconds。
+    renew_interval_seconds: 30
+    # 按业务 namespace 限制可竞争 node_id 池大小；未配置时使用完整 0-1023。
+    namespaces:
+      # 用户 ID 生成统一限制为 10 个 node_id；api/admin 写同一用户表必须一致。
+      user:
+        # 当前 namespace 可竞争的 node_id 数量，取值 1-1024；0 表示完整池。
+        node_count: 10
+  # 高吞吐业务可按 namespace 启用 Redis Segment 本地号段；默认关闭，普通业务继续走雪花。
+  segment:
+    # 是否启用 Redis Segment 本地号段策略。
+    enabled: false
+    # Segment 高水位作用域，默认与 snowflake.redis.scope 保持一致。
+    scope: "main"
+    # Redis 申请号段超时时间，单位秒。
+    allocate_timeout_seconds: 2
+    # 按业务 namespace 配置号段策略；空对象表示未启用具体业务。
+    namespaces: {}
+    # 示例：
+    # namespaces:
+    #   recharge.order:
+    #     # 是否让该业务 namespace 使用 Redis Segment。
+    #     enabled: true
+    #     # 每次从 Redis 申请的号段长度。
+    #     step: 10000
+    #     # 本地剩余号段低于该阈值时预取下一段。
+    #     prefetch_threshold: 2000
+    #     # Redis 高水位初始化值；0 表示首个 ID 从 1 开始。
+    #     start: 0
 
 # 业务用户写入路由；提升前必须完成 user_account 回填、目标表创建和多实例同步重启。
 user:
@@ -32,11 +74,14 @@ jwt_expires_in: 86400
 
 # 配置热加载；监听到运行期配置变化后会刷新内存快照。
 hot_reload:
+  # 是否启用配置热加载。
   enabled: false
+  # 配置文件轮询间隔，单位秒。
   check_interval_seconds: 5
 
 # 可选外部配置入口，留空时只读取 -f 指定的主配置。
 config_files:
+  # 运行期配置文件路径。
   runtime: ""
 
 # 前台认证配置。
@@ -53,61 +98,100 @@ auth:
   password_min_length: 8
   # 登录入口限流，按 IP 和用户名分别计数。
   login_rate_limit:
+    # 是否启用登录限流。
     enabled: true
+    # 限流统计窗口，单位秒。
     window_seconds: 60
+    # 窗口内最大失败次数。
     max_attempts: 5
+    # 命中限流后的锁定时间，单位秒。
     lock_seconds: 300
   # 注册入口限流，按 IP 计数。
   register_rate_limit:
+    # 是否启用注册限流。
     enabled: true
+    # 限流统计窗口，单位秒。
     window_seconds: 60
+    # 窗口内最大尝试次数。
     max_attempts: 3
+    # 命中限流后的锁定时间，单位秒。
     lock_seconds: 600
 
 # 日志输出配置。
 log:
+  # 日志级别：debug / info / warn / error。
   level: "info"
+  # 输出模式：console / file。
   mode: "file"
+  # 日志文件目录。
   path: "logs"
+  # 编码格式：plain / json。
   encoding: "json"
+  # 切割策略：size / time。
   rotation: "size"
+  # 单个日志文件最大体积，单位 MB。
   max_size: 100
+  # 最大保留归档数量。
   max_backups: 7
+  # 日志保留天数。
   keep_days: 14
+  # 是否压缩归档日志。
   compress: true
 
 # 可观测性配置。
 observability:
+  # 可观测性服务名。
   service_name: "api"
+  # 是否启用 trace 上报。
   trace_enabled: true
+  # OTLP 上报协议：grpc/http-protobuf；为空默认 grpc。
   otlp_protocol: "grpc"
+  # OTLP 上报地址；为空表示不上报到外部 collector。
   otlp_endpoint: ""
+  # 是否使用明文连接 OTLP。
   otlp_insecure: true
+  # trace 采样率，0~1。
   sample_ratio: 1
+  # 慢 SQL 阈值，单位毫秒。
   slow_sql_ms: 500
+  # 慢 Redis 阈值，单位毫秒。
   redis_slow_ms: 100
+  # 请求/审计日志中请求体最大保留字节数。
   log_body_max_bytes: 4096
 
 # 外部运行异常告警，当前支持 Lark 群机器人。
 alert:
+  # Lark 群机器人告警配置。
   lark:
+    # 是否启用 Lark 告警。
     enabled: false
+    # Lark webhook URL；为空时读取 webhook_url_ref。
     webhook_url: ""
+    # Lark webhook URL 文件路径。
     webhook_url_ref: ""
+    # Lark 签名密钥；为空时读取 secret_ref。
     secret: ""
+    # Lark 签名密钥文件路径。
     secret_ref: ""
+    # HTTP 请求超时，单位秒。
     timeout_seconds: 5
+    # 是否在告警中 @所有人。
     at_all: false
+    # 错误摘要最大字节数。
     max_error_bytes: 800
 
 # 签名验签和加解密配置。未配置密钥时按普通请求处理；配置后启动期会校验版本路由和 AES/RSA 材料。
 security:
+  # 空对象表示关闭签名验签和加解密。
   secret_key: {}
 # 启用示例：
 # security:
 #   secret_key:
+#     # 密钥版本，对应 X-Key-Version。
 #     key_version: "v1"
+#     # 签名验签状态：1启用，0停用。
 #     sign_status: 1
+#     # 加密解密状态：1启用，0停用。
 #     crypto_status: 1
 #     # 生产启用灰度时必须配置 gray_salt，并保证 stable/gray 版本均存在。
 #     # stable_version: "v1"
@@ -119,16 +203,31 @@ security:
 #     rsa_public_key_user_ref: "/run/secrets/api/rsa_public_key_user.pem"
 #     rsa_private_key_server_ref: "/run/secrets/api/rsa_private_key_server.pem"
 
-# 通用收集器，默认关闭；轻量事件可用 sync，异步聚合可用 redis。
+# 通用收集器，默认关闭；开启后只负责把结构化事件投递到 Kafka。
 collector:
+  # 是否启用通用收集器。
   enabled: false
-  transport: "auto"
-  redis:
-    enabled: false
-    # Redis Stream 业务名称，运行时自动转成 app:{app_id}:api:collector:events。
-    stream: "api:collector:events"
-    consumer: "api"
-    max_len: 100000
+  # Kafka 正常链路配置。
+  kafka:
+    # Kafka broker 地址列表。
+    brokers:
+      - "127.0.0.1:9092"
+    # Producer 写入批次大小，不表示业务批处理触发规则。
+    write_batch_size: 500
+    # Producer 写入批次等待时间，单位毫秒；业务批处理规则在消费端配置。
+    write_batch_wait_milliseconds: 20
+    # Producer 写入超时时间，单位秒。
+    write_timeout: 3
+  # 未单独配置 bizType 时的默认任务路由。
+  default_task:
+    # 默认 Kafka Topic；具体任务建议按 bizType 单独配置。
+    topic: "api_collector_events"
+  # 按 bizType 扩展投递 Topic；key 必须等于 Event.BizType。
+  tasks:
+    # 前台认证风控事件。
+    auth.security:
+      # Kafka Topic。
+      topic: "api_collector_auth_security_events"
 
 # 运维级接口保护；内网热加载和运行态同步接口必须携带 X-Ops-Token。
 ops:
@@ -139,11 +238,17 @@ ops:
 
 # MySQL 主库配置。
 mysql:
+  # 主库 DSN。
   write_data_source: "user:password@tcp(127.0.0.1:3306)/api?charset=utf8mb4&parseTime=true&loc=Local"
+  # 读库 DSN 列表；不需要读写分离时留空。
   read_data_sources: []
+  # 最大打开连接数。
   max_open_conns: 50
+  # 最大空闲连接数。
   max_idle_conns: 20
+  # 单个连接最大存活时间，单位秒。
   conn_max_lifetime: 300
+  # 是否开启 SQL 调试日志。
   debug: false
 
 # 命名扩展库示例；默认不配置。
@@ -154,11 +259,18 @@ mysql:
 
 # Redis 配置，多实例共享同一 Redis 以保证登录态一致。
 redis:
+  # Redis 模式：single=单节点，cluster=集群。
   type: "single"
+  # Redis 节点地址列表；单机填 1 个，集群可填多个。
   addrs:
     - "127.0.0.1:6379"
+  # Redis 认证密码；无密码可留空。
   password: ""
+  # Redis DB 编号；Cluster 模式通常固定为 0。
   db: 0
+  # Redis 连接池大小。
   pool_size: 50
+  # 是否启用 TLS。
   tls: false
+  # 是否跳过 TLS 证书校验；仅测试使用。
   tls_insecure_skip_verify: false

@@ -26,9 +26,6 @@ type buildResources struct {
 // BuildServiceContext 统一完成基础设施初始化，避免入口层各自拼装依赖导致行为漂移。
 func BuildServiceContext(ctx context.Context, c config.Config, version string) (*svc.ServiceContext, func(context.Context) error, error) {
 	loggerx.Setup(c)
-	if err := configload.ConfigureSnowflakeWorkerID(c.Snowflake); err != nil {
-		return nil, nil, errors.Wrap(err, "配置雪花 ID worker 失败")
-	}
 	shutdown, err := tracing.Setup(ctx, c.Observability)
 	if err != nil {
 		return nil, nil, errors.Tag(err)
@@ -49,6 +46,13 @@ func BuildServiceContext(ctx context.Context, c config.Config, version string) (
 	}
 	resources.Rds = rdb
 
+	snowflakeLease, err := configload.ConfigureSnowflakeWorker(ctx, c.Snowflake, rdb)
+	if err != nil {
+		_ = closeBuildResources(context.Background(), resources)
+		return nil, nil, errors.Wrap(err, "配置雪花 ID worker 失败")
+	}
+	resources.SnowflakeLease = snowflakeLease
+
 	svcCtx := svc.NewServiceContext(c, version, resources.Dependencies)
 	return svcCtx, shutdown, nil
 }
@@ -60,6 +64,9 @@ func closeBuildResources(ctx context.Context, resources buildResources) error {
 		if err != nil && firstErr == nil {
 			firstErr = errors.Tag(err)
 		}
+	}
+	if resources.SnowflakeLease != nil {
+		recordErr(resources.SnowflakeLease.Close(ctx))
 	}
 	if resources.Rds != nil {
 		recordErr(resources.Rds.Close())
@@ -82,8 +89,15 @@ func CloseServiceContextResources(svcCtx *svc.ServiceContext) error {
 	if svcCtx == nil {
 		return nil
 	}
+	if svcCtx.SnowflakeLease != nil {
+		recordErr(svcCtx.SnowflakeLease.Close(context.Background()))
+	}
+	if svcCtx.Collector != nil {
+		recordErr(svcCtx.Collector.Close(context.Background()))
+	}
 	if registry := svcCtx.ComponentRegistry(); registry != nil && len(registry.Items()) > 0 {
-		return errors.Tag(registry.Close())
+		recordErr(registry.Close())
+		return errors.Tag(firstErr)
 	}
 	if svcCtx.Rds != nil {
 		recordErr(svcCtx.Rds.Close())

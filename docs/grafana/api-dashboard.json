@@ -124,6 +124,66 @@
       ],
       "title": "服务端安全配置异常",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 5,
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "sum by (biz_type, strategy, result) (rate(api_idgen_generated_total[5m]))",
+          "legendFormat": "{{biz_type}} / {{strategy}} / {{result}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "ID 生成吞吐",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "id": 6,
+      "targets": [
+        {
+          "editorMode": "code",
+          "expr": "api_idgen_segment_remaining",
+          "legendFormat": "{{biz_type}}",
+          "range": true,
+          "refId": "A"
+        }
+      ],
+      "title": "ID Segment 本地剩余号段",
+      "type": "timeseries"
     }
   ],
   "refresh": "30s",
@@ -131,7 +191,8 @@
   "tags": [
     "api",
     "auth",
-    "collector"
+    "collector",
+    "idgen"
   ],
   "templating": {
     "list": [
@@ -159,7 +220,7 @@
     "to": "now"
   },
   "timezone": "browser",
-  "title": "api 认证与 Collector",
+  "title": "api 认证、Collector 与 ID",
   "uid": "api-auth-collector",
   "version": 1
 }

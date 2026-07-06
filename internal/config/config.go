@@ -27,9 +27,41 @@ type RedisConfig struct {
 	TLSInsecureSkipVerify bool              `json:"tls_insecure_skip_verify,optional"` // 是否跳过 TLS 证书校验
 }
 
-// SnowflakeConfig 定义基于 bwmarrin/snowflake 的分布式雪花 ID 配置。
+// SnowflakeRedisConfig 定义雪花 node_id 的 Redis 租约分配配置。
+type SnowflakeRedisConfig struct {
+	Enabled              bool                                     `json:"enabled,optional"`                // 是否使用 Redis 租约自动分配 node_id
+	Scope                string                                   `json:"scope,optional"`                  // node_id 池部署级作用域，同一套 api/admin 部署必须一致
+	LeaseSeconds         int                                      `json:"lease_seconds,optional"`          // node_id 租约 TTL，单位秒
+	RenewIntervalSeconds int                                      `json:"renew_interval_seconds,optional"` // node_id 续约间隔，单位秒
+	Namespaces           map[string]SnowflakeRedisNamespaceConfig `json:"namespaces,optional"`             // 按业务 namespace 覆盖 node_id 池大小
+}
+
+// SnowflakeRedisNamespaceConfig 定义单个业务命名空间的雪花 node_id 池策略。
+type SnowflakeRedisNamespaceConfig struct {
+	NodeCount int `json:"node_count,optional"` // 当前 namespace 可竞争的 node_id 数量；0 表示使用完整 0-1023 池
+}
+
+// IDSegmentNamespaceConfig 定义单个业务命名空间的 Redis 号段取号策略。
+type IDSegmentNamespaceConfig struct {
+	Enabled           bool  `json:"enabled,optional"`            // 是否让该 namespace 使用 Segment 策略
+	Step              int64 `json:"step,optional"`               // 每次从 Redis 申请的号段大小
+	PrefetchThreshold int64 `json:"prefetch_threshold,optional"` // 当前号段剩余小于等于该值时预取下一段
+	Start             int64 `json:"start,optional"`              // Redis key 首次初始化的高水位，默认 0
+}
+
+// IDSegmentConfig 定义高吞吐业务使用的 Redis 号段本地缓存策略。
+type IDSegmentConfig struct {
+	Enabled                bool                                `json:"enabled,optional"`                  // 是否启用 Segment 策略
+	Scope                  string                              `json:"scope,optional"`                    // 号段高水位部署级作用域，同一套 api/admin 部署必须一致
+	AllocateTimeoutSeconds int                                 `json:"allocate_timeout_seconds,optional"` // 单次 Redis 号段申请超时，单位秒
+	Namespaces             map[string]IDSegmentNamespaceConfig `json:"namespaces,optional"`               // 按业务 namespace 配置 Segment 策略
+}
+
+// SnowflakeConfig 定义业务 ID 生成配置，默认使用雪花，指定 namespace 可切换 Redis Segment。
 type SnowflakeConfig struct {
-	WorkerID *int64 `json:"worker_id,optional"` // 当前实例全局唯一 worker_id/node_id，范围 0-1023
+	WorkerID *int64               `json:"worker_id,optional"` // 手动指定 node_id，范围 0-1023；多实例优先使用 Redis 租约
+	Redis    SnowflakeRedisConfig `json:"redis,optional"`     // Redis 租约 node_id 分配配置
+	Segment  IDSegmentConfig      `json:"segment,optional"`   // 高吞吐业务号段配置；启用的 namespace 不再使用雪花位格式
 }
 
 // SecuritySecretKeyVersionConfig 定义配置文件中的单个秘钥版本材料。
@@ -86,19 +118,25 @@ type ConfigFilesConfig struct {
 	Runtime string `json:"runtime,optional"` // 运行期配置文件路径
 }
 
-// CollectorRedisConfig 定义通用收集器 Redis Stream 载体配置。
-type CollectorRedisConfig struct {
-	Enabled  bool   `json:"enabled,optional"`  // 是否启用 Redis Stream 载体
-	Stream   string `json:"stream,optional"`   // Redis Stream 业务名称，运行时自动追加 app_id 前缀
-	Consumer string `json:"consumer,optional"` // Redis Stream 消费者名前缀
-	MaxLen   int64  `json:"max_len,optional"`  // Stream 最大长度近似值，<=0 不裁剪
+// CollectorKafkaConfig 定义通用收集器 Kafka 投递配置。
+type CollectorKafkaConfig struct {
+	Brokers                    []string `json:"brokers,optional"`                       // Kafka broker 地址
+	WriteBatchSize             int      `json:"write_batch_size,optional"`              // Producer 写入批次大小
+	WriteBatchWaitMilliseconds int      `json:"write_batch_wait_milliseconds,optional"` // Producer 写入批次等待时间，单位毫秒
+	WriteTimeout               int      `json:"write_timeout,optional"`                 // Producer 写入超时时间，单位秒
+}
+
+// CollectorTaskConfig 定义单个 Collector 任务的 Kafka 路由。
+type CollectorTaskConfig struct {
+	Topic string `json:"topic,optional"` // 当前 bizType 投递的 Kafka Topic
 }
 
 // CollectorConfig 定义通用收集器配置。
 type CollectorConfig struct {
-	Enabled   bool                 `json:"enabled,optional"`   // 是否启用通用收集器
-	Transport string               `json:"transport,optional"` // 载体：sync/redis/auto
-	Redis     CollectorRedisConfig `json:"redis,optional"`     // Redis Stream 载体配置
+	Enabled     bool                           `json:"enabled,optional"`      // 是否启用通用收集器
+	Kafka       CollectorKafkaConfig           `json:"kafka,optional"`        // Kafka 投递链路配置
+	DefaultTask CollectorTaskConfig            `json:"default_task,optional"` // 未单独配置 bizType 时的默认路由
+	Tasks       map[string]CollectorTaskConfig `json:"tasks,optional"`        // 按 bizType 覆盖的 Kafka 路由
 }
 
 // ObservabilityConfig 聚合日志、链路追踪相关配置。

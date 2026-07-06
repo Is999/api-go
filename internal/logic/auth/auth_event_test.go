@@ -11,12 +11,14 @@ import (
 	"api/internal/requestctx"
 	"api/internal/routealias"
 	"api/internal/svc"
+
+	"github.com/Is999/go-utils/errors"
 )
 
 // TestRecordAuthEventEnqueuesSanitizedPayload 确保认证事件只投递脱敏后的结构化负载。
 func TestRecordAuthEventEnqueuesSanitizedPayload(t *testing.T) {
 	cfg := authEventTestConfig(true)
-	svcCtx, seen := newAuthEventTestService(t, cfg, true)
+	svcCtx, collector := newAuthEventTestService(cfg)
 	ctx, _ := requestctx.New(context.Background())
 	requestctx.SetTrace(ctx, "trace-demo", "span-demo")
 	requestctx.SetRoute(ctx, string(routealias.AuthLogin))
@@ -32,10 +34,10 @@ func TestRecordAuthEventEnqueuesSanitizedPayload(t *testing.T) {
 		Reason:   AuthEventReasonSessionCreated,
 	})
 
-	if len(*seen) != 1 {
-		t.Fatalf("collector events = %d, want 1", len(*seen))
+	if len(collector.events) != 1 {
+		t.Fatalf("collector events = %d, want 1", len(collector.events))
 	}
-	event := (*seen)[0]
+	event := collector.events[0]
 	if event.BizType != AuthCollectorBizType {
 		t.Fatalf("biz type = %q, want %q", event.BizType, AuthCollectorBizType)
 	}
@@ -68,7 +70,7 @@ func TestRecordAuthEventEnqueuesSanitizedPayload(t *testing.T) {
 
 // TestRecordAuthEventSkipsWhenCollectorDisabled 确保关闭 Collector 时认证主流程不会产生副作用。
 func TestRecordAuthEventSkipsWhenCollectorDisabled(t *testing.T) {
-	svcCtx, seen := newAuthEventTestService(t, authEventTestConfig(false), true)
+	svcCtx, collector := newAuthEventTestService(authEventTestConfig(false))
 
 	RecordAuthEvent(context.Background(), svcCtx, AuthEventInput{
 		Action:   AuthEventActionLoginFailed,
@@ -76,14 +78,15 @@ func TestRecordAuthEventSkipsWhenCollectorDisabled(t *testing.T) {
 		Reason:   AuthEventReasonInvalidPassword,
 	})
 
-	if len(*seen) != 0 {
-		t.Fatalf("collector events = %d, want 0", len(*seen))
+	if len(collector.events) != 0 {
+		t.Fatalf("collector events = %d, want 0", len(collector.events))
 	}
 }
 
-// TestRecordAuthEventIgnoresMissingProcessor 确保未注册 Processor 不影响认证主流程。
-func TestRecordAuthEventIgnoresMissingProcessor(t *testing.T) {
-	svcCtx, seen := newAuthEventTestService(t, authEventTestConfig(true), false)
+// TestRecordAuthEventIgnoresCollectorError 确保 Collector 投递失败不影响认证主流程。
+func TestRecordAuthEventIgnoresCollectorError(t *testing.T) {
+	svcCtx, collector := newAuthEventTestService(authEventTestConfig(true))
+	collector.enqueueErr = errors.Errorf("kafka timeout")
 
 	RecordAuthEvent(context.Background(), svcCtx, AuthEventInput{
 		Action:   AuthEventActionRateLimited,
@@ -91,8 +94,8 @@ func TestRecordAuthEventIgnoresMissingProcessor(t *testing.T) {
 		Reason:   AuthEventReasonLoginUsernameRateLimited,
 	})
 
-	if len(*seen) != 0 {
-		t.Fatalf("collector events = %d, want 0", len(*seen))
+	if len(collector.events) != 0 {
+		t.Fatalf("collector events = %d, want 0", len(collector.events))
 	}
 }
 
@@ -121,36 +124,46 @@ func authEventTestConfig(enabled bool) config.Config {
 		AppKey:    "event-secret",
 		JwtSecret: "jwt-secret",
 		Collector: config.CollectorConfig{
-			Enabled:   enabled,
-			Transport: "sync",
+			Enabled: enabled,
 		},
 	}
 }
 
+// fakeCollector 记录业务投递的 Collector 事件。
+type fakeCollector struct {
+	events     []collectorx.Event   // 已投递事件
+	enqueueErr error                // 投递时返回的错误
+	alertHook  collectorx.AlertHook // 运行异常告警钩子
+	closed     bool                 // 是否已关闭
+}
+
+// Enqueue 记录一条事件。
+func (f *fakeCollector) Enqueue(_ context.Context, event collectorx.Event) (string, error) {
+	if f.enqueueErr != nil {
+		return "", f.enqueueErr
+	}
+	if event.EventID == "" {
+		event.EventID = "test-event"
+	}
+	f.events = append(f.events, event)
+	return event.EventID, nil
+}
+
+// SetAlertHook 保存告警钩子。
+func (f *fakeCollector) SetAlertHook(hook collectorx.AlertHook) {
+	f.alertHook = hook
+}
+
+// Close 标记收集器已关闭。
+func (f *fakeCollector) Close(context.Context) error {
+	f.closed = true
+	return nil
+}
+
 // newAuthEventTestService 构造测试依赖。
-func newAuthEventTestService(t *testing.T, cfg config.Config, registerProcessor bool) (*svc.ServiceContext, *[]collectorx.Event) {
-	t.Helper()
-	manager, err := collectorx.New(config.CollectorConfig{
-		Enabled:   true,
-		Transport: "sync",
-	}, nil)
-	if err != nil {
-		t.Fatalf("collectorx.New() error = %v", err)
-	}
-	seen := make([]collectorx.Event, 0, 1)
-	if registerProcessor {
-		if err := manager.RegisterProcessorFunc(AuthCollectorBizType, func(ctx context.Context, events []collectorx.Event) ([]collectorx.ProcessResult, error) {
-			seen = append(seen, events...)
-			results := make([]collectorx.ProcessResult, 0, len(events))
-			for _, event := range events {
-				results = append(results, collectorx.ProcessResult{EventID: event.EventID, Success: true})
-			}
-			return results, nil
-		}); err != nil {
-			t.Fatalf("RegisterProcessorFunc() error = %v", err)
-		}
-	}
+func newAuthEventTestService(cfg config.Config) (*svc.ServiceContext, *fakeCollector) {
+	collector := &fakeCollector{events: make([]collectorx.Event, 0, 1)}
 	svcCtx := svc.NewServiceContext(cfg, "v1", svc.Dependencies{})
-	svcCtx.Collector = manager
-	return svcCtx, &seen
+	svcCtx.Collector = collector
+	return svcCtx, collector
 }

@@ -4,14 +4,13 @@ import (
 	"api/internal/bootstrap/components"
 	"api/internal/bootstrap/register"
 	"api/internal/handler"
-	"api/internal/infra/collectorx"
 	corelogic "api/internal/logic"
 	authlogic "api/internal/logic/auth"
 	configlogic "api/internal/logic/config"
 )
 
 // Default 返回项目前台 API 默认注册清单。
-// 该清单只描述内置注册项，不包含业务方后续注册的 Collector Processor。
+// 该清单只描述 API 内置注册项。
 func Default() []register.Item {
 	items := componentItems()
 	items = append(items, routeItems()...)
@@ -35,19 +34,11 @@ func routeItems() []register.Item {
 
 // runtimeItems 从运行时扩展规格派生注册清单。
 func runtimeItems() []register.Item {
-	collectorSpecs := collectorx.RuntimeRegistrySpecs()
 	authSpecs := authlogic.RuntimeRegistrySpecs()
-	processorSpecs := collectorx.DefaultProcessorSpecs()
 	configSpecs := configlogic.RuntimeRegistrySpecs()
 	cacheSpecs := corelogic.RuntimeRegistrySpecs()
-	items := make([]register.Item, 0, len(collectorSpecs)+len(authSpecs)+len(processorSpecs)+len(configSpecs)+len(cacheSpecs))
-	items = append(items, itemsFromSpecs(register.KindRuntimeRegistry, collectorSpecs, func(spec collectorx.RuntimeRegistrySpec) register.Spec {
-		return specFromFields(spec.Name, spec.File, spec.Method, spec.Description)
-	})...)
+	items := make([]register.Item, 0, len(authSpecs)+len(configSpecs)+len(cacheSpecs))
 	items = append(items, itemsFromSpecs(register.KindRuntimeRegistry, authSpecs, func(spec authlogic.RuntimeRegistrySpec) register.Spec {
-		return specFromFields(spec.Name, spec.File, spec.Method, spec.Description)
-	})...)
-	items = append(items, itemsFromSpecs(register.KindRuntimeRegistry, processorSpecs, func(spec collectorx.DefaultProcessorSpec) register.Spec {
 		return specFromFields(spec.Name, spec.File, spec.Method, spec.Description)
 	})...)
 	items = append(items, itemsFromSpecs(register.KindRuntimeRegistry, configSpecs, func(spec configlogic.RuntimeRegistrySpec) register.Spec {

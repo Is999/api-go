@@ -149,31 +149,16 @@ func newAuthFlowTestService(t *testing.T) (*svc.ServiceContext, redis.UniversalC
 			PasswordMinLength:      8,
 		},
 		Collector: config.CollectorConfig{
-			Enabled:   true,
-			Transport: "sync",
+			Enabled: true,
 		},
 	}
-	manager, err := collectorx.New(cfg.Collector, client)
-	if err != nil {
-		t.Fatalf("collectorx.New() error = %v", err)
-	}
-	seen := make([]collectorx.Event, 0, 4)
-	if err := manager.RegisterProcessorFunc(AuthCollectorBizType, func(ctx context.Context, events []collectorx.Event) ([]collectorx.ProcessResult, error) {
-		seen = append(seen, events...)
-		results := make([]collectorx.ProcessResult, 0, len(events))
-		for _, event := range events {
-			results = append(results, collectorx.ProcessResult{EventID: event.EventID, Success: true})
-		}
-		return results, nil
-	}); err != nil {
-		t.Fatalf("RegisterProcessorFunc() error = %v", err)
-	}
+	collector := &fakeCollector{events: make([]collectorx.Event, 0, 4)}
 	svcCtx := svc.NewServiceContext(cfg, "v1", svc.Dependencies{
 		SiteDBs: svc.SiteDatabases{MainDB: db},
 		Rds:     client,
 	})
-	svcCtx.Collector = manager
-	return svcCtx, client, &seen
+	svcCtx.Collector = collector
+	return svcCtx, client, &collector.events
 }
 
 // authFlowUserSQLite 使用 SQLite 创建用户表，业务读写仍走 model.User。

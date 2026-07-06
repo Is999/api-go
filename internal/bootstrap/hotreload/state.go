@@ -13,14 +13,16 @@ import (
 
 // State 保存配置热加载运行态资源，零值可用。
 type State struct {
-	cancel    context.CancelFunc // 配置热加载后台协程取消函数
-	wg        sync.WaitGroup     // 等待配置热加载后台协程退出
-	stateMu   sync.RWMutex       // 保护 watcher 生命周期
-	statusMu  sync.Mutex         // 保护热加载状态快照更新
-	execMu    sync.Mutex         // 串行化实际配置重载
-	logMu     sync.Mutex         // 保护重复失败日志限频状态
-	lastError string             // 最近一次失败日志签名
-	lastLogAt time.Time          // 最近一次失败日志输出时间
+	cancel     context.CancelFunc // 配置热加载后台协程取消函数
+	wg         sync.WaitGroup     // 等待配置热加载后台协程退出
+	stateMu    sync.RWMutex       // 保护 watcher 生命周期
+	statusMu   sync.Mutex         // 保护热加载状态快照更新
+	execMu     sync.Mutex         // 串行化实际配置重载
+	logMu      sync.Mutex         // 保护重复失败日志限频状态
+	watcherSeq uint64             // watcher 启动序号，避免旧协程退出时清掉新协程状态
+	activeSeq  uint64             // 当前运行中的 watcher 序号
+	lastError  string             // 最近一次失败日志签名
+	lastLogAt  time.Time          // 最近一次失败日志输出时间
 }
 
 // LockExec 锁定配置重载执行通道。
@@ -50,10 +52,14 @@ func (s *State) StartWatcher(run func(context.Context)) bool {
 		return false
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	s.watcherSeq++
+	seq := s.watcherSeq
 	s.cancel = cancel
+	s.activeSeq = seq
 	s.stateMu.Unlock()
 	s.wg.Add(1)
 	go func() {
+		defer s.clearWatcher(seq)
 		defer s.wg.Done()
 		run(ctx)
 	}()
@@ -72,6 +78,7 @@ func (s *State) StopWatcher() {
 	}
 	cancel := s.cancel
 	s.cancel = nil
+	s.activeSeq = 0
 	s.stateMu.Unlock()
 	cancel()
 	s.wg.Wait()
@@ -85,6 +92,16 @@ func (s *State) WatcherRunning() bool {
 	s.stateMu.RLock()
 	defer s.stateMu.RUnlock()
 	return s.cancel != nil
+}
+
+// clearWatcher 在 watcher 自然退出后清理运行标记，允许后续重新启动。
+func (s *State) clearWatcher(seq uint64) {
+	s.stateMu.Lock()
+	if s.activeSeq == seq {
+		s.cancel = nil
+		s.activeSeq = 0
+	}
+	s.stateMu.Unlock()
 }
 
 // UpdateStatus 在当前状态基础上执行原子更新。

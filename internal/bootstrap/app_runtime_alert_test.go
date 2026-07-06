@@ -39,11 +39,11 @@ func TestRuntimeAlertSinkEnrichesSuppressesAndRefreshesConfig(t *testing.T) {
 	sink.cfg.Mode = "dev"
 
 	alert := larkx.RuntimeAlert{
-		Kind:      "collector_processor_failed",
+		Kind:      "collector_enqueue_failed",
 		Component: "collector",
-		Operation: "process_sync",
-		UniqueKey: "collector_processor_failed:auth.security:sync",
-		Reason:    "processor failed",
+		Operation: "publish_kafka",
+		UniqueKey: "collector_enqueue_failed:auth.security:kafka",
+		Reason:    "kafka publish failed",
 	}
 	sink.notify(context.Background(), alert)
 	if len(notifier.alerts) != 1 {

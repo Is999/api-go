@@ -3,6 +3,7 @@ package configload
 import (
 	"testing"
 
+	"api/common/idgen"
 	"api/internal/config"
 )
 
@@ -15,18 +16,15 @@ func TestValidateConfigRejectsWeakJWTSecret(t *testing.T) {
 	}
 }
 
-// TestValidateConfigRejectsInvalidCollectorRedis 确保强制 Redis 载体时必须配置 Stream。
-func TestValidateConfigRejectsInvalidCollectorRedis(t *testing.T) {
+// TestValidateConfigRejectsInvalidCollectorKafka 确保启用 Collector 时必须配置 Kafka broker。
+func TestValidateConfigRejectsInvalidCollectorKafka(t *testing.T) {
 	cfg := validBootstrapConfig()
 	cfg.Collector = config.CollectorConfig{
-		Enabled:   true,
-		Transport: "redis",
-		Redis: config.CollectorRedisConfig{
-			Enabled: true,
-		},
+		Enabled:     true,
+		DefaultTask: config.CollectorTaskConfig{Topic: "api_collector_events"},
 	}
 	if err := Validate(cfg); err == nil {
-		t.Fatal("expected redis collector without stream to be rejected")
+		t.Fatal("expected collector without kafka brokers to be rejected")
 	}
 }
 
@@ -39,13 +37,149 @@ func TestValidateConfigRejectsMissingAppID(t *testing.T) {
 	}
 }
 
-// TestValidateConfigRejectsMissingSnowflakeWorkerID 确保雪花 worker_id 缺失时启动失败。
+// TestValidateConfigRejectsMissingSnowflakeWorkerID 确保未启用 Redis 租约时雪花 worker_id 缺失会启动失败。
 func TestValidateConfigRejectsMissingSnowflakeWorkerID(t *testing.T) {
 	cfg := validBootstrapConfig()
 	cfg.Snowflake.WorkerID = nil
 	t.Setenv("SNOWFLAKE_WORKER_ID", "")
 	if err := Validate(cfg); err == nil {
 		t.Fatal("expected missing snowflake.worker_id to be rejected")
+	}
+}
+
+// TestValidateConfigAcceptsRedisSnowflakeLease 确保 Redis 租约模式不要求静态 worker_id。
+func TestValidateConfigAcceptsRedisSnowflakeLease(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Snowflake.WorkerID = nil
+	cfg.Snowflake.Redis = config.SnowflakeRedisConfig{
+		Enabled: true,
+		Namespaces: map[string]config.SnowflakeRedisNamespaceConfig{
+			"user": {NodeCount: 10},
+		},
+	}
+	t.Setenv("SNOWFLAKE_WORKER_ID", "")
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("expected redis snowflake lease config to pass: %v", err)
+	}
+}
+
+// TestValidateConfigRejectsInvalidSnowflakeNamespaceNodeCount 确保 namespace node_id 池大小受雪花位宽约束。
+func TestValidateConfigRejectsInvalidSnowflakeNamespaceNodeCount(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Snowflake.WorkerID = nil
+	cfg.Snowflake.Redis = config.SnowflakeRedisConfig{
+		Enabled: true,
+		Namespaces: map[string]config.SnowflakeRedisNamespaceConfig{
+			"user": {NodeCount: int(idgen.SnowflakeMaxWorkerID + 2)},
+		},
+	}
+	t.Setenv("SNOWFLAKE_WORKER_ID", "")
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected oversized snowflake.redis namespace node_count to be rejected")
+	}
+
+	cfg = validBootstrapConfig()
+	cfg.Snowflake.WorkerID = nil
+	cfg.Snowflake.Redis = config.SnowflakeRedisConfig{
+		Enabled: true,
+		Namespaces: map[string]config.SnowflakeRedisNamespaceConfig{
+			"user": {NodeCount: -1},
+		},
+	}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected negative snowflake.redis namespace node_count to be rejected")
+	}
+}
+
+// TestValidateConfigAcceptsIDSegmentNamespace 确保高吞吐业务可单独启用 Redis Segment 号段。
+func TestValidateConfigAcceptsIDSegmentNamespace(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Snowflake.Segment = config.IDSegmentConfig{
+		Enabled:                true,
+		Scope:                  "main",
+		AllocateTimeoutSeconds: 2,
+		Namespaces: map[string]config.IDSegmentNamespaceConfig{
+			"recharge.order": {
+				Enabled:           true,
+				Step:              10000,
+				PrefetchThreshold: 2000,
+			},
+		},
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("expected valid ID Segment config to pass: %v", err)
+	}
+}
+
+// TestValidateConfigRejectsIDSegmentWithoutNamespace 确保开启 Segment 时不能没有启用的业务 namespace。
+func TestValidateConfigRejectsIDSegmentWithoutNamespace(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Snowflake.Segment = config.IDSegmentConfig{Enabled: true}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected ID Segment without namespace to be rejected")
+	}
+}
+
+// TestValidateConfigRejectsInvalidIDSegmentOptions 确保 Segment 号段参数保持在可控范围内。
+func TestValidateConfigRejectsInvalidIDSegmentOptions(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Snowflake.Segment = config.IDSegmentConfig{
+		Enabled: true,
+		Scope:   "main scope",
+		Namespaces: map[string]config.IDSegmentNamespaceConfig{
+			"recharge.order": {Enabled: true, Step: 1000},
+		},
+	}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected ID Segment scope whitespace to be rejected")
+	}
+
+	cfg = validBootstrapConfig()
+	cfg.Snowflake.Segment = config.IDSegmentConfig{
+		Enabled: true,
+		Scope:   "main",
+		Namespaces: map[string]config.IDSegmentNamespaceConfig{
+			"recharge.order": {Enabled: true, Step: 1000, PrefetchThreshold: 1000},
+		},
+	}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected ID Segment prefetch threshold to be rejected")
+	}
+}
+
+// TestValidateConfigRejectsSnowflakeScopeWhitespace 确保部署级 scope 不能包含空白字符。
+func TestValidateConfigRejectsSnowflakeScopeWhitespace(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Snowflake.WorkerID = nil
+	cfg.Snowflake.Redis = config.SnowflakeRedisConfig{
+		Enabled: true,
+		Scope:   "main scope",
+	}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected snowflake.redis.scope with whitespace to be rejected")
+	}
+}
+
+// TestValidateConfigRejectsMixedSnowflakeModes 确保 Redis 租约模式不会被静态 worker_id 覆盖。
+func TestValidateConfigRejectsMixedSnowflakeModes(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Snowflake.Redis.Enabled = true
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected mixed snowflake worker_id and redis lease to be rejected")
+	}
+}
+
+// TestValidateConfigRejectsUnsafeSnowflakeLeaseInterval 确保续约间隔不能贴近租约 TTL。
+func TestValidateConfigRejectsUnsafeSnowflakeLeaseInterval(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Snowflake.WorkerID = nil
+	cfg.Snowflake.Redis = config.SnowflakeRedisConfig{
+		Enabled:              true,
+		LeaseSeconds:         20,
+		RenewIntervalSeconds: 10,
+	}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected unsafe snowflake redis renew interval to be rejected")
 	}
 }
 
@@ -76,22 +210,41 @@ func TestNormalizeConfigDefaultsUserRouteShardCount(t *testing.T) {
 	}
 }
 
-// TestValidateConfigRejectsCollectorRedisEnabledWithoutStream 确保启用 Redis Stream 载体时必须配置 Stream。
-func TestValidateConfigRejectsCollectorRedisEnabledWithoutStream(t *testing.T) {
+// TestValidateConfigSkipsDisabledCollectorConfig 确保关闭 Collector 时不校验子配置细节。
+func TestValidateConfigSkipsDisabledCollectorConfig(t *testing.T) {
 	cfg := validBootstrapConfig()
-	cfg.Collector.Redis.Enabled = true
-	if err := Validate(cfg); err == nil {
-		t.Fatal("expected collector.redis.enabled without stream to be rejected")
+	cfg.Collector = config.CollectorConfig{
+		Enabled: false,
+		Kafka: config.CollectorKafkaConfig{
+			WriteBatchSize:             -1,
+			WriteBatchWaitMilliseconds: 999999,
+		},
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("disabled collector should skip child validation: %v", err)
 	}
 }
 
-// TestValidateConfigRejectsForeignCollectorStream 确保 Collector 不会误用其它站点 Redis Stream。
-func TestValidateConfigRejectsForeignCollectorStream(t *testing.T) {
+// TestValidateConfigRejectsCollectorEnabledWithoutTopic 确保启用 Collector 时必须配置 Topic。
+func TestValidateConfigRejectsCollectorEnabledWithoutTopic(t *testing.T) {
 	cfg := validBootstrapConfig()
-	cfg.AppID = "site-2"
-	cfg.Collector.Redis.Stream = "app:site-1:collector:events"
+	cfg.Collector.Enabled = true
+	cfg.Collector.Kafka.Brokers = []string{"127.0.0.1:9092"}
 	if err := Validate(cfg); err == nil {
-		t.Fatal("expected foreign collector.redis.stream to be rejected")
+		t.Fatal("expected collector enabled without topic to be rejected")
+	}
+}
+
+// TestValidateConfigAcceptsCollectorTaskTopic 确保 Collector 可按 bizType 配置 Topic。
+func TestValidateConfigAcceptsCollectorTaskTopic(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Collector.Enabled = true
+	cfg.Collector.Kafka.Brokers = []string{"127.0.0.1:9092"}
+	cfg.Collector.Tasks = map[string]config.CollectorTaskConfig{
+		"auth.security": {Topic: "api_collector_auth_security_events"},
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("valid collector task topic should pass: %v", err)
 	}
 }
 

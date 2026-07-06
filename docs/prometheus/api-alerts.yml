@@ -36,3 +36,30 @@ groups:
         annotations:
           summary: "api Collector processor failed"
           description: "Collector biz_type={{ $labels.biz_type }} has failed processor batches."
+
+      - alert: GozeroApiIDGenerateFailed
+        expr: sum by (job, instance, biz_type, strategy) (rate(api_idgen_generated_total{result!="success"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "api ID generation failed"
+          description: "instance={{ $labels.instance }} ID biz_type={{ $labels.biz_type }} strategy={{ $labels.strategy }} has generation failures."
+
+      - alert: GozeroApiIDSegmentRemainingLow
+        expr: (api_idgen_segment_remaining < 100) and on (job, instance, biz_type) (sum by (job, instance, biz_type) (rate(api_idgen_generated_total{strategy="segment",result="success"}[10m])) > 0)
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "api ID Segment local range is low"
+          description: "instance={{ $labels.instance }} ID Segment biz_type={{ $labels.biz_type }} local range is below 100 while still generating IDs."
+
+      - alert: GozeroApiSnowflakeLeaseLost
+        expr: sum by (job, instance, biz_type, event) (rate(api_idgen_snowflake_lease_events_total{event=~"lost|renew_timeout"}[5m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "api Snowflake lease lost"
+          description: "instance={{ $labels.instance }} Snowflake biz_type={{ $labels.biz_type }} event={{ $labels.event }} detected."

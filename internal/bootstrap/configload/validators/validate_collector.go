@@ -3,41 +3,54 @@ package validators
 import (
 	"strings"
 
-	keys "api/common/rediskeys"
 	"api/internal/config"
 
 	"github.com/Is999/go-utils/errors"
 )
 
-// Collector 载体枚举限定配置文件可声明的事件投递通道。
-const (
-	collectorTransportAuto  = "auto"  // 自动选择可用的 Collector 载体
-	collectorTransportRedis = "redis" // 强制使用 Redis Stream 作为 Collector 载体
-	collectorTransportSync  = "sync"  // 强制使用进程内同步处理作为 Collector 载体
-)
+const maxCollectorKafkaWriteBatchWaitMilliseconds = 5000 // API 请求链路内 Producer 聚合等待上限。
 
-// ValidateCollector 校验 Collector 载体配置是否自洽。
+// ValidateCollector 校验 API Collector Kafka 投递配置是否自洽。
 func ValidateCollector(c config.Config) error {
 	cfg := c.Collector
-	transport := strings.ToLower(strings.TrimSpace(cfg.Transport))
-	if cfg.Redis.Enabled && strings.TrimSpace(cfg.Redis.Stream) == "" {
-		return errors.Errorf("collector.redis.enabled=true 时必须配置 collector.redis.stream")
-	}
-	if ownerAppID, ok := keys.Owner(cfg.Redis.Stream); ok && strings.TrimSpace(c.AppID) != ownerAppID {
-		return errors.Errorf("collector.redis.stream 属于其它 app_id[%s]", ownerAppID)
-	}
-	switch transport {
-	case "", collectorTransportAuto, collectorTransportSync:
+	if !cfg.Enabled {
 		return nil
-	case collectorTransportRedis:
-		if !cfg.Redis.Enabled {
-			return errors.Errorf("collector.transport=redis 时必须启用 collector.redis.enabled")
-		}
-		if strings.TrimSpace(cfg.Redis.Stream) == "" {
-			return errors.Errorf("collector.transport=redis 时必须配置 collector.redis.stream")
-		}
-		return nil
-	default:
-		return errors.Errorf("collector.transport 仅支持 auto/sync/redis")
 	}
+	if len(nonEmptyStrings(cfg.Kafka.Brokers)) == 0 {
+		return errors.Errorf("collector.enabled=true 时必须配置 collector.kafka.brokers")
+	}
+	if cfg.Kafka.WriteBatchSize < 0 {
+		return errors.Errorf("collector.kafka.write_batch_size 不能小于 0")
+	}
+	if cfg.Kafka.WriteBatchWaitMilliseconds < 0 || cfg.Kafka.WriteBatchWaitMilliseconds > maxCollectorKafkaWriteBatchWaitMilliseconds {
+		return errors.Errorf("collector.kafka.write_batch_wait_milliseconds 必须在 0-%d 之间", maxCollectorKafkaWriteBatchWaitMilliseconds)
+	}
+	if cfg.Kafka.WriteTimeout < 0 {
+		return errors.Errorf("collector.kafka.write_timeout 不能小于 0")
+	}
+	if strings.TrimSpace(cfg.DefaultTask.Topic) == "" && len(cfg.Tasks) == 0 {
+		return errors.Errorf("collector.enabled=true 时必须配置 collector.default_task.topic 或 collector.tasks.<bizType>.topic")
+	}
+	for bizType, task := range cfg.Tasks {
+		bizType = strings.TrimSpace(bizType)
+		if bizType == "" {
+			return errors.Errorf("collector.tasks 存在空 bizType")
+		}
+		if strings.TrimSpace(task.Topic) == "" && strings.TrimSpace(cfg.DefaultTask.Topic) == "" {
+			return errors.Errorf("collector.tasks.%s.topic 不能为空", bizType)
+		}
+	}
+	return nil
+}
+
+// nonEmptyStrings 返回去掉空白后的字符串列表。
+func nonEmptyStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
 }

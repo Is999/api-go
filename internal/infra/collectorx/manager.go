@@ -3,6 +3,7 @@ package collectorx
 import (
 	"context"
 	"encoding/json"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -11,36 +12,58 @@ import (
 
 	"github.com/Is999/go-utils/errors"
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
+	"github.com/segmentio/kafka-go"
 )
 
-// Collector 事件投递载体枚举常量。
 const (
-	collectorTransportAuto  = "auto"  // 自动选择载体：优先 Redis Stream，否则同步 Processor
-	collectorTransportRedis = "redis" // Redis Stream 载体
-	collectorTransportSync  = "sync"  // 同步 Processor 载体
+	collectorTransportKafka         = "kafka"               // Kafka 是 API Collector 唯一正常投递通道
+	defaultKafkaWriteTimeout        = 3 * time.Second       // 默认 Kafka 写入超时，避免认证主链路长期阻塞
+	defaultKafkaWriteBatchSize      = 500                   // 默认 Producer 批量写入大小
+	maxKafkaWriteBatchSize          = 10000                 // Producer 单批写入上限
+	defaultKafkaWriteBatchWait      = 20 * time.Millisecond // 默认 Producer 批量等待时间
+	maxKafkaWriteBatchWait          = 5 * time.Second       // Producer 批量等待时间上限
+	collectorDefaultRuntimeBizType  = "collector"           // 缺少 bizType 时的告警兜底业务类型
+	collectorDefaultRuntimeUniqueID = "collector:kafka"     // 缺少稳定键时的告警兜底指纹
 )
 
-// Manager 负责通用收集器的事件投递和 Processor 注册。
-type Manager struct {
-	cfg        config.CollectorConfig // 收集器运行配置
-	redis      redis.UniversalClient  // Redis 客户端，用于 Redis Stream 载体
-	alertHook  AlertHook              // 运行异常告警钩子
-	mu         sync.RWMutex           // 保护 processors 注册表
-	processors map[string]Processor   // bizType 到批量处理器的映射
+// kafkaMessageWriter 约束 Kafka 写入器能力，便于单测替换。
+type kafkaMessageWriter interface {
+	WriteMessages(context.Context, ...kafka.Message) error
+	Close() error
 }
 
-// New 创建通用收集器管理器。
-func New(cfg config.CollectorConfig, rds redis.UniversalClient) (*Manager, error) {
-	cfg.Transport = normalizeCollectorTransport(cfg.Transport)
-	cfg.Redis.Stream = strings.TrimSpace(cfg.Redis.Stream)
-	cfg.Redis.Consumer = strings.TrimSpace(cfg.Redis.Consumer)
+// Manager 负责把 API 轻量事件可靠投递到 Kafka。
+type Manager struct {
+	cfg       config.CollectorConfig        // 收集器运行配置
+	writers   map[string]kafkaMessageWriter // topic 到 Kafka writer 的映射
+	alertHook AlertHook                     // 运行异常告警钩子
+	mu        sync.RWMutex                  // 保护 alertHook
+}
+
+// New 创建通用收集器 Kafka 投递管理器。
+func New(cfg config.CollectorConfig) (*Manager, error) {
+	normalizeCollectorTaskRoutes(&cfg)
 	ensureMetricsRegistered()
-	return &Manager{
-		cfg:        cfg,
-		redis:      rds,
-		processors: make(map[string]Processor),
-	}, nil
+	m := &Manager{
+		cfg:     cfg,
+		writers: make(map[string]kafkaMessageWriter),
+	}
+	if !cfg.Enabled || len(nonEmptyStrings(cfg.Kafka.Brokers)) == 0 {
+		return m, nil
+	}
+	for _, topic := range collectorConfiguredTopics(cfg) {
+		m.writers[topic] = &kafka.Writer{
+			Addr:         kafka.TCP(cfg.Kafka.Brokers...),
+			Topic:        topic,
+			Balancer:     &kafka.Hash{},
+			BatchSize:    boundedPositiveInt(cfg.Kafka.WriteBatchSize, defaultKafkaWriteBatchSize, maxKafkaWriteBatchSize),
+			BatchTimeout: kafkaWriteBatchWait(cfg.Kafka.WriteBatchWaitMilliseconds),
+			WriteTimeout: kafkaWriteTimeout(cfg.Kafka.WriteTimeout),
+			RequiredAcks: kafka.RequireAll,
+			Async:        false,
+		}
+	}
+	return m, nil
 }
 
 // SetAlertHook 设置 Collector 运行异常告警钩子。
@@ -53,37 +76,7 @@ func (m *Manager) SetAlertHook(hook AlertHook) {
 	m.alertHook = hook
 }
 
-// RegisterProcessor 注册指定 bizType 的批量消费处理器。
-func (m *Manager) RegisterProcessor(bizType string, p Processor) error {
-	if m == nil {
-		return errors.Errorf("collector 未初始化")
-	}
-	bizType = strings.TrimSpace(bizType)
-	if bizType == "" {
-		return errors.Errorf("collectorx.RegisterProcessor bizType 为空")
-	}
-	if p == nil {
-		return errors.Errorf("collectorx.RegisterProcessor processor 为空")
-	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if _, ok := m.processors[bizType]; ok {
-		return errors.Errorf("collectorx.RegisterProcessor 重复注册 bizType=%s", bizType)
-	}
-	m.processors[bizType] = p
-	allowMetricBizTypeLabel(bizType)
-	return nil
-}
-
-// RegisterProcessorFunc 允许业务方直接传入批量消费函数。
-func (m *Manager) RegisterProcessorFunc(bizType string, fn ProcessorFunc) error {
-	if fn == nil {
-		return errors.Errorf("collectorx.RegisterProcessorFunc processor 为空")
-	}
-	return errors.Tag(m.RegisterProcessor(bizType, fn))
-}
-
-// Enqueue 投递一条结构化业务事件。
+// Enqueue 投递一条结构化业务事件到 Kafka。
 func (m *Manager) Enqueue(ctx context.Context, event Event) (string, error) {
 	if m == nil || !m.cfg.Enabled {
 		return "", errors.Errorf("collector 未启用")
@@ -92,51 +85,100 @@ func (m *Manager) Enqueue(ctx context.Context, event Event) (string, error) {
 		ctx = context.Background()
 	}
 	if err := normalizeAndValidateEvent(&event); err != nil {
-		recordCollectorEnqueue(normalizeCollectorTransport(m.cfg.Transport), "failed")
+		recordKafkaPublish("failed")
 		return "", errors.Tag(err)
 	}
-	transport := normalizeCollectorTransport(m.cfg.Transport)
-	if (transport == collectorTransportAuto || transport == collectorTransportRedis) && m.redisAvailable() {
-		if err := m.publishRedis(ctx, event); err == nil {
-			recordCollectorEnqueue(collectorTransportRedis, "success")
-			return event.EventID, nil
-		} else if transport == collectorTransportRedis {
-			recordCollectorEnqueue(collectorTransportRedis, "failed")
-			m.reportRuntimeAlert(ctx, RuntimeAlert{
-				Kind:      RuntimeAlertKindEnqueueFailed,
-				Title:     "【P1 Collector 投递失败】",
-				Status:    "Collector 事件未写入 Redis Stream，前台请求已继续处理",
-				Component: "collector",
-				Operation: "publish_redis",
-				BizType:   event.BizType,
-				Transport: collectorTransportRedis,
-				UniqueKey: collectorAlertUniqueKey(RuntimeAlertKindEnqueueFailed, event.BizType, collectorTransportRedis),
-				Reason:    err.Error(),
-				Advice:    "请检查 Redis Stream 配置、Redis 连接和当前 app_id 命名空间；修复后确认认证风控事件指标恢复。",
-				Count:     1,
-			})
-			return "", errors.Tag(err)
-		}
-	}
-	if err := m.processSync(ctx, event); err != nil {
-		recordCollectorEnqueue(collectorTransportSync, "failed")
+	topic := m.collectorTaskTopic(event.BizType)
+	if strings.TrimSpace(topic) == "" {
+		err := errors.Errorf("collector task topic 未配置 biz_type=%s", event.BizType)
+		recordKafkaPublish("failed")
 		m.reportRuntimeAlert(ctx, RuntimeAlert{
-			Kind:      RuntimeAlertKindProcessorFailed,
-			Title:     "【P1 Collector 同步处理失败】",
-			Status:    "Collector 同步 Processor 处理失败，当前事件未完成采集",
+			Kind:      RuntimeAlertKindEnqueueFailed,
+			Title:     "【P1 Collector 投递失败】",
+			Status:    "Collector 事件未写入 Kafka，前台请求已继续处理",
 			Component: "collector",
-			Operation: "process_sync",
+			Operation: "resolve_topic",
 			BizType:   event.BizType,
-			Transport: collectorTransportSync,
-			UniqueKey: collectorAlertUniqueKey(RuntimeAlertKindProcessorFailed, event.BizType, collectorTransportSync),
+			Transport: collectorTransportKafka,
+			UniqueKey: collectorAlertUniqueKey(RuntimeAlertKindEnqueueFailed, event.BizType, collectorTransportKafka),
 			Reason:    err.Error(),
-			Advice:    "请检查对应 bizType 的 Processor 注册、业务依赖和最近发布；修复后观察 Collector 指标是否恢复。",
+			Advice:    "请检查 API collector.tasks 或 collector.default_task 的 topic 配置；修复后观察 Collector Kafka 投递指标。",
+			Count:     1,
+		})
+		return "", err
+	}
+	body, err := json.Marshal(event)
+	if err != nil {
+		recordKafkaPublish("failed")
+		return "", errors.Tag(err)
+	}
+	if err = m.publishKafka(ctx, topic, kafkaMessageKey(event), body); err != nil {
+		recordKafkaPublish("failed")
+		m.reportRuntimeAlert(ctx, RuntimeAlert{
+			Kind:      RuntimeAlertKindEnqueueFailed,
+			Title:     "【P1 Collector 投递失败】",
+			Status:    "Collector 事件未写入 Kafka，前台请求已继续处理",
+			Component: "collector",
+			Operation: "publish_kafka",
+			BizType:   event.BizType,
+			Transport: collectorTransportKafka,
+			UniqueKey: collectorAlertUniqueKey(RuntimeAlertKindEnqueueFailed, event.BizType, collectorTransportKafka),
+			Reason:    err.Error(),
+			Advice:    "请检查 Kafka broker、topic、ACK 和网络状态；修复后观察 Collector Kafka 投递指标。",
 			Count:     1,
 		})
 		return "", errors.Tag(err)
 	}
-	recordCollectorEnqueue(collectorTransportSync, "success")
+	recordKafkaPublish("success")
 	return event.EventID, nil
+}
+
+// Close 关闭 Collector 持有的 Kafka writer。
+func (m *Manager) Close(ctx context.Context) error {
+	if m == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var firstErr error
+	for _, topic := range sortedWriterTopics(m.writers) {
+		select {
+		case <-ctx.Done():
+			if firstErr == nil {
+				firstErr = errors.Tag(ctx.Err())
+			}
+			return firstErr
+		default:
+		}
+		if err := m.writers[topic].Close(); err != nil && firstErr == nil {
+			firstErr = errors.Wrapf(err, "关闭 Collector Kafka writer 失败 topic=%s", topic)
+		}
+	}
+	return errors.Tag(firstErr)
+}
+
+// publishKafka 将事件写入 Kafka，并等待 broker ACK。
+func (m *Manager) publishKafka(ctx context.Context, topic string, key string, body []byte) error {
+	writer := m.writers[strings.TrimSpace(topic)]
+	if writer == nil {
+		return errors.Errorf("collector kafka topic 未配置 topic=%s", topic)
+	}
+	writeCtx, cancel := context.WithTimeout(ctx, kafkaWriteTimeout(m.cfg.Kafka.WriteTimeout))
+	defer cancel()
+	return errors.Tag(writer.WriteMessages(writeCtx, kafka.Message{Key: []byte(key), Value: body}))
+}
+
+// collectorTaskTopic 返回指定 bizType 继承后的 Kafka Topic。
+func (m *Manager) collectorTaskTopic(bizType string) string {
+	if m == nil {
+		return ""
+	}
+	bizType = strings.TrimSpace(bizType)
+	if task, ok := m.cfg.Tasks[bizType]; ok {
+		return firstNonEmpty(task.Topic, m.cfg.DefaultTask.Topic)
+	}
+	return strings.TrimSpace(m.cfg.DefaultTask.Topic)
 }
 
 // reportRuntimeAlert 上报 Collector 运行异常；未设置 hook 时保持原返回语义。
@@ -160,7 +202,7 @@ func (m *Manager) reportRuntimeAlert(ctx context.Context, alert RuntimeAlert) {
 func normalizeRuntimeAlert(alert RuntimeAlert) RuntimeAlert {
 	alert.Kind = strings.TrimSpace(alert.Kind)
 	if alert.Kind == "" {
-		alert.Kind = RuntimeAlertKindProcessorFailed
+		alert.Kind = RuntimeAlertKindEnqueueFailed
 	}
 	alert.Component = strings.TrimSpace(alert.Component)
 	if alert.Component == "" {
@@ -168,7 +210,13 @@ func normalizeRuntimeAlert(alert RuntimeAlert) RuntimeAlert {
 	}
 	alert.Operation = strings.TrimSpace(alert.Operation)
 	alert.BizType = strings.TrimSpace(alert.BizType)
+	if alert.BizType == "" {
+		alert.BizType = collectorDefaultRuntimeBizType
+	}
 	alert.Transport = strings.TrimSpace(alert.Transport)
+	if alert.Transport == "" {
+		alert.Transport = collectorTransportKafka
+	}
 	alert.UniqueKey = strings.TrimSpace(alert.UniqueKey)
 	if alert.UniqueKey == "" {
 		alert.UniqueKey = collectorAlertUniqueKey(alert.Kind, alert.BizType, alert.Transport)
@@ -177,6 +225,9 @@ func normalizeRuntimeAlert(alert RuntimeAlert) RuntimeAlert {
 	alert.Advice = strings.TrimSpace(alert.Advice)
 	if alert.Count <= 0 {
 		alert.Count = 1
+	}
+	if alert.OccurredAt.IsZero() {
+		alert.OccurredAt = time.Now()
 	}
 	return alert
 }
@@ -190,71 +241,20 @@ func collectorAlertUniqueKey(kind, bizType, transport string) string {
 			parts = append(parts, item)
 		}
 	}
+	if len(parts) == 0 {
+		return collectorDefaultRuntimeUniqueID
+	}
 	return strings.Join(parts, ":")
 }
 
-// processSync 直接调用已注册 Processor，适合前台 API 的轻量收集场景。
-func (m *Manager) processSync(ctx context.Context, event Event) error {
-	m.mu.RLock()
-	processor := m.processors[event.BizType]
-	m.mu.RUnlock()
-	if processor == nil {
-		return errors.Errorf("collector processor 未注册 biz_type=%s", event.BizType)
+// kafkaMessageKey 返回 Kafka 分区键，保证同任务同业务分区稳定进入同一 Kafka partition。
+func kafkaMessageKey(event Event) string {
+	bizType := strings.TrimSpace(event.BizType)
+	partitionKey := strings.TrimSpace(event.PartitionKey)
+	if partitionKey == "" {
+		return bizType
 	}
-	begin := time.Now()
-	results, err := processor.ProcessBatch(ctx, []Event{event})
-	success := err == nil
-	var resultErr error
-	if err == nil && len(results) > 0 {
-		success = results[0].Success
-		if !success {
-			resultErr = errors.Errorf("collector processor 处理失败 event_id=%s error=%s", results[0].EventID, results[0].Error)
-		}
-	}
-	recordProcessorBatch(event.BizType, success, time.Since(begin))
-	if resultErr != nil {
-		return resultErr
-	}
-	return errors.Tag(err)
-}
-
-// redisAvailable 判断 Redis Stream 载体是否具备写入条件。
-func (m *Manager) redisAvailable() bool {
-	return m != nil && m.redis != nil && m.cfg.Redis.Enabled && strings.TrimSpace(m.cfg.Redis.Stream) != ""
-}
-
-// publishRedis 将事件写入 Redis Stream。
-func (m *Manager) publishRedis(ctx context.Context, event Event) error {
-	body, err := json.Marshal(event)
-	if err != nil {
-		return errors.Tag(err)
-	}
-	args := &redis.XAddArgs{
-		Stream: m.cfg.Redis.Stream,
-		Values: map[string]any{
-			"body": string(body),
-		},
-	}
-	if m.cfg.Redis.MaxLen > 0 {
-		args.MaxLen = m.cfg.Redis.MaxLen
-		args.Approx = true
-	}
-	return errors.Tag(m.redis.XAdd(ctx, args).Err())
-}
-
-// normalizeCollectorTransport 归一化配置中的 transport。
-func normalizeCollectorTransport(transport string) string {
-	value := strings.ToLower(strings.TrimSpace(transport))
-	switch value {
-	case "", collectorTransportAuto:
-		return collectorTransportAuto
-	case collectorTransportRedis:
-		return collectorTransportRedis
-	case collectorTransportSync:
-		return collectorTransportSync
-	default:
-		return collectorTransportAuto
-	}
+	return bizType + ":" + partitionKey
 }
 
 // normalizeAndValidateEvent 清洗事件并校验必要字段。
@@ -274,4 +274,115 @@ func normalizeAndValidateEvent(event *Event) error {
 		return errors.Errorf("collector event payload 必须是合法 JSON")
 	}
 	return nil
+}
+
+// normalizeCollectorTaskRoutes 清理任务 Kafka 路由字段，避免空白值参与匹配。
+func normalizeCollectorTaskRoutes(cfg *config.CollectorConfig) {
+	if cfg == nil {
+		return
+	}
+	cfg.DefaultTask.Topic = strings.TrimSpace(cfg.DefaultTask.Topic)
+	if len(cfg.Tasks) == 0 {
+		return
+	}
+	tasks := make(map[string]config.CollectorTaskConfig, len(cfg.Tasks))
+	for bizType, task := range cfg.Tasks {
+		bizType = strings.TrimSpace(bizType)
+		task.Topic = strings.TrimSpace(task.Topic)
+		if bizType == "" {
+			continue
+		}
+		tasks[bizType] = task
+	}
+	cfg.Tasks = tasks
+}
+
+// collectorConfiguredTopics 返回 Collector 当前配置需要写入的 Topic 列表。
+func collectorConfiguredTopics(cfg config.CollectorConfig) []string {
+	topics := make(map[string]struct{})
+	if cfg.DefaultTask.Topic != "" {
+		topics[cfg.DefaultTask.Topic] = struct{}{}
+	}
+	for _, task := range cfg.Tasks {
+		topic := firstNonEmpty(task.Topic, cfg.DefaultTask.Topic)
+		if topic == "" {
+			continue
+		}
+		topics[topic] = struct{}{}
+	}
+	return sortedKeys(topics)
+}
+
+// kafkaWriteTimeout 返回 Producer 写入超时。
+func kafkaWriteTimeout(seconds int) time.Duration {
+	timeout := time.Duration(seconds) * time.Second
+	if timeout <= 0 {
+		return defaultKafkaWriteTimeout
+	}
+	return timeout
+}
+
+// kafkaWriteBatchWait 返回 Producer 写入批量等待时间。
+func kafkaWriteBatchWait(milliseconds int) time.Duration {
+	wait := time.Duration(milliseconds) * time.Millisecond
+	if wait <= 0 {
+		return defaultKafkaWriteBatchWait
+	}
+	if wait > maxKafkaWriteBatchWait {
+		return maxKafkaWriteBatchWait
+	}
+	return wait
+}
+
+// boundedPositiveInt 将配置值限制在稳定范围内。
+func boundedPositiveInt(value int, fallback int, maxValue int) int {
+	if value <= 0 {
+		return fallback
+	}
+	if maxValue > 0 && value > maxValue {
+		return maxValue
+	}
+	return value
+}
+
+// nonEmptyStrings 返回去掉空白后的字符串列表。
+func nonEmptyStrings(values []string) []string {
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value != "" {
+			out = append(out, value)
+		}
+	}
+	return out
+}
+
+// firstNonEmpty 返回第一个非空字符串。
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value = strings.TrimSpace(value); value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+// sortedKeys 返回 map key 的稳定排序结果。
+func sortedKeys(values map[string]struct{}) []string {
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// sortedWriterTopics 返回 writer topic 的稳定排序结果。
+func sortedWriterTopics(writers map[string]kafkaMessageWriter) []string {
+	topics := make([]string, 0, len(writers))
+	for topic := range writers {
+		topics = append(topics, topic)
+	}
+	sort.Strings(topics)
+	return topics
 }

@@ -34,7 +34,7 @@ const (
 
 // 前台用户 ID 生成命名空间。
 const (
-	userIDNamespace = "api.user" // API 注册链路使用的雪花 ID 命名空间
+	userIDNamespace = "user" // api/admin 写同一用户表必须使用同一业务命名空间
 )
 
 // 批量会话操作保护边界。

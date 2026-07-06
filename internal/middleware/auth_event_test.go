@@ -138,29 +138,38 @@ func newAuthMiddlewareEventService(t *testing.T) (*svc.ServiceContext, *[]collec
 		AppKey:    "event-secret",
 		JwtSecret: "jwt-secret",
 		Collector: config.CollectorConfig{
-			Enabled:   true,
-			Transport: "sync",
+			Enabled: true,
 		},
 	}
-	manager, err := collectorx.New(config.CollectorConfig{
-		Enabled:   true,
-		Transport: "sync",
-	}, nil)
-	if err != nil {
-		t.Fatalf("collectorx.New() error = %v", err)
-	}
-	seen := make([]collectorx.Event, 0, 1)
-	if err := manager.RegisterProcessorFunc(authlogic.AuthCollectorBizType, func(ctx context.Context, events []collectorx.Event) ([]collectorx.ProcessResult, error) {
-		seen = append(seen, events...)
-		results := make([]collectorx.ProcessResult, 0, len(events))
-		for _, event := range events {
-			results = append(results, collectorx.ProcessResult{EventID: event.EventID, Success: true})
-		}
-		return results, nil
-	}); err != nil {
-		t.Fatalf("RegisterProcessorFunc() error = %v", err)
-	}
+	collector := &fakeMiddlewareCollector{events: make([]collectorx.Event, 0, 1)}
 	svcCtx := svc.NewServiceContext(cfg, "v1", svc.Dependencies{})
-	svcCtx.Collector = manager
-	return svcCtx, &seen
+	svcCtx.Collector = collector
+	return svcCtx, &collector.events
+}
+
+// fakeMiddlewareCollector 记录中间件投递的 Collector 事件。
+type fakeMiddlewareCollector struct {
+	events    []collectorx.Event   // 已投递事件
+	alertHook collectorx.AlertHook // 运行异常告警钩子
+	closed    bool                 // 是否已关闭
+}
+
+// Enqueue 记录一条事件。
+func (f *fakeMiddlewareCollector) Enqueue(_ context.Context, event collectorx.Event) (string, error) {
+	if event.EventID == "" {
+		event.EventID = "test-event"
+	}
+	f.events = append(f.events, event)
+	return event.EventID, nil
+}
+
+// SetAlertHook 保存告警钩子。
+func (f *fakeMiddlewareCollector) SetAlertHook(hook collectorx.AlertHook) {
+	f.alertHook = hook
+}
+
+// Close 标记收集器已关闭。
+func (f *fakeMiddlewareCollector) Close(context.Context) error {
+	f.closed = true
+	return nil
 }
