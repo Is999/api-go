@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	stderrors "errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -121,12 +122,21 @@ func newAuthFlowTestService(t *testing.T) (*svc.ServiceContext, redis.UniversalC
 	if err := idgen.ConfigureWorkerID(1); err != nil {
 		t.Fatalf("ConfigureWorkerID() error = %v", err)
 	}
-	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{
+	// SQLite 内存库按测试实例隔离，避免 go test -count 重复运行时复用旧数据。
+	dsn := "file:" + strings.ReplaceAll(t.Name(), "/", "_") + "_" + strconv.FormatInt(time.Now().UnixNano(), 10) + "?mode=memory&cache=shared"
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		t.Fatalf("gorm.Open(sqlite) error = %v", err)
 	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatalf("db.DB() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_ = sqlDB.Close()
+	})
 	if err := db.AutoMigrate(&authFlowUserSQLite{}, &authFlowUserAccountSQLite{}); err != nil {
 		t.Fatalf("AutoMigrate(User) error = %v", err)
 	}
