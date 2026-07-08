@@ -1,0 +1,22 @@
+-- 代码资产：创建业务用户三方登录身份索引表。
+-- SQL 方言：MySQL 8.0 InnoDB。
+-- 调用方：internal/database.DefaultMigrations 通过迁移 runner 执行。
+-- 安全边界：只创建空索引表；历史三方身份需按 user.id 游标分批回填，避免在线长事务。
+CREATE TABLE IF NOT EXISTS `user_identity_oauth` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT COMMENT '主键ID',
+  `provider` varchar(32) COLLATE utf8mb4_bin NOT NULL DEFAULT '' COMMENT '三方身份提供方',
+  `identity_value` varchar(191) COLLATE utf8mb4_bin NOT NULL COMMENT '三方平台用户主体',
+  `user_id` bigint NOT NULL COMMENT '业务用户雪花ID',
+  `user_shard_no` int NOT NULL COMMENT '业务用户ID哈希分片，CRC32(id字符串)%1024',
+  `user_route_shard_count` smallint unsigned NOT NULL DEFAULT 1 COMMENT '当前物理用户表数量：1/2/4/.../1024',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_user_identity_provider_value` (`provider`, `identity_value`),
+  UNIQUE KEY `uk_user_identity_user_provider` (`user_id`, `provider`),
+  KEY `idx_user_identity_user_route` (`user_route_shard_count`, `user_shard_no`, `user_id`),
+  KEY `idx_user_identity_shard_user` (`user_shard_no`, `user_id`),
+  CONSTRAINT `chk_user_identity_oauth_provider` CHECK (`provider` <> ''),
+  CONSTRAINT `chk_user_identity_oauth_user_shard_no` CHECK (`user_shard_no` BETWEEN 0 AND 1023),
+  CONSTRAINT `chk_user_identity_oauth_user_route_shard_count` CHECK (`user_route_shard_count` IN (1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci COMMENT='业务用户三方登录身份索引表';

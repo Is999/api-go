@@ -62,7 +62,7 @@ snowflake:
     #     # Redis 高水位初始化值；0 表示首个 ID 从 1 开始。
     #     start: 0
 
-# 业务用户写入路由；提升前必须完成 user_account 回填、目标表创建和多实例同步重启。
+# 业务用户写入路由；提升前必须完成联系方式安全字段、user_identity_* 回填、目标表创建和多实例同步重启。
 user:
   # 新增用户默认物理表数量，仅支持 1/2/4/8/16/32/64/128/256/512/1024。
   route_shard_count: 1
@@ -229,7 +229,7 @@ collector:
       # Kafka Topic。
       topic: "api_collector_auth_security_events"
 
-# 运维级接口保护；内网热加载和运行态同步接口必须携带 X-Ops-Token。
+# 运维级接口保护；内网热加载和运行态同步接口必须携带 X-Ops-Token 与 HMAC 签名。
 ops:
   # 生产环境必须通过密钥管理注入强随机令牌，留空会拒绝访问运维接口。
   config_reload_token: ""

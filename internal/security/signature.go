@@ -42,10 +42,10 @@ var RouteSecurityPolicies = map[routealias.Alias]RouteSecurityPolicy{
 		ResponseSign:   []string{"token", "expiresAt"},
 		ResponseCipher: []string{"token", "user.email", "user.phone"},
 	},
-	// auth.login 保护登录密码和响应 token。
+	// auth.login 保护登录身份、密码和响应 token。
 	routealias.AuthLogin: {
-		RequestSign:    []string{"username", "password"},
-		RequestCipher:  []string{"password"},
+		RequestSign:    []string{"identityType", "identityValue", "password"},
+		RequestCipher:  []string{"identityValue", "password"},
 		ResponseSign:   []string{"token", "expiresAt"},
 		ResponseCipher: []string{"token", "user.email", "user.phone"},
 	},

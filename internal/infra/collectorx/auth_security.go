@@ -32,7 +32,7 @@ const (
 	AuthSecurityReasonRequestDecryptFailed     = "request_decrypt_failed"      // 请求解密失败
 	AuthSecurityReasonResponseEncryptFailed    = "response_encrypt_failed"     // 响应加密失败
 	AuthSecurityReasonLoginIPRateLimited       = "login_ip_rate_limited"       // 登录 IP 限流
-	AuthSecurityReasonLoginUsernameRateLimited = "login_username_rate_limited" // 登录用户名限流
+	AuthSecurityReasonLoginIdentityRateLimited = "login_identity_rate_limited" // 登录身份限流
 	AuthSecurityReasonRegisterIPRateLimited    = "register_ip_rate_limited"    // 注册 IP 限流
 	AuthSecurityReasonSessionCreated           = "session_created"             // 新会话已创建
 	AuthSecurityReasonSessionRotated           = "session_rotated"             // 会话已轮换

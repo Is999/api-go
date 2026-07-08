@@ -1,11 +1,18 @@
 package middleware
 
 import (
+	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
+	"io"
 	"net"
 	"net/http"
 	"net/netip"
+	"strconv"
 	"strings"
+	"time"
 
 	codes "api/common/codes"
 	i18n "api/common/i18n"
@@ -21,6 +28,16 @@ import (
 const (
 	// HeaderOpsToken 表示运维级接口保护令牌请求头。
 	HeaderOpsToken = "X-Ops-Token"
+	// HeaderOpsTimestamp 表示运维请求签名时间戳，取 Unix 秒。
+	HeaderOpsTimestamp = "X-Ops-Timestamp"
+	// HeaderOpsBodySHA256 表示运维请求体 SHA256 摘要。
+	HeaderOpsBodySHA256 = "X-Ops-Body-SHA256"
+	// HeaderOpsSignature 表示运维请求 HMAC-SHA256 签名。
+	HeaderOpsSignature = "X-Ops-Signature"
+	// opsSignatureBodyMaxBytes 限制参与验签的请求体大小，避免内网接口被异常大包拖垮。
+	opsSignatureBodyMaxBytes = 1 << 20
+	// opsSignatureWindow 表示运维请求签名允许的时间偏差。
+	opsSignatureWindow = 5 * time.Minute
 )
 
 // OpsMiddleware 保护配置热加载、运行态同步等运维级接口。
@@ -33,7 +50,7 @@ func NewOpsMiddleware(svcCtx *svc.ServiceContext) *OpsMiddleware {
 	return &OpsMiddleware{svc: svcCtx}
 }
 
-// Handle 校验运维令牌和内网来源边界。
+// Handle 校验运维令牌、内网来源和请求签名。
 func (m *OpsMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cfg := config.OpsConfig{}
@@ -71,7 +88,105 @@ func validateConfigReloadOps(r *http.Request, cfg config.OpsConfig) error {
 	if !clientIPAllowed(utils.ClientIP(r), cfg.ConfigReloadAllowedIPs) {
 		return errors.Errorf("运维接口来源IP非内网或未命中白名单")
 	}
+	if err := validateOpsSignature(r, token); err != nil {
+		return errors.Tag(err)
+	}
 	return nil
+}
+
+// validateOpsSignature 校验运维请求签名，并恢复请求体给后续 handler 使用。
+func validateOpsSignature(r *http.Request, token string) error {
+	timestamp := strings.TrimSpace(r.Header.Get(HeaderOpsTimestamp))
+	if timestamp == "" {
+		return errors.Errorf("缺少请求头%s", HeaderOpsTimestamp)
+	}
+	if err := validateOpsTimestamp(timestamp, time.Now()); err != nil {
+		return errors.Tag(err)
+	}
+	body, err := readOpsSignedBody(r)
+	if err != nil {
+		return errors.Tag(err)
+	}
+	bodyHash := opsBodySHA256(body)
+	gotBodyHash := strings.ToLower(strings.TrimSpace(r.Header.Get(HeaderOpsBodySHA256)))
+	if gotBodyHash == "" {
+		return errors.Errorf("缺少请求头%s", HeaderOpsBodySHA256)
+	}
+	if subtle.ConstantTimeCompare([]byte(gotBodyHash), []byte(bodyHash)) != 1 {
+		return errors.Errorf("运维接口请求体摘要不匹配")
+	}
+	gotSignature := strings.ToLower(strings.TrimSpace(r.Header.Get(HeaderOpsSignature)))
+	if gotSignature == "" {
+		return errors.Errorf("缺少请求头%s", HeaderOpsSignature)
+	}
+	expectedSignature := signOpsRequest(token, r.Method, r.URL.RequestURI(), timestamp, bodyHash)
+	if !opsSignatureEqual(gotSignature, expectedSignature) {
+		return errors.Errorf("运维接口签名不匹配")
+	}
+	return nil
+}
+
+// validateOpsTimestamp 校验签名时间戳是否在允许窗口内。
+func validateOpsTimestamp(raw string, now time.Time) error {
+	seconds, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return errors.Wrap(err, "运维接口签名时间戳非法")
+	}
+	delta := now.Sub(time.Unix(seconds, 0))
+	if delta < 0 {
+		delta = -delta
+	}
+	if delta > opsSignatureWindow {
+		return errors.Errorf("运维接口签名已过期")
+	}
+	return nil
+}
+
+// readOpsSignedBody 读取参与签名的请求体并重置 Body，保证后续业务仍可读取。
+func readOpsSignedBody(r *http.Request) ([]byte, error) {
+	if r == nil || r.Body == nil {
+		return nil, nil
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, opsSignatureBodyMaxBytes+1))
+	if err != nil {
+		return nil, errors.Wrap(err, "读取运维接口请求体失败")
+	}
+	if len(body) > opsSignatureBodyMaxBytes {
+		return nil, errors.Errorf("运维接口请求体超过大小限制")
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	return body, nil
+}
+
+// opsBodySHA256 返回请求体 SHA256 十六进制摘要。
+func opsBodySHA256(body []byte) string {
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])
+}
+
+// signOpsRequest 按稳定串生成运维请求 HMAC-SHA256 签名。
+func signOpsRequest(secret string, method string, requestURI string, timestamp string, bodyHash string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(strings.Join([]string{
+		strings.ToUpper(strings.TrimSpace(method)),
+		requestURI,
+		timestamp,
+		bodyHash,
+	}, "\n")))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// opsSignatureEqual 以常量时间比较十六进制签名。
+func opsSignatureEqual(got string, expected string) bool {
+	gotBytes, err := hex.DecodeString(got)
+	if err != nil {
+		return false
+	}
+	expectedBytes, err := hex.DecodeString(expected)
+	if err != nil {
+		return false
+	}
+	return hmac.Equal(gotBytes, expectedBytes)
 }
 
 // clientIPAllowed 校验客户端 IP 是否来自内网，并按白名单进一步收窄。

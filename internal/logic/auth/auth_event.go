@@ -54,7 +54,7 @@ const (
 	AuthEventReasonRequestDecryptFailed     = collectorx.AuthSecurityReasonRequestDecryptFailed     // 请求解密失败
 	AuthEventReasonResponseEncryptFailed    = collectorx.AuthSecurityReasonResponseEncryptFailed    // 响应加密失败
 	AuthEventReasonLoginIPRateLimited       = collectorx.AuthSecurityReasonLoginIPRateLimited       // 登录 IP 限流
-	AuthEventReasonLoginUsernameRateLimited = collectorx.AuthSecurityReasonLoginUsernameRateLimited // 登录用户名限流
+	AuthEventReasonLoginIdentityRateLimited = collectorx.AuthSecurityReasonLoginIdentityRateLimited // 登录身份限流
 	AuthEventReasonRegisterIPRateLimited    = collectorx.AuthSecurityReasonRegisterIPRateLimited    // 注册 IP 限流
 	AuthEventReasonSessionCreated           = collectorx.AuthSecurityReasonSessionCreated           // 新会话已创建
 	AuthEventReasonSessionRotated           = collectorx.AuthSecurityReasonSessionRotated           // 会话已轮换
@@ -66,7 +66,7 @@ const (
 type AuthEventInput struct {
 	Action   string // 事件动作
 	UserID   int64  // 用户 ID，未知时为 0
-	Username string // 用户名，仅用于生成脱敏哈希
+	Identity string // 登录身份主体，仅用于生成脱敏哈希
 	ClientIP string // 客户端 IP，仅用于生成脱敏哈希
 	JTI      string // JWT ID，仅用于生成脱敏哈希
 	Reason   string // 事件原因
@@ -77,7 +77,7 @@ type AuthEventInput struct {
 type authEventPayload struct {
 	Action         string `json:"action"`                   // 事件动作
 	UserID         int64  `json:"user_id,omitempty"`        // 用户 ID
-	UsernameHash   string `json:"username_hash,omitempty"`  // 用户名 HMAC 哈希
+	IdentityHash   string `json:"identity_hash,omitempty"`  // 登录身份 HMAC 哈希
 	ClientIPHash   string `json:"client_ip_hash,omitempty"` // 客户端 IP HMAC 哈希
 	SessionHash    string `json:"session_hash,omitempty"`   // jti HMAC 哈希
 	AppID          string `json:"app_id"`                   // 当前站点命名空间
@@ -148,7 +148,7 @@ func buildAuthEventPayload(ctx context.Context, cfg config.Config, input AuthEve
 	if payload.Mode == "" {
 		payload.Mode = strings.TrimSpace(cfg.Mode)
 	}
-	payload.UsernameHash = authEventHash(cfg, input.Username)
+	payload.IdentityHash = authEventHash(cfg, input.Identity)
 	payload.ClientIPHash = authEventHash(cfg, clientIP)
 	payload.SessionHash = authEventHash(cfg, input.JTI)
 	return payload
@@ -159,8 +159,8 @@ func authEventPartitionKey(payload authEventPayload) string {
 	if payload.UserID > 0 {
 		return fmt.Sprintf("%s:%d", payload.AppID, payload.UserID)
 	}
-	if payload.UsernameHash != "" {
-		return payload.AppID + ":" + payload.UsernameHash
+	if payload.IdentityHash != "" {
+		return payload.AppID + ":" + payload.IdentityHash
 	}
 	if payload.ClientIPHash != "" {
 		return payload.AppID + ":" + payload.ClientIPHash

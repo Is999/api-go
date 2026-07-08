@@ -215,9 +215,9 @@ collector:
       # Kafka Topic。
       topic: "api_collector_auth_security_events"
 
-# 运维级接口保护；本地调试配置热加载接口只允许本机来源并携带 X-Ops-Token。
+# 运维级接口保护；本地调试配置热加载接口只允许本机来源并携带 X-Ops-Token 与 HMAC 签名。
 ops:
-  # 本地运维令牌，对应请求头 X-Ops-Token。
+  # 本地运维令牌，对应请求头 X-Ops-Token 和 HMAC 密钥。
   config_reload_token: "dnmp-local-ops-token"
   # 运维接口允许的 IP 或 CIDR 白名单。
   config_reload_allowed_ips:

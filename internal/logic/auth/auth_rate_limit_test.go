@@ -48,11 +48,11 @@ func TestClearAuthRateLimitRemovesCountAndLock(t *testing.T) {
 		LockSeconds:   60,
 	}
 	subject := "demo_user"
-	_ = logicObj.checkAuthRateLimit(authRateLimitActionLoginUsername, subject, cfg)
-	_ = logicObj.checkAuthRateLimit(authRateLimitActionLoginUsername, subject, cfg)
-	logicObj.clearAuthRateLimit(authRateLimitActionLoginUsername, subject)
+	_ = logicObj.checkAuthRateLimit(authRateLimitActionLoginIdentity, subject, cfg)
+	_ = logicObj.checkAuthRateLimit(authRateLimitActionLoginIdentity, subject, cfg)
+	logicObj.clearAuthRateLimit(authRateLimitActionLoginIdentity, subject)
 
-	if err := logicObj.checkAuthRateLimit(authRateLimitActionLoginUsername, subject, cfg); err != nil {
+	if err := logicObj.checkAuthRateLimit(authRateLimitActionLoginIdentity, subject, cfg); err != nil {
 		t.Fatalf("checkAuthRateLimit() after clear error = %v", err)
 	}
 }

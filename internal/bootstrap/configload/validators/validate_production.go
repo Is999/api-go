@@ -8,7 +8,10 @@ import (
 	"github.com/Is999/go-utils/errors"
 )
 
-const minOpsTokenLength = 16 // 运维令牌生产环境最小长度
+const (
+	minAppKeyLength   = 16 // 生产 app_key 最小长度
+	minOpsTokenLength = 16 // 运维令牌生产环境最小长度
+)
 
 // ValidateProduction 校验生产环境禁止使用的占位和不安全配置。
 func ValidateProduction(c config.Config) error {
@@ -17,6 +20,12 @@ func ValidateProduction(c config.Config) error {
 	}
 	if isPlaceholderSecret(c.JwtSecret) {
 		return errors.Errorf("生产环境 jwt_secret 不能使用占位值")
+	}
+	if len(strings.TrimSpace(c.AppKey)) < minAppKeyLength {
+		return errors.Errorf("生产环境 app_key 长度不能小于 %d", minAppKeyLength)
+	}
+	if isPlaceholderSecret(c.AppKey) {
+		return errors.Errorf("生产环境 app_key 不能使用占位值")
 	}
 	if c.Redis.TLSInsecureSkipVerify {
 		return errors.Errorf("生产环境 redis.tls_insecure_skip_verify 不能为 true")

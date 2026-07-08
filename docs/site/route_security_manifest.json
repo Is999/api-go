@@ -78,10 +78,12 @@
       "chain": "public",
       "describe": "前台用户登录",
       "requestSign": [
-        "username",
+        "identityType",
+        "identityValue",
         "password"
       ],
       "requestCipher": [
+        "identityValue",
         "password"
       ],
       "responseSign": [

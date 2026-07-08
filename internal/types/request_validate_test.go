@@ -51,21 +51,24 @@ func TestAuthReqValidate(t *testing.T) {
 		})
 	}
 
-	loginReq := &LoginReq{Username: " demo_user ", Password: "secret123"}
+	loginReq := &LoginReq{IdentityType: " username ", IdentityValue: " demo_user ", Password: "secret123"}
 	if err := loginReq.Validate(); err != nil {
 		t.Fatalf("LoginReq.Validate() error = %v", err)
 	}
-	if loginReq.Username != "demo_user" {
-		t.Fatalf("LoginReq.Validate() username = %q, want demo_user", loginReq.Username)
+	if loginReq.IdentityType != LoginIdentityTypeUsername || loginReq.IdentityValue != "demo_user" {
+		t.Fatalf("LoginReq.Validate() identity = %s:%s, want username:demo_user", loginReq.IdentityType, loginReq.IdentityValue)
 	}
-	if err := (&LoginReq{Username: "demo_user", Password: " "}).Validate(); err == nil {
+	if err := (&LoginReq{IdentityType: LoginIdentityTypeUsername, IdentityValue: "demo_user", Password: " "}).Validate(); err == nil {
 		t.Fatal("LoginReq.Validate() should reject blank password")
+	}
+	if err := (&LoginReq{IdentityType: "oauth", IdentityValue: "demo", Password: "secret123"}).Validate(); err == nil {
+		t.Fatal("LoginReq.Validate() should reject oauth password login")
 	}
 }
 
 // TestGoZeroParseCallsValidate 验证 go-zero 解析请求后会调用 Validate。
 func TestGoZeroParseCallsValidate(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"demo_user","password":"   "}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"identityType":"username","identityValue":"demo_user","password":"   "}`))
 	req.Header.Set("Content-Type", "application/json")
 
 	var parsed LoginReq

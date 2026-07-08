@@ -103,12 +103,12 @@ api
 ## 核心能力
 
 - 前台认证：注册、登录、刷新、退出，登录态使用 JWT + Redis session，支持多实例部署。
-- 用户资料：按 `user_account` 定位用户所在物理表，避免未来拆表后扫描所有用户表。
+- 用户资料：按 `user_identity_username/user_identity_email/user_identity_phone/user_identity_oauth` 定位用户所在物理表，邮箱和手机号身份只通过 HMAC 哈希匹配，避免未来拆表后扫描所有用户表。
 - 参数校验：请求结构体在 `internal/types` 实现 go-zero `Validate()`，handler 解析请求后自动触发基础校验和字段归一化。
 - 安全链路：`security.secret_key` 配置后启用 `X-App-Id`、`X-Signature`、`X-Crypto`、`X-Cipher`、`X-Key-Version` 等请求头校验；未配置秘钥时允许普通 JSON 请求。
 - 路由治理：路由由 `RouteSpec` 单点描述，并同步生成 route contract、route security manifest 和接口文档引用。
 - 运行期配置：`hot_reload.enabled=true` 后监听主配置文件和允许外置的运行期配置段；HTTP 监听、MySQL、Redis、OTLP 等启动期配置变化只提示重启，不在线重建核心组件。
-- 内网运维接口：`/internal/system/...`、`/internal/users/:id/runtime-sync` 和 `/internal/docs/...` 只允许内网来源并要求 `X-Ops-Token`。
+- 内网运维接口：`/internal/system/...`、`/internal/users/:id/runtime-sync` 和 `/internal/docs/...` 只允许内网来源，并要求 `X-Ops-Token` 与运维 HMAC 请求签名。
 - 业务配置缓存：`sys_config` 使用 Redis Hash、本地缓存、redsync 回源锁和空值占位保护。
 - Collector：轻量业务事件可投递到同步 Processor 或 Redis Stream，认证风控事件默认会输出脱敏指标。
 - 可观测性：提供 `/api/live`、`/api/ready`、`/api/metrics`，并配套访问日志、错误链路日志和 OpenTelemetry Trace。
@@ -158,7 +158,7 @@ make migrate-up
 当前基础表包括：
 
 - `user`：前台业务用户表。
-- `user_account`：用户名到用户物理表位置的全局索引。
+- `user_identity_username/user_identity_email/user_identity_phone/user_identity_oauth`：自定义账号、邮箱、手机号和三方身份到用户物理表位置的全局索引；邮箱和手机号表只保存 HMAC `identity_hash`。
 - `sys_config`：运行期系统配置表。
 - `schema_migrations`：迁移版本登记表。
 

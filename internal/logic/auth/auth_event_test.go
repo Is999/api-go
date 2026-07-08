@@ -29,7 +29,7 @@ func TestRecordAuthEventEnqueuesSanitizedPayload(t *testing.T) {
 	RecordAuthEvent(ctx, svcCtx, AuthEventInput{
 		Action:   AuthEventActionLoginSuccess,
 		UserID:   42,
-		Username: "Demo_User",
+		Identity: "username:Demo_User",
 		JTI:      "session-jti",
 		Reason:   AuthEventReasonSessionCreated,
 	})
@@ -54,8 +54,8 @@ func TestRecordAuthEventEnqueuesSanitizedPayload(t *testing.T) {
 	if payload.AppID != "site-a" || payload.Route != string(routealias.AuthLogin) || payload.TraceID != "trace-demo" || payload.SpanID != "span-demo" {
 		t.Fatalf("payload trace fields = %+v", payload)
 	}
-	if payload.UsernameHash != authEventHash(cfg, "demo_user") {
-		t.Fatalf("username hash = %q, want deterministic hmac", payload.UsernameHash)
+	if payload.IdentityHash != authEventHash(cfg, "username:demo_user") {
+		t.Fatalf("identity hash = %q, want deterministic hmac", payload.IdentityHash)
 	}
 	if payload.ClientIPHash == "" || payload.SessionHash == "" {
 		t.Fatalf("payload hashes missing = %+v", payload)
@@ -74,7 +74,7 @@ func TestRecordAuthEventSkipsWhenCollectorDisabled(t *testing.T) {
 
 	RecordAuthEvent(context.Background(), svcCtx, AuthEventInput{
 		Action:   AuthEventActionLoginFailed,
-		Username: "demo",
+		Identity: "username:demo",
 		Reason:   AuthEventReasonInvalidPassword,
 	})
 
@@ -90,8 +90,8 @@ func TestRecordAuthEventIgnoresCollectorError(t *testing.T) {
 
 	RecordAuthEvent(context.Background(), svcCtx, AuthEventInput{
 		Action:   AuthEventActionRateLimited,
-		Username: "demo",
-		Reason:   AuthEventReasonLoginUsernameRateLimited,
+		Identity: "username:demo",
+		Reason:   AuthEventReasonLoginIdentityRateLimited,
 	})
 
 	if len(collector.events) != 0 {

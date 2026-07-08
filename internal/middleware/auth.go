@@ -10,6 +10,7 @@ import (
 	"api/internal/infra/loggerx"
 	authlogic "api/internal/logic/auth"
 	userlogic "api/internal/logic/user"
+	"api/internal/model"
 	"api/internal/requestctx"
 	"api/internal/routealias"
 	"api/internal/svc"
@@ -126,7 +127,7 @@ func (m *AuthMiddleware) emitAuthFailureEvent(ctx context.Context, reason string
 	}
 	if identity != nil {
 		input.UserID = identity.UserID
-		input.Username = identity.UserName
+		input.Identity = model.UserIdentitySubject(model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, identity.UserName)
 		input.JTI = identity.JTI
 	}
 	authlogic.RecordAuthEvent(ctx, m.svc, input)

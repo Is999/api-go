@@ -104,7 +104,7 @@ func TestPublicSecurityChainAllowsPlainJSONWithoutSecret(t *testing.T) {
 		helper.NewJSONResp(r.Context(), w).SetCode(codes.Success).Success(map[string]any{"ok": true})
 	}, routealias.AuthLogin)
 
-	req := newSmokeRequest(http.MethodPost, "/api/auth/login", bytes.NewBufferString(`{"username":"demo","password":"secret123"}`))
+	req := newSmokeRequest(http.MethodPost, "/api/auth/login", bytes.NewBufferString(`{"identityType":"username","identityValue":"demo","password":"secret123"}`))
 	rec := httptest.NewRecorder()
 	handler(rec, req)
 

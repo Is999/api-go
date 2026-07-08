@@ -13,11 +13,14 @@ import (
 
 // 迁移 SQL 资产文件名。
 const (
-	userSchemaAsset           = "user_schema.sql.tmpl"         // 业务用户表 DDL 资产
-	userAccountSchemaAsset    = "user_account_schema.sql.tmpl" // 业务用户全局账号索引表 DDL 资产
-	sysConfigSchemaAsset      = "sys_config_schema.sql.tmpl"   // 系统配置表 DDL 资产
-	schemaMigrationsAsset     = "schema_migrations.sql.tmpl"   // 迁移版本表 DDL 资产
-	databaseMigrationAssetDir = "assets"                       // go:embed 中的迁移资产目录
+	userSchemaAsset                 = "user_schema.sql.tmpl"                   // 业务用户表 DDL 资产
+	userIdentityUsernameSchemaAsset = "user_identity_username_schema.sql.tmpl" // 业务用户账号身份索引表 DDL 资产
+	userIdentityEmailSchemaAsset    = "user_identity_email_schema.sql.tmpl"    // 业务用户邮箱身份索引表 DDL 资产
+	userIdentityPhoneSchemaAsset    = "user_identity_phone_schema.sql.tmpl"    // 业务用户手机号身份索引表 DDL 资产
+	userIdentityOAuthSchemaAsset    = "user_identity_oauth_schema.sql.tmpl"    // 业务用户三方身份索引表 DDL 资产
+	sysConfigSchemaAsset            = "sys_config_schema.sql.tmpl"             // 系统配置表 DDL 资产
+	schemaMigrationsAsset           = "schema_migrations.sql.tmpl"             // 迁移版本表 DDL 资产
+	databaseMigrationAssetDir       = "assets"                                 // go:embed 中的迁移资产目录
 )
 
 // databaseMigrationAssets 嵌入数据库迁移 SQL 资产。

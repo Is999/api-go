@@ -381,6 +381,7 @@ func validBootstrapConfig() config.Config {
 func validProductionBootstrapConfig() config.Config {
 	cfg := validBootstrapConfig()
 	cfg.Mode = "pro"
+	cfg.AppKey = "prod-app-key-9f3b6e1c7a2d4f0b"
 	cfg.JwtSecret = "prod-jwt-9f3b6e1c7a2d4f0b8c5e6a1d2f3c4b5a"
 	cfg.Auth.LoginRateLimit = config.AuthRateLimitConfig{
 		Enabled:       true,

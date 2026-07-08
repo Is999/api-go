@@ -30,7 +30,10 @@ type migrationSpec struct {
 var defaultMigrationSpecs = []migrationSpec{
 	{version: "202606220001", name: "create_user", asset: userSchemaAsset},
 	{version: "202606220002", name: "create_sys_config", asset: sysConfigSchemaAsset},
-	{version: "202606220003", name: "create_user_account", asset: userAccountSchemaAsset},
+	{version: "202606220003", name: "create_user_identity_username", asset: userIdentityUsernameSchemaAsset},
+	{version: "202606220004", name: "create_user_identity_email", asset: userIdentityEmailSchemaAsset},
+	{version: "202606220005", name: "create_user_identity_phone", asset: userIdentityPhoneSchemaAsset},
+	{version: "202606220006", name: "create_user_identity_oauth", asset: userIdentityOAuthSchemaAsset},
 }
 
 // DefaultMigrations 返回内置数据库迁移清单。

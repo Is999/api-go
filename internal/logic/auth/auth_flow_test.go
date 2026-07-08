@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	stderrors "errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -40,7 +41,7 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 		Email:    "demo@example.com",
 		Phone:    "13800000000",
 	}), codes.CreateSuccess)
-	if registerResp.User == nil || registerResp.User.ID <= 0 || registerResp.User.Email != "demo@example.com" {
+	if registerResp.User == nil || registerResp.User.ID <= 0 || registerResp.User.Email != "de***o@example.com" || registerResp.User.Phone != "138****0000" {
 		t.Fatalf("register user = %+v, want created profile", registerResp.User)
 	}
 	registerJTI := requireSessionToken(t, svcCtx, rds, registerResp.User.ID, registerResp.Token)
@@ -48,8 +49,9 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 
 	loginCtx := authFlowContext(AuthEventActionLoginSuccess, string(routealias.AuthLogin), http.MethodPost, "/api/auth/login", "10.0.0.9")
 	loginResp := requireAuthTokenResp(t, NewAuthLogic(loginCtx, svcCtx).Login(&types.LoginReq{
-		Username: "demo_user",
-		Password: "P@ssw0rd!",
+		IdentityType:  types.LoginIdentityTypeEmail,
+		IdentityValue: "demo@example.com",
+		Password:      "P@ssw0rd!",
 	}), codes.Success)
 	if loginResp.Token == registerResp.Token {
 		t.Fatal("login token should differ from register token")
@@ -57,28 +59,28 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 	loginJTI := requireSessionToken(t, svcCtx, rds, loginResp.User.ID, loginResp.Token)
 	requireSessionIndexMembers(t, svcCtx, rds, loginResp.User.ID, []string{registerJTI, loginJTI})
 
-	user, err := model.FindUserByUsername(svcCtx.WriteDB(svc.DatabaseMain), "demo_user")
+	user, err := model.FindUserByIdentity(svcCtx.WriteDB(svc.DatabaseMain), model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, "demo_user", svcCtx.CurrentConfig().AppKey)
 	if err != nil {
-		t.Fatalf("FindUserByUsername() error = %v", err)
+		t.Fatalf("FindUserByIdentity(username) error = %v", err)
 	}
 	if user == nil || user.LastLoginIP != "10.0.0.9" {
 		t.Fatalf("user after login = %+v, want last_login_ip 10.0.0.9", user)
 	}
-	account, err := model.FindUserAccountByUsername(svcCtx.WriteDB(svc.DatabaseMain), "demo_user")
+	identity, err := model.FindUserIdentity(svcCtx.WriteDB(svc.DatabaseMain), model.UserIdentityTypePhone, model.UserIdentityProviderLocal, "13800000000", svcCtx.CurrentConfig().AppKey)
 	if err != nil {
-		t.Fatalf("FindUserAccountByUsername() error = %v", err)
+		t.Fatalf("FindUserIdentity(phone) error = %v", err)
 	}
-	if account == nil || account.UserID != user.ID || account.ShardNo != user.ShardNo || account.RouteShardCount != model.UserRouteShardCountDefault {
-		t.Fatalf("user account = %+v, want user_id=%d shard_no=%d route=1", account, user.ID, user.ShardNo)
+	if identity == nil || identity.UserID != user.ID || identity.UserShardNo != user.ShardNo || identity.UserRouteShardCount != model.UserRouteShardCountDefault {
+		t.Fatalf("user identity = %+v, want user_id=%d user_shard_no=%d route=1", identity, user.ID, user.ShardNo)
 	}
-	if err := model.UpdateUser(svcCtx.WriteDB(svc.DatabaseMain), user.ID, map[string]any{"email": "changed@example.com"}); err != nil {
-		t.Fatalf("UpdateUser(email) error = %v", err)
+	if err := model.UpdateUserProfileWithIdentities(svcCtx.WriteDB(svc.DatabaseMain), user.ID, map[string]any{"email": "changed@example.com"}, svcCtx.CurrentConfig().AppKey); err != nil {
+		t.Fatalf("UpdateUserProfileWithIdentities(email) error = %v", err)
 	}
 
 	profileCtx := authFlowAuthenticatedContext(string(routealias.UserProfile), http.MethodGet, "/api/user/profile", "10.0.0.9", loginResp)
 	profile := requireUserProfile(t, userlogic.NewUserLogic(profileCtx, svcCtx).Profile(), codes.FetchSuccess)
-	if profile.Email != "demo@example.com" {
-		t.Fatalf("profile email = %q, want cached demo@example.com", profile.Email)
+	if profile.Email != "de***o@example.com" {
+		t.Fatalf("profile email = %q, want cached de***o@example.com", profile.Email)
 	}
 
 	refreshCtx := authFlowAuthenticatedContext(string(routealias.AuthRefresh), http.MethodPost, "/api/auth/refresh", "10.0.0.9", loginResp)
@@ -86,7 +88,7 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 	if refreshResp.Token == loginResp.Token {
 		t.Fatal("refresh token should differ from login token")
 	}
-	if refreshResp.User == nil || refreshResp.User.Email != "changed@example.com" {
+	if refreshResp.User == nil || refreshResp.User.Email != "ch****d@example.com" {
 		t.Fatalf("refresh user = %+v, want latest primary DB profile", refreshResp.User)
 	}
 	refreshJTI := requireSessionToken(t, svcCtx, rds, refreshResp.User.ID, refreshResp.Token)
@@ -137,8 +139,11 @@ func newAuthFlowTestService(t *testing.T) (*svc.ServiceContext, redis.UniversalC
 	t.Cleanup(func() {
 		_ = sqlDB.Close()
 	})
-	if err := db.AutoMigrate(&authFlowUserSQLite{}, &authFlowUserAccountSQLite{}); err != nil {
+	if err := db.AutoMigrate(&authFlowUserSQLite{}); err != nil {
 		t.Fatalf("AutoMigrate(User) error = %v", err)
+	}
+	if err := migrateAuthFlowUserIdentityTables(db); err != nil {
+		t.Fatalf("migrateAuthFlowUserIdentityTables() error = %v", err)
 	}
 
 	server := miniredis.RunT(t)
@@ -173,19 +178,25 @@ func newAuthFlowTestService(t *testing.T) (*svc.ServiceContext, redis.UniversalC
 
 // authFlowUserSQLite 使用 SQLite 创建用户表，业务读写仍走 model.User。
 type authFlowUserSQLite struct {
-	ID           int64     `gorm:"column:id;type:integer;primaryKey;autoIncrement:true;index:idx_user_shard_no_id,priority:2;index:idx_user_status_id,priority:2"` // 主键
-	ShardNo      int       `gorm:"column:shard_no;type:int;not null;default:0;index:idx_user_shard_no_id,priority:1"`                                              // ID 哈希分片
-	Username     string    `gorm:"column:username;type:varchar(32);not null;uniqueIndex:uk_user_username"`                                                         // 用户名
-	Nickname     string    `gorm:"column:nickname;type:varchar(64);not null;default:''"`                                                                           // 用户昵称
-	PasswordHash string    `gorm:"column:password_hash;type:varchar(255);not null"`                                                                                // 密码哈希
-	Email        string    `gorm:"column:email;type:varchar(128);not null;default:'';index:idx_user_email"`                                                        // 邮箱
-	Phone        string    `gorm:"column:phone;type:varchar(32);not null;default:'';index:idx_user_phone"`                                                         // 手机号
-	Avatar       string    `gorm:"column:avatar;type:varchar(255);not null;default:''"`                                                                            // 头像
-	Status       int       `gorm:"column:status;type:tinyint;not null;default:1;index:idx_user_status_id,priority:1"`                                              // 用户状态
-	LastLoginAt  time.Time `gorm:"column:last_login_at;type:datetime"`                                                                                             // 最后登录时间
-	LastLoginIP  string    `gorm:"column:last_login_ip;type:varchar(45);not null;default:''"`                                                                      // 最后登录 IP
-	CreatedAt    time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP"`                                                             // 创建时间
-	UpdatedAt    time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP"`                                                             // 更新时间
+	ID              int64     `gorm:"column:id;type:integer;primaryKey;autoIncrement:true;index:idx_user_shard_no_id,priority:2;index:idx_user_status_id,priority:2"` // 主键
+	ShardNo         int       `gorm:"column:shard_no;type:int;not null;default:0;index:idx_user_shard_no_id,priority:1"`                                              // ID 哈希分片
+	Username        string    `gorm:"column:username;type:varchar(32);not null;uniqueIndex:uk_user_username"`                                                         // 用户名
+	Nickname        string    `gorm:"column:nickname;type:varchar(64);not null;default:''"`                                                                           // 用户昵称
+	PasswordHash    string    `gorm:"column:password_hash;type:varchar(255);not null"`                                                                                // 密码哈希
+	EmailCiphertext string    `gorm:"column:email_ciphertext;type:varchar(512);not null;default:''"`                                                                  // 邮箱密文
+	EmailHash       string    `gorm:"column:email_hash;type:char(64);not null;default:'';index:idx_user_email_hash"`                                                  // 邮箱查询哈希
+	EmailMasked     string    `gorm:"column:email_masked;type:varchar(128);not null;default:''"`                                                                      // 邮箱脱敏展示值
+	EmailKeyVersion string    `gorm:"column:email_key_version;type:varchar(32);not null;default:''"`                                                                  // 邮箱密钥版本
+	PhoneCiphertext string    `gorm:"column:phone_ciphertext;type:varchar(512);not null;default:''"`                                                                  // 手机号密文
+	PhoneHash       string    `gorm:"column:phone_hash;type:char(64);not null;default:'';index:idx_user_phone_hash"`                                                  // 手机号查询哈希
+	PhoneMasked     string    `gorm:"column:phone_masked;type:varchar(32);not null;default:''"`                                                                       // 手机号脱敏展示值
+	PhoneKeyVersion string    `gorm:"column:phone_key_version;type:varchar(32);not null;default:''"`                                                                  // 手机号密钥版本
+	Avatar          string    `gorm:"column:avatar;type:varchar(255);not null;default:''"`                                                                            // 头像
+	Status          int       `gorm:"column:status;type:tinyint;not null;default:1;index:idx_user_status_id,priority:1"`                                              // 用户状态
+	LastLoginAt     time.Time `gorm:"column:last_login_at;type:datetime"`                                                                                             // 最后登录时间
+	LastLoginIP     string    `gorm:"column:last_login_ip;type:varchar(45);not null;default:''"`                                                                      // 最后登录 IP
+	CreatedAt       time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP"`                                                             // 创建时间
+	UpdatedAt       time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP"`                                                             // 更新时间
 }
 
 // TableName 返回认证流程 SQLite 用户测试模型映射的真实表名。
@@ -193,20 +204,70 @@ func (*authFlowUserSQLite) TableName() string {
 	return model.TableNameUser
 }
 
-// authFlowUserAccountSQLite 使用 SQLite 创建用户账号索引表，业务读写仍走 model.UserAccount。
-type authFlowUserAccountSQLite struct {
-	ID              uint64    `gorm:"column:id;type:integer;primaryKey;autoIncrement:true"`                                                                  // 主键
-	Username        string    `gorm:"column:username;type:varchar(32);not null;uniqueIndex:uk_user_account_username"`                                        // 用户名
-	UserID          int64     `gorm:"column:user_id;type:integer;not null;uniqueIndex:uk_user_account_user_id;index:idx_user_account_shard_user,priority:2"` // 用户 ID
-	ShardNo         int       `gorm:"column:shard_no;type:int;not null;index:idx_user_account_shard_user,priority:1"`                                        // 逻辑分片
-	RouteShardCount int       `gorm:"column:route_shard_count;type:int;not null;default:1"`                                                                  // 物理表数量
-	CreatedAt       time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP"`                                                    // 创建时间
-	UpdatedAt       time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP"`                                                    // 更新时间
+// authFlowUserIdentitySQLite 使用 SQLite 创建用户身份索引表，业务读写仍走 model.UserIdentity。
+type authFlowUserIdentitySQLite struct {
+	ID                  uint64    `gorm:"column:id;type:integer;primaryKey;autoIncrement:true"`               // 主键
+	Provider            string    `gorm:"column:provider;type:varchar(32);not null;default:''"`               // 三方提供方
+	IdentityValue       string    `gorm:"column:identity_value;type:varchar(191);not null;default:''"`        // 身份值
+	IdentityHash        string    `gorm:"column:identity_hash;type:char(64);not null;default:''"`             // 联系方式身份哈希
+	UserID              int64     `gorm:"column:user_id;type:integer;not null"`                               // 用户 ID
+	UserShardNo         int       `gorm:"column:user_shard_no;type:int;not null"`                             // 用户分片
+	UserRouteShardCount int       `gorm:"column:user_route_shard_count;type:int;not null;default:1"`          // 用户物理表数量
+	CreatedAt           time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP"` // 创建时间
+	UpdatedAt           time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP"` // 更新时间
 }
 
-// TableName 返回认证流程 SQLite 账号索引测试模型映射的真实表名。
-func (*authFlowUserAccountSQLite) TableName() string {
-	return model.TableNameUserAccount
+// TableName 返回认证流程 SQLite 身份索引测试模型映射的真实表名。
+func (*authFlowUserIdentitySQLite) TableName() string {
+	return model.TableNameUserIdentityUsername
+}
+
+// migrateAuthFlowUserIdentityTables 创建认证流程需要的四张身份索引表。
+func migrateAuthFlowUserIdentityTables(db *gorm.DB) error {
+	for _, tableName := range []string{
+		model.TableNameUserIdentityUsername,
+		model.TableNameUserIdentityEmail,
+		model.TableNameUserIdentityPhone,
+		model.TableNameUserIdentityOAuth,
+	} {
+		if err := db.Table(tableName).AutoMigrate(&authFlowUserIdentitySQLite{}); err != nil {
+			return err
+		}
+		if err := createAuthFlowUserIdentitySQLiteIndexes(db, tableName); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// createAuthFlowUserIdentitySQLiteIndexes 使用表名前缀规避 SQLite 全库索引名唯一限制。
+func createAuthFlowUserIdentitySQLiteIndexes(db *gorm.DB, tableName string) error {
+	var statements []string
+	switch tableName {
+	case model.TableNameUserIdentityUsername:
+		statements = []string{
+			fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS `%s_identity_value` ON `%s` (`identity_value`)", tableName, tableName),
+			fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS `%s_user` ON `%s` (`user_id`)", tableName, tableName),
+		}
+	case model.TableNameUserIdentityEmail, model.TableNameUserIdentityPhone:
+		statements = []string{
+			fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS `%s_identity_hash` ON `%s` (`identity_hash`)", tableName, tableName),
+			fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS `%s_user` ON `%s` (`user_id`)", tableName, tableName),
+		}
+	case model.TableNameUserIdentityOAuth:
+		statements = []string{
+			fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS `%s_provider_value` ON `%s` (`provider`, `identity_value`)", tableName, tableName),
+			fmt.Sprintf("CREATE UNIQUE INDEX IF NOT EXISTS `%s_user_provider` ON `%s` (`user_id`, `provider`)", tableName, tableName),
+		}
+	default:
+		return fmt.Errorf("unknown identity table %s", tableName)
+	}
+	for _, statement := range statements {
+		if err := db.Exec(statement).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // authFlowContext 构造带路由、请求和链路信息的认证测试上下文。

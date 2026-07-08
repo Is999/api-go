@@ -28,7 +28,7 @@ import (
 // 认证入口限流动作名称。
 const (
 	authRateLimitActionLoginIP       = "login_ip"       // 登录 IP 维度
-	authRateLimitActionLoginUsername = "login_username" // 登录用户名维度
+	authRateLimitActionLoginIdentity = "login_identity" // 登录身份维度
 	authRateLimitActionRegisterIP    = "register_ip"    // 注册 IP 维度
 )
 
@@ -76,20 +76,20 @@ func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
 		if errors.Is(err, ErrAuthRateLimited) {
 			l.emitAuthEvent(AuthEventInput{
 				Action:   AuthEventActionRateLimited,
-				Username: req.Username,
+				Identity: model.UserIdentitySubject(model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, req.Username),
 				Reason:   AuthEventReasonRegisterIPRateLimited,
 			})
 		}
 		return authRateLimitResult(err)
 	}
-	exists, err := model.FindUserByUsername(l.Svc.WriteDB(svc.DatabaseMain), req.Username)
+	exists, err := model.FindUserIdentity(l.Svc.WriteDB(svc.DatabaseMain), model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, req.Username, cfg.AppKey)
 	if err != nil {
-		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Register 查询用户名[%s]", req.Username).ToBizResult()
+		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Register 查询登录身份[%s]", req.Username).ToBizResult()
 	}
 	if exists != nil {
 		return types.NewBizResult(codes.UserAlreadyExists).
 			SetI18nMessage(i18n.MsgKeyUserAlreadyExists).
-			WithError(errors.Errorf("AuthLogic.Register 用户名[%s]已存在", req.Username))
+			WithError(errors.Errorf("AuthLogic.Register 登录身份[%s]已存在", req.Username))
 	}
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
@@ -117,11 +117,11 @@ func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
 	if user.Nickname == "" {
 		user.Nickname = user.Username
 	}
-	if err = model.CreateUserWithAccount(l.Svc.WriteDB(svc.DatabaseMain), user, cfg.User.RouteShardCount); err != nil {
+	if err = model.CreateUserWithIdentities(l.Svc.WriteDB(svc.DatabaseMain), user, cfg.User.RouteShardCount, cfg.AppKey); err != nil {
 		if corelogic.IsMySQLDuplicateEntryError(err) {
 			return types.NewBizResult(codes.UserAlreadyExists).
 				SetI18nMessage(i18n.MsgKeyUserAlreadyExists).
-				WithError(errors.Errorf("AuthLogic.Register 用户名[%s]已存在", req.Username))
+				WithError(errors.Errorf("AuthLogic.Register 登录身份[%s]已存在", req.Username))
 		}
 		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Register 创建用户[%s]", req.Username).ToBizResult()
 	}
@@ -132,7 +132,7 @@ func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
 	l.emitAuthEvent(AuthEventInput{
 		Action:   AuthEventActionRegisterSuccess,
 		UserID:   user.ID,
-		Username: user.Username,
+		Identity: model.UserIdentitySubject(model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, user.Username),
 		JTI:      created.JTI,
 		Reason:   AuthEventReasonSessionCreated,
 	})
@@ -152,53 +152,54 @@ func (l *AuthLogic) Login(req *types.LoginReq) *types.BizResult {
 		if errors.Is(err, ErrAuthRateLimited) {
 			l.emitAuthEvent(AuthEventInput{
 				Action:   AuthEventActionRateLimited,
-				Username: req.Username,
+				Identity: loginIdentitySubject(req),
 				Reason:   AuthEventReasonLoginIPRateLimited,
 			})
 		}
 		return authRateLimitResult(err)
 	}
-	if err := l.checkAuthRateLimit(authRateLimitActionLoginUsername, req.Username, cfg.Auth.LoginRateLimit); err != nil {
+	identitySubject := loginIdentitySubject(req)
+	if err := l.checkAuthRateLimit(authRateLimitActionLoginIdentity, identitySubject, cfg.Auth.LoginRateLimit); err != nil {
 		if errors.Is(err, ErrAuthRateLimited) {
 			l.emitAuthEvent(AuthEventInput{
 				Action:   AuthEventActionRateLimited,
-				Username: req.Username,
-				Reason:   AuthEventReasonLoginUsernameRateLimited,
+				Identity: identitySubject,
+				Reason:   AuthEventReasonLoginIdentityRateLimited,
 			})
 		}
 		return authRateLimitResult(err)
 	}
-	user, err := model.FindUserByUsername(l.Svc.WriteDB(svc.DatabaseMain), req.Username)
+	user, err := model.FindUserByIdentity(l.Svc.WriteDB(svc.DatabaseMain), req.IdentityType, model.UserIdentityProviderLocal, req.IdentityValue, cfg.AppKey)
 	if err != nil {
-		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Login 查询用户[%s]", req.Username).ToBizResult()
+		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Login 查询登录身份类型[%s]", req.IdentityType).ToBizResult()
 	}
 	if user == nil {
 		l.emitAuthEvent(AuthEventInput{
 			Action:   AuthEventActionLoginFailed,
-			Username: req.Username,
+			Identity: identitySubject,
 			Reason:   AuthEventReasonInvalidPassword,
 		})
-		return invalidPasswordResult(errors.Errorf("AuthLogic.Login 用户[%s]不存在", req.Username))
+		return invalidPasswordResult(errors.Errorf("AuthLogic.Login 登录身份类型[%s]不存在", req.IdentityType))
 	}
 	if err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password)); err != nil {
 		l.emitAuthEvent(AuthEventInput{
 			Action:   AuthEventActionLoginFailed,
 			UserID:   user.ID,
-			Username: user.Username,
+			Identity: identitySubject,
 			Reason:   AuthEventReasonInvalidPassword,
 		})
-		return invalidPasswordResult(errors.Errorf("AuthLogic.Login 用户[%s]密码错误", req.Username))
+		return invalidPasswordResult(errors.Errorf("AuthLogic.Login 登录身份类型[%s]密码错误", req.IdentityType))
 	}
 	if user.Status != model.UserStatusEnabled {
 		l.emitAuthEvent(AuthEventInput{
 			Action:   AuthEventActionLoginFailed,
 			UserID:   user.ID,
-			Username: user.Username,
+			Identity: identitySubject,
 			Reason:   AuthEventReasonUserDisabled,
 		})
 		return types.NewBizResult(codes.UserDisabled).
 			SetI18nMessage(i18n.MsgKeyUserDisabled).
-			WithError(errors.Errorf("AuthLogic.Login 用户[%s]已禁用", req.Username))
+			WithError(errors.Errorf("AuthLogic.Login 用户[%s]已禁用", user.Username))
 	}
 	now := time.Now()
 	if err = model.UpdateUser(l.Svc.WriteDB(svc.DatabaseMain), user.ID, map[string]any{
@@ -206,21 +207,21 @@ func (l *AuthLogic) Login(req *types.LoginReq) *types.BizResult {
 		"last_login_ip": l.ClientIP(),
 		"updated_at":    now,
 	}); err != nil {
-		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Login 更新用户[%s]登录信息", req.Username).ToBizResult()
+		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Login 更新用户[%s]登录信息", user.Username).ToBizResult()
 	}
 	user.LastLoginAt = now
 	user.LastLoginIP = l.ClientIP()
 	user.UpdatedAt = now
 	created, err := l.createSessionWithJTI(user)
 	if err != nil {
-		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Login 创建用户[%s]会话失败", req.Username).ToBizResult()
+		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Login 创建用户[%s]会话失败", user.Username).ToBizResult()
 	}
 	l.clearAuthRateLimit(authRateLimitActionLoginIP, l.ClientIP())
-	l.clearAuthRateLimit(authRateLimitActionLoginUsername, req.Username)
+	l.clearAuthRateLimit(authRateLimitActionLoginIdentity, identitySubject)
 	l.emitAuthEvent(AuthEventInput{
 		Action:   AuthEventActionLoginSuccess,
 		UserID:   user.ID,
-		Username: user.Username,
+		Identity: identitySubject,
 		JTI:      created.JTI,
 		Reason:   AuthEventReasonSessionCreated,
 	})
@@ -259,7 +260,7 @@ func (l *AuthLogic) Refresh() *types.BizResult {
 	l.emitAuthEvent(AuthEventInput{
 		Action:   AuthEventActionRefreshSuccess,
 		UserID:   user.ID,
-		Username: user.Username,
+		Identity: model.UserIdentitySubject(model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, user.Username),
 		JTI:      tokenJTI(resp.Token, l.Svc.CurrentConfig().JwtSecret),
 		Reason:   AuthEventReasonSessionRotated,
 	})
@@ -288,7 +289,7 @@ func (l *AuthLogic) Logout() *types.BizResult {
 	l.emitAuthEvent(AuthEventInput{
 		Action:   AuthEventActionLogoutSuccess,
 		UserID:   ctxUser.ID,
-		Username: ctxUser.Name,
+		Identity: model.UserIdentitySubject(model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, ctxUser.Name),
 		JTI:      jti,
 		Reason:   AuthEventReasonCurrentSessionDeleted,
 	})
@@ -594,6 +595,14 @@ func (l *AuthLogic) passwordMinLength() int {
 		return cfg.Auth.PasswordMinLength
 	}
 	return 8
+}
+
+// loginIdentitySubject 返回密码登录限流和风控使用的身份主体。
+func loginIdentitySubject(req *types.LoginReq) string {
+	if req == nil {
+		return ""
+	}
+	return model.UserIdentitySubject(req.IdentityType, model.UserIdentityProviderLocal, req.IdentityValue)
 }
 
 // invalidPasswordResult 返回统一账号或密码错误，避免暴露账号存在性。
