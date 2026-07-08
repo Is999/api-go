@@ -4,8 +4,8 @@ github.com/BurntSushi/toml v1.6.0 h1:dRaEfpa2VI55EwlIW72hMRHdWouJeRF7TPYhI+AUQjk
 github.com/BurntSushi/toml v1.6.0/go.mod h1:ukJfTF/6rtPPRCnwkur4qwRxa8vTRFBF0uk2lLoLwho=
 github.com/Is999/go-utils v1.26.26 h1:ISQajJLtkgBqRvP+UlwQTLf2dKNdBUSNpC+6VwUTgv8=
 github.com/Is999/go-utils v1.26.26/go.mod h1:Q8HtJUKKaRdQ6K1E9zTT30yxlLoH1uBmGmLBg34oPOk=
-github.com/Is999/table-cache v1.26.0 h1:wAln+znis0xXqeoWoULxnTXpb2ZXiZUb98T1PVLIuEE=
-github.com/Is999/table-cache v1.26.0/go.mod h1:94Br5JxaUXbRY8GUcNaKmbEZzrdpmPKrEkQoTwFEWqM=
+github.com/Is999/table-cache v1.26.1 h1:Ot7qwJe+g+4JHjxP4zNq+mvSnbnRo/xYQc4gPIYQLYY=
+github.com/Is999/table-cache v1.26.1/go.mod h1:94Br5JxaUXbRY8GUcNaKmbEZzrdpmPKrEkQoTwFEWqM=
 github.com/alicebob/miniredis/v2 v2.38.0 h1:nZAzCR+Lj+Vxk4ZXzm2NuKq2O33RXj1XxJ2e2uP9jiw=
 github.com/alicebob/miniredis/v2 v2.38.0/go.mod h1:TcL7YfarKPGDAthEtl5NBeHZfeUQj6OXMm/+iu5cLMM=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
