@@ -57,7 +57,7 @@ cmd/api
 
 ## 目录结构
 
-`api` 延续 `admin` 的 go-zero 分层方式：入口只负责启动参数，`bootstrap` 负责装配，`handler/logic/model/types` 分别承担 HTTP 入口、用例编排、数据访问和接口契约。启动组件、HTTP 路由、数据库迁移、Redis Key、运行期配置和轻量扩展都有固定登记位置，避免后续能力散落在调用点。
+`api` 延续 `admin` 的 go-zero 分层方式。本分支通过 `internal/sharding` 和身份目录按固定逻辑桶定位真实用户表；物理表扩容与切换由 Admin 同名分支的 `cmd/tableshard` 负责。
 
 ```text
 api
@@ -68,10 +68,10 @@ api
 ├── docs                      # 开发规范、接口文档、运维手册和监控资产
 │   ├── site
 │   │   ├── 角色文档
-│   │   │   ├── 后端开发       # AI 规范、扩展指南、组件清单、安全同步说明
-│   │   │   └── 运维          # 部署发布、数据库迁移治理
+│   │   │   ├── 后端开发    # AI 规范、扩展指南、组件清单、安全同步说明
+│   │   │   └── 运维        # 部署发布、数据库迁移治理
 │   │   └── 接口文档
-│   │       └── 前台系统       # 认证、用户、系统、健康检查接口
+│   │       └── 前台系统    # 认证、用户、系统、健康检查接口
 │   ├── prometheus            # Prometheus 告警规则
 │   ├── grafana               # Grafana 面板
 │   └── handler.go            # 内网文档资源读取入口
@@ -90,7 +90,7 @@ api
     ├── requestctx            # 链路字段、调用方、耗时和 trace 元数据
     ├── routealias            # 路由别名常量
     ├── security              # 路由字段级签名、加密、大小限制和测试向量
-    ├── sharding              # 固定桶物理表数量校验和稳定表名映射
+    ├── sharding              # 固定桶物理表数量校验、表名映射和扩容计划
     ├── svc                   # ServiceContext 与基础设施依赖聚合
     └── types                 # API 请求、响应、列表项和参数校验
 ```
