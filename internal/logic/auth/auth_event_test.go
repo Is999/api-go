@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"api/internal/config"
 	"api/internal/infra/collectorx"
@@ -27,15 +28,19 @@ func TestRecordAuthEventEnqueuesSanitizedPayload(t *testing.T) {
 	requestctx.SetMode(ctx, "dev")
 
 	RecordAuthEvent(ctx, svcCtx, AuthEventInput{
-		Action:   AuthEventActionLoginSuccess,
-		UserID:   42,
-		Identity: "username:Demo_User",
-		JTI:      "session-jti",
-		Reason:   AuthEventReasonSessionCreated,
+		Action:    AuthEventActionLoginSuccess,
+		UserID:    42,
+		Identity:  "username:Demo_User",
+		SessionID: "session-id",
+		Reason:    AuthEventReasonSessionCreated,
 	})
 
 	if len(collector.events) != 1 {
 		t.Fatalf("collector events = %d, want 1", len(collector.events))
+	}
+	remaining := time.Until(collector.enqueueDeadline)
+	if collector.enqueueDeadline.IsZero() || remaining <= 0 || remaining > authEventEnqueueTimeout {
+		t.Fatalf("collector enqueue deadline remaining = %s, want (0,%s]", remaining, authEventEnqueueTimeout)
 	}
 	event := collector.events[0]
 	if event.BizType != AuthCollectorBizType {
@@ -48,7 +53,7 @@ func TestRecordAuthEventEnqueuesSanitizedPayload(t *testing.T) {
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		t.Fatalf("Unmarshal(payload) error = %v", err)
 	}
-	if payload.Action != AuthEventActionLoginSuccess || payload.UserID != 42 || payload.Reason != AuthEventReasonSessionCreated {
+	if payload.Action != AuthEventActionLoginSuccess || payload.UserID != "42" || payload.Reason != AuthEventReasonSessionCreated {
 		t.Fatalf("payload core fields = %+v", payload)
 	}
 	if payload.AppID != "site-a" || payload.Route != string(routealias.AuthLogin) || payload.TraceID != "trace-demo" || payload.SpanID != "span-demo" {
@@ -61,10 +66,46 @@ func TestRecordAuthEventEnqueuesSanitizedPayload(t *testing.T) {
 		t.Fatalf("payload hashes missing = %+v", payload)
 	}
 	raw := string(event.Payload)
-	for _, forbidden := range []string{"Demo_User", "127.0.0.1", "session-jti"} {
+	for _, forbidden := range []string{"Demo_User", "127.0.0.1", "session-id"} {
 		if strings.Contains(raw, forbidden) {
 			t.Fatalf("payload leaked raw value %q: %s", forbidden, raw)
 		}
+	}
+}
+
+// TestAuthEventSnowflakeUserIDUsesJSONString 验证超过 JavaScript 安全整数范围的用户 ID 不会按 JSON number 投递。
+func TestAuthEventSnowflakeUserIDUsesJSONString(t *testing.T) {
+	const userID int64 = 9_007_199_254_740_993
+	payload := buildAuthEventPayload(context.Background(), authEventTestConfig(true), AuthEventInput{
+		Action: AuthEventActionLoginSuccess,
+		UserID: userID,
+	})
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("Marshal(payload) error = %v", err)
+	}
+	if !strings.Contains(string(raw), `"user_id":"9007199254740993"`) {
+		t.Fatalf("user_id must be a decimal JSON string: %s", raw)
+	}
+	if got := authEventPartitionKey(payload); got != "site-a:9007199254740993" {
+		t.Fatalf("partition key = %q", got)
+	}
+}
+
+// TestAuthEventPartitionKeyFitsCollectorContract 确保最大 AppID 与脱敏哈希不会超过 Collector 分区键上限。
+func TestAuthEventPartitionKeyFitsCollectorContract(t *testing.T) {
+	// payload 模拟最大 AppID 和完整 SHA-256 十六进制哈希。
+	payload := authEventPayload{
+		AppID:        strings.Repeat("a", 64),
+		IdentityHash: strings.Repeat("b", 64),
+	}
+	// partitionKey 是最终写入 Collector Event 的业务分区键。
+	partitionKey := authEventPartitionKey(payload)
+	if len(partitionKey) > 128 {
+		t.Fatalf("partition key bytes = %d, want <= 128", len(partitionKey))
+	}
+	if want := payload.AppID + ":" + strings.Repeat("b", authEventPartitionHashLength); partitionKey != want {
+		t.Fatalf("partition key = %q, want %q", partitionKey, want)
 	}
 }
 
@@ -131,14 +172,16 @@ func authEventTestConfig(enabled bool) config.Config {
 
 // fakeCollector 记录业务投递的 Collector 事件。
 type fakeCollector struct {
-	events     []collectorx.Event   // 已投递事件
-	enqueueErr error                // 投递时返回的错误
-	alertHook  collectorx.AlertHook // 运行异常告警钩子
-	closed     bool                 // 是否已关闭
+	events          []collectorx.Event   // 已投递事件
+	enqueueErr      error                // 投递时返回的错误
+	alertHook       collectorx.AlertHook // 运行异常告警钩子
+	closed          bool                 // 是否已关闭
+	enqueueDeadline time.Time            // 最近一次投递上下文的截止时间
 }
 
 // Enqueue 记录一条事件。
-func (f *fakeCollector) Enqueue(_ context.Context, event collectorx.Event) (string, error) {
+func (f *fakeCollector) Enqueue(ctx context.Context, event collectorx.Event) (string, error) {
+	f.enqueueDeadline, _ = ctx.Deadline()
 	if f.enqueueErr != nil {
 		return "", f.enqueueErr
 	}
@@ -152,6 +195,11 @@ func (f *fakeCollector) Enqueue(_ context.Context, event collectorx.Event) (stri
 // SetAlertHook 保存告警钩子。
 func (f *fakeCollector) SetAlertHook(hook collectorx.AlertHook) {
 	f.alertHook = hook
+}
+
+// Ready 返回测试 Collector 的就绪状态。
+func (f *fakeCollector) Ready(context.Context) error {
+	return nil
 }
 
 // Close 标记收集器已关闭。

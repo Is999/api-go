@@ -1,10 +1,12 @@
 package config
 
 import (
+	"math"
 	"strings"
 	"testing"
 
 	appconfig "api/internal/config"
+	"api/internal/types"
 )
 
 // TestBuildMaskedConfigViewMasksSensitiveValues 验证对应场景符合预期。
@@ -35,6 +37,15 @@ func TestBuildMaskedConfigViewMasksSensitiveValues(t *testing.T) {
 	}
 	if view.sensitiveTotal == 0 {
 		t.Fatal("期望至少识别出一个敏感配置项")
+	}
+}
+
+// TestPaginateConfigItemsRejectsOverflowingPage 校验极大页码不会整数溢出后回读首批数据。
+func TestPaginateConfigItemsRejectsOverflowingPage(t *testing.T) {
+	items := []types.ConfigItem{{Path: "app_id"}}
+	got := paginateConfigItems(items, math.MaxInt, 100)
+	if len(got) != 0 {
+		t.Fatalf("期望极大页码返回空列表，实际 %#v", got)
 	}
 }
 

@@ -58,11 +58,11 @@ func (a *App) startConfigHotReload() {
 }
 
 // stopConfigHotReload 停止配置热加载后台协程。
-func (a *App) stopConfigHotReload() {
+func (a *App) stopConfigHotReload(ctx context.Context) error {
 	if a == nil {
-		return
+		return nil
 	}
-	a.hotReload.StopWatcher()
+	return errors.Tag(a.hotReload.StopWatcher(ctx))
 }
 
 // isConfigHotReloadRunning 返回当前是否已有热加载 watcher 在运行。
@@ -166,7 +166,20 @@ func (a *App) reloadConfigFile(ctx context.Context, source string, configFile st
 		return "", notBoundErr
 	}
 	a.hotReload.LockExec()
-	defer a.hotReload.UnlockExec()
+	reconcileWatcher := false
+	reconcileEnabled := false
+	defer func() {
+		a.hotReload.UnlockExec()
+		if !reconcileWatcher {
+			return
+		}
+		if reconcileEnabled && !a.isConfigHotReloadRunning() {
+			a.startConfigHotReload()
+		}
+		if !reconcileEnabled && hotreload.Source(source) != "watcher" {
+			_ = a.stopConfigHotReload(context.Background())
+		}
+	}()
 	select {
 	case <-ctx.Done():
 		cancelErr := errors.Tag(ctx.Err())
@@ -200,6 +213,8 @@ func (a *App) reloadConfigFile(ctx context.Context, source string, configFile st
 	a.ServiceContext.UpdateConfig(effectiveCfg)
 	a.ServiceContext.UpdateVersion(version)
 	a.updateRuntimeAlertConfig(effectiveCfg)
+	reconcileWatcher = true
+	reconcileEnabled = effectiveCfg.HotReload.Enabled
 	now := time.Now()
 	message := "配置热加载成功"
 	messageKey := i18n.MsgKeyHotReloadSuccess
@@ -233,12 +248,6 @@ func (a *App) reloadConfigFile(ctx context.Context, source string, configFile st
 		logx.Field("restart_required", restartRequired),
 		logx.Field("restart_reason", restartReason),
 	)
-	if effectiveCfg.HotReload.Enabled && !a.isConfigHotReloadRunning() {
-		a.startConfigHotReload()
-	}
-	if !effectiveCfg.HotReload.Enabled && hotreload.Source(source) != "watcher" {
-		a.stopConfigHotReload()
-	}
 	return currentFingerprint, nil
 }
 

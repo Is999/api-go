@@ -22,6 +22,7 @@ func TestUserSchemaAsset(t *testing.T) {
 		"`email_hash` char(64) NOT NULL DEFAULT '' COMMENT '邮箱HMAC查询哈希'",
 		"`phone_ciphertext` varchar(512) NOT NULL DEFAULT '' COMMENT '手机号AES-GCM密文'",
 		"`phone_hash` char(64) NOT NULL DEFAULT '' COMMENT '手机号HMAC查询哈希'",
+		"`auth_version` bigint unsigned NOT NULL DEFAULT 1 COMMENT '认证版本，敏感变更时单调递增'",
 		"KEY `idx_user_shard_no_id` (`shard_no`, `id`)",
 		"KEY `idx_user_email_hash` (`email_hash`)",
 		"KEY `idx_user_phone_hash` (`phone_hash`)",
@@ -104,8 +105,6 @@ func TestUserIdentitySchemaAssets(t *testing.T) {
 			for _, want := range []string{
 				"CREATE TABLE IF NOT EXISTS `" + tt.tableName + "`",
 				"`user_shard_no` int NOT NULL COMMENT '业务用户ID哈希分片，CRC32(id字符串)%1024'",
-				"`user_route_shard_count` smallint unsigned NOT NULL DEFAULT 1",
-				"KEY `idx_user_identity_user_route` (`user_route_shard_count`, `user_shard_no`, `user_id`)",
 				"KEY `idx_user_identity_shard_user` (`user_shard_no`, `user_id`)",
 			} {
 				if !strings.Contains(sql, want) {
@@ -117,7 +116,7 @@ func TestUserIdentitySchemaAssets(t *testing.T) {
 					t.Fatalf("readMigrationSQL(%s) missing %q: %q", tt.asset, want, sql)
 				}
 			}
-			for _, forbidden := range append([]string{"`identity_type`", "idx_user_identity_type_user"}, tt.forbid...) {
+			for _, forbidden := range append([]string{"`identity_type`", "idx_user_identity_type_user", "user_route_shard_count", "idx_user_identity_user_route"}, tt.forbid...) {
 				if strings.Contains(sql, forbidden) {
 					t.Fatalf("readMigrationSQL(%s) should not keep redundant identity type %q: %q", tt.asset, forbidden, sql)
 				}

@@ -1,9 +1,11 @@
 package middleware
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"api/common/runtimecfg"
 	"api/internal/config"
 	authlogic "api/internal/logic/auth"
+	"api/internal/requestctx"
 	"api/internal/routealias"
 	"api/internal/security"
 	"api/internal/svc"
@@ -26,9 +29,9 @@ func TestSignatureMiddlewareSkipsRouteWithoutSignPolicy(t *testing.T) {
 	middleware := NewSignatureMiddleware(svcCtx)
 	handler := middleware.Handle(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
-	}, routealias.UserProfile)
+	}, routealias.UserRuntimeSync)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/user/profile", nil)
+	req := httptest.NewRequest(http.MethodPost, "/internal/users/1/runtime-sync", nil)
 	rec := httptest.NewRecorder()
 	handler(rec, req)
 
@@ -46,12 +49,89 @@ func TestCryptoMiddlewareSkipsRouteWithoutCipherPolicy(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
-	req = bindRequestMeta(req, routealias.AuthLogout)
+	req = bindRequestMeta(req, routealias.AuthLogout, nil)
 	rec := httptest.NewRecorder()
 	handler(rec, req)
 
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
+	}
+}
+
+// TestSignatureMiddlewareDisabledSkipsTraceHeaders 确保仅开启加密时，签名中间件不要求 trace_id 和 timestamp。
+func TestSignatureMiddlewareDisabledSkipsTraceHeaders(t *testing.T) {
+	cfg := securityEnabledConfig()
+	cfg.Security.SecretKey.SignStatus = 0
+	svcCtx := svc.NewServiceContext(cfg, "test-version", svc.Dependencies{})
+	called := false
+	handler := NewSignatureMiddleware(svcCtx).Handle(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusNoContent)
+	}, routealias.AuthLogin)
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	request.Header.Set("X-App-Id", base64.StdEncoding.EncodeToString([]byte("demo-app")))
+	recorder := httptest.NewRecorder()
+
+	handler(recorder, request)
+
+	if !called {
+		t.Fatal("签名关闭时请求应进入业务处理器")
+	}
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	}
+}
+
+// TestCryptoMiddlewareDisabledSkipsCipherPolicy 确保仅开启签名时，加密中间件不加工响应。
+func TestCryptoMiddlewareDisabledSkipsCipherPolicy(t *testing.T) {
+	cfg := securityEnabledConfig()
+	cfg.Security.SecretKey.CryptoStatus = 0
+	svcCtx := svc.NewServiceContext(cfg, "test-version", svc.Dependencies{})
+	called := false
+	handler := NewCryptoMiddleware(svcCtx).Handle(func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusNoContent)
+	})
+	request := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	request.Header.Set("X-App-Id", base64.StdEncoding.EncodeToString([]byte("demo-app")))
+	request = bindRequestMeta(request, routealias.AuthLogin, svcCtx)
+	recorder := httptest.NewRecorder()
+
+	handler(recorder, request)
+
+	if !called {
+		t.Fatal("加密关闭时请求应进入业务处理器")
+	}
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNoContent)
+	}
+	if recorder.Header().Get("X-Cipher") != "" || recorder.Header().Get("X-Crypto") != "" {
+		t.Fatal("加密关闭时响应不应包含加密协议头")
+	}
+}
+
+// TestSignatureTraceIDRequiresCanonicalActiveTrace 确保签名标识格式固定且与实际链路一致。
+func TestSignatureTraceIDRequiresCanonicalActiveTrace(t *testing.T) {
+	const traceID = "0123456789abcdef0123456789abcdef"
+	req := httptest.NewRequest(http.MethodPost, "/api/demo", nil)
+	req.Header.Set(requestctx.HeaderTraceID, traceID)
+	ctx, _ := requestctx.New(req.Context())
+	requestctx.SetTrace(ctx, traceID, "0123456789abcdef")
+	req = req.WithContext(ctx)
+
+	got, err := signatureTraceID(req)
+	if err != nil || got != traceID {
+		t.Fatalf("signatureTraceID() = %q, %v, want %q", got, err, traceID)
+	}
+
+	req.Header.Set(requestctx.HeaderTraceID, "01234567-89ab-cdef-0123-456789abcdef")
+	if _, err = signatureTraceID(req); err == nil || !strings.Contains(err.Error(), "32位小写十六进制") {
+		t.Fatalf("UUID trace error = %v, want canonical format rejection", err)
+	}
+
+	req.Header.Set(requestctx.HeaderTraceID, "fedcba9876543210fedcba9876543210")
+	if _, err = signatureTraceID(req); err == nil || !strings.Contains(err.Error(), "实际链路不一致") {
+		t.Fatalf("mismatched trace error = %v, want active trace rejection", err)
 	}
 }
 
@@ -72,12 +152,76 @@ func TestSecurityConfigConfiguredRequiresConcreteVersion(t *testing.T) {
 	}
 }
 
+// TestSignatureMiddlewareRejectsUnsupportedSignatureTypes 确保未知签名算法失败关闭。
+func TestSignatureMiddlewareRejectsUnsupportedSignatureTypes(t *testing.T) {
+	middleware := NewSignatureMiddleware(svc.NewServiceContext(securityEnabledConfig(), "test-version", svc.Dependencies{}))
+	request := httptest.NewRequest(http.MethodPost, "/api/demo", nil)
+	for _, signatureType := range []string{"UNKNOWN", "HMAC", "M", "MD5"} {
+		if _, _, err := middleware.signer(request, "demo-app", security.NormalizeSignatureType(signatureType), true); err == nil || !strings.Contains(err.Error(), "签名方式不合法") {
+			t.Fatalf("signer(%q) error = %v, want invalid signature type", signatureType, err)
+		}
+	}
+}
+
+// TestSignatureMiddlewareRejectsMissingSignatureKey 确保签名材料缺失时不会降级到其它算法。
+func TestSignatureMiddlewareRejectsMissingSignatureKey(t *testing.T) {
+	cfg := config.Config{
+		AppID: "demo-app",
+		Security: config.SecurityConfig{
+			SecretKey: config.SecuritySecretKeyConfig{
+				KeyVersion: "v1",
+				SignStatus: 1,
+			},
+		},
+	}
+	middleware := NewSignatureMiddleware(svc.NewServiceContext(cfg, "test-version", svc.Dependencies{}))
+	request := httptest.NewRequest(http.MethodPost, "/api/demo", nil)
+	if _, _, err := middleware.signer(request, "demo-app", security.SignatureTypeAES, true); err == nil {
+		t.Fatal("signer() error = nil, want missing key failure")
+	}
+}
+
+// TestSignatureMiddlewareVerifiesHeaderOnlyPolicy 校验空字段策略能验签并写入防重放缓存。
+func TestSignatureMiddlewareVerifiesHeaderOnlyPolicy(t *testing.T) {
+	const traceID = "0123456789abcdef0123456789abcdef"
+	cfg := securityEnabledConfig()
+	server := miniredis.RunT(t)
+	client := redis.NewClient(&redis.Options{Addr: server.Addr()})
+	t.Cleanup(func() {
+		_ = client.Close()
+	})
+	previous := runtimecfg.Get()
+	runtimecfg.Set(cfg)
+	t.Cleanup(func() {
+		runtimecfg.Restore(previous)
+	})
+
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
+	signer, err := security.NewAESCipher(cfg.Security.SecretKey.AESKey, cfg.Security.SecretKey.AESIV)
+	if err != nil {
+		t.Fatalf("NewAESCipher() error = %v", err)
+	}
+	sign, err := signer.Sign(security.BuildSignString(nil, []string{}, traceID, timestamp, cfg.AppID))
+	if err != nil {
+		t.Fatalf("Sign() error = %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", strings.NewReader(`{"sign":"`+sign+`"}`))
+	middleware := NewSignatureMiddleware(svc.NewServiceContext(cfg, "test-version", svc.Dependencies{Rds: client}))
+	policy := security.PolicyByRoute(string(routealias.AuthLogout))
+	if err = middleware.verifyRequest(req, policy, cfg.AppID, traceID, timestamp, security.SignatureTypeAES); err != nil {
+		t.Fatalf("verifyRequest() error = %v", err)
+	}
+	if err = middleware.verifyRequest(req, policy, cfg.AppID, traceID, timestamp, security.SignatureTypeAES); err == nil || !strings.Contains(err.Error(), "重复请求") {
+		t.Fatalf("second verifyRequest() error = %v, want replay rejection", err)
+	}
+}
+
 // TestSignatureMiddlewareRejectsRequestSignAll 验证对应场景符合预期。
 func TestSignatureMiddlewareRejectsRequestSignAll(t *testing.T) {
 	middleware := NewSignatureMiddleware(svc.NewServiceContext(securityEnabledConfig(), "test-version", svc.Dependencies{}))
 	err := middleware.verifyRequest(httptest.NewRequest(http.MethodPost, "/api/demo", nil), security.RouteSecurityPolicy{
 		RequestSign: []string{security.SignFieldAll},
-	}, "demo-app", "trace", "1700000000", security.SignatureTypeMD5)
+	}, "demo-app", "trace", "1700000000", security.SignatureTypeAES)
 	if err == nil || !strings.Contains(err.Error(), "全量字段") {
 		t.Fatalf("verifyRequest() error = %v, want full-field rejection", err)
 	}
@@ -89,7 +233,7 @@ func TestSignatureMiddlewareRejectsOversizeRequestSignField(t *testing.T) {
 	body := `{"username":"` + strings.Repeat("x", security.MaxSecurityFieldBytes+1) + `","sign":"demo"}`
 	err := middleware.verifyRequest(httptest.NewRequest(http.MethodPost, "/api/demo", strings.NewReader(body)), security.RouteSecurityPolicy{
 		RequestSign: []string{"username"},
-	}, "demo-app", "trace", "1700000000", security.SignatureTypeMD5)
+	}, "demo-app", "trace", "1700000000", security.SignatureTypeAES)
 	if err == nil || !strings.Contains(err.Error(), "长度超过上限") {
 		t.Fatalf("verifyRequest() error = %v, want oversize field rejection", err)
 	}
@@ -104,7 +248,7 @@ func TestSignatureMiddlewareRejectsOversizeSignValue(t *testing.T) {
 	body := `{"username":"demo","sign":"` + strings.Repeat("x", security.MaxSecurityFieldBytes+1) + `"}`
 	err := middleware.verifyRequest(httptest.NewRequest(http.MethodPost, "/api/demo", strings.NewReader(body)), security.RouteSecurityPolicy{
 		RequestSign: []string{"username"},
-	}, "demo-app", "trace", "1700000000", security.SignatureTypeMD5)
+	}, "demo-app", "trace", "1700000000", security.SignatureTypeAES)
 	if err == nil || !strings.Contains(err.Error(), "长度超过上限") {
 		t.Fatalf("verifyRequest() error = %v, want oversize sign rejection", err)
 	}
@@ -117,7 +261,7 @@ func TestSignatureMiddlewareRejectsResponseSignAll(t *testing.T) {
 	_, _ = recorder.body.WriteString(`{"status":true,"data":{"token":"t","items":[1,2,3]}}`)
 	_, err := middleware.signResponse(recorder, security.RouteSecurityPolicy{
 		ResponseSign: []string{security.SignFieldAll},
-	}, "demo-app", "trace", "1700000000", security.SignatureTypeMD5, httptest.NewRequest(http.MethodPost, "/api/demo", nil))
+	}, "demo-app", "trace", "1700000000", security.SignatureTypeAES, httptest.NewRequest(http.MethodPost, "/api/demo", nil))
 	if err == nil || !strings.Contains(err.Error(), "全量字段") {
 		t.Fatalf("signResponse() error = %v, want full-field rejection", err)
 	}
@@ -153,7 +297,7 @@ func TestSignatureMiddlewareRejectsOversizeResponseSignField(t *testing.T) {
 	_, _ = recorder.body.WriteString(`{"status":true,"data":{"token":"` + strings.Repeat("x", security.MaxSecurityFieldBytes+1) + `"}}`)
 	_, err := middleware.signResponse(recorder, security.RouteSecurityPolicy{
 		ResponseSign: []string{"token"},
-	}, "demo-app", "trace", "1700000000", security.SignatureTypeMD5, httptest.NewRequest(http.MethodPost, "/api/demo", nil))
+	}, "demo-app", "trace", "1700000000", security.SignatureTypeAES, httptest.NewRequest(http.MethodPost, "/api/demo", nil))
 	if err == nil || !strings.Contains(err.Error(), "长度超过上限") {
 		t.Fatalf("signResponse() error = %v, want oversize field rejection", err)
 	}

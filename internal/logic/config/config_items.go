@@ -280,7 +280,11 @@ func paginateConfigItems(items []types.ConfigItem, page int, pageSize int) []typ
 	if pageSize <= 0 {
 		pageSize = len(items)
 	}
-	start := (page - 1) * pageSize
+	pageOffset := page - 1
+	if pageOffset > len(items)/pageSize {
+		return []types.ConfigItem{}
+	}
+	start := pageOffset * pageSize
 	if start >= len(items) {
 		return []types.ConfigItem{}
 	}

@@ -21,6 +21,9 @@ Name: "api"
 Host: "127.0.0.1"
 Port: 8890
 Mode: "dev"
+internal_server:
+  host: "127.0.0.1"
+  port: 8891
 app_id: "1"
 snowflake:
   worker_id: 1
@@ -29,6 +32,8 @@ auth:
   password_min_length: 8
 hot_reload:
   enabled: false
+ops:
+  config_reload_token: "test-api-ops-token"
 redis:
   addrs:
     - "127.0.0.1:6379"

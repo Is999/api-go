@@ -98,8 +98,8 @@ func loadSecurityVectors(t *testing.T) securityVectorFile {
 	if err := decoder.Decode(&vectors); err != nil {
 		t.Fatalf("decode security vectors: %v", err)
 	}
-	if vectors.Version != 1 {
-		t.Fatalf("security vectors version = %d, want 1", vectors.Version)
+	if vectors.Version != 2 {
+		t.Fatalf("security vectors version = %d, want 2", vectors.Version)
 	}
 	return vectors
 }

@@ -42,13 +42,14 @@ func New(ctx context.Context, cfg config.RedisConfig, obs config.ObservabilityCo
 	var rdb redis.UniversalClient
 	if !isClusterMode(cfg, addrs) {
 		option := &redis.Options{
-			Addr:            addrs[0],
-			Password:        cfg.Password,
-			DB:              cfg.DB,
-			PoolSize:        poolSize,
-			MinIdleConns:    poolSize / 5,
-			DisableIdentity: true,
-			Protocol:        2,
+			Addr:                  addrs[0],
+			Password:              cfg.Password,
+			DB:                    cfg.DB,
+			PoolSize:              poolSize,
+			MinIdleConns:          poolSize / 5,
+			DisableIdentity:       true,
+			ContextTimeoutEnabled: true,
+			Protocol:              2,
 			MaintNotificationsConfig: &maintnotifications.Config{
 				Mode: maintnotifications.ModeDisabled,
 			},
@@ -57,12 +58,13 @@ func New(ctx context.Context, cfg config.RedisConfig, obs config.ObservabilityCo
 		rdb = redis.NewClient(option)
 	} else {
 		clusterOpts := &redis.ClusterOptions{
-			Addrs:           addrs,
-			Password:        cfg.Password,
-			PoolSize:        poolSize,
-			MinIdleConns:    poolSize / 5,
-			DisableIdentity: true,
-			Protocol:        2,
+			Addrs:                 addrs,
+			Password:              cfg.Password,
+			PoolSize:              poolSize,
+			MinIdleConns:          poolSize / 5,
+			DisableIdentity:       true,
+			ContextTimeoutEnabled: true,
+			Protocol:              2,
 			MaintNotificationsConfig: &maintnotifications.Config{
 				Mode: maintnotifications.ModeDisabled,
 			},
@@ -122,12 +124,13 @@ func pingConfiguredAddrs(ctx context.Context, cfg config.RedisConfig, addrs []st
 			pingAddr = rewriteClusterAddr(addr, addrMap)
 		}
 		option := &redis.Options{
-			Addr:            pingAddr,
-			Password:        cfg.Password,
-			DB:              db,
-			PoolSize:        1,
-			DisableIdentity: true,
-			Protocol:        2,
+			Addr:                  pingAddr,
+			Password:              cfg.Password,
+			DB:                    db,
+			PoolSize:              1,
+			DisableIdentity:       true,
+			ContextTimeoutEnabled: true,
+			Protocol:              2,
 			MaintNotificationsConfig: &maintnotifications.Config{
 				Mode: maintnotifications.ModeDisabled,
 			},

@@ -51,55 +51,52 @@ func (m *SignatureMiddleware) Handle(next http.HandlerFunc, alias RouteAlias) ht
 			return
 		}
 		// 没有请求验签和响应回签策略的路由不参与签名链路。
-		if len(policy.RequestSign) == 0 && len(policy.ResponseSign) == 0 {
+		if policy.RequestSign == nil && policy.ResponseSign == nil {
 			next(w, r)
 			return
 		}
 		appID, err := requestAppID(r)
 		if err != nil {
-			m.fail(w, r, http.StatusOK, codes.ParamError, authlogic.AuthEventReasonSecurityAppIDInvalid, err)
+			m.fail(w, r, codes.ParamError, authlogic.AuthEventReasonSecurityAppIDInvalid, err)
 			return
 		}
 		routeConfig, err := securitylogic.NewSecretKeyLogic(r.Context(), m.svc).GetRouteConfig(appID)
 		if err != nil {
-			m.fail(w, r, http.StatusOK, codes.InternalError, authlogic.AuthEventReasonSecurityKeyUnavailable, err)
+			m.fail(w, r, codes.InternalError, authlogic.AuthEventReasonSecurityKeyUnavailable, err)
 			return
 		}
 		signEnabled := routeConfig.SignEnabled()
-		signatureType := security.NormalizeSignatureType(r.Header.Get("X-Signature"))
-		traceID := strings.TrimSpace(r.Header.Get(requestctx.HeaderTraceID))
-		if signEnabled && traceID == "" {
-			m.fail(w, r, http.StatusOK, codes.AuthFailed, authlogic.AuthEventReasonSignatureFailed, errors.New("缺少请求头X-Trace-Id"))
+		if !signEnabled {
+			next(w, r)
 			return
 		}
-		timestamp := ""
-		if signEnabled {
-			timestamp, err = requestTimestamp(r)
-			if err != nil {
-				m.fail(w, r, http.StatusOK, codes.AuthFailed, authlogic.AuthEventReasonSignatureFailed, err)
-				return
-			}
+		signatureType := security.NormalizeSignatureType(r.Header.Get("X-Signature"))
+		traceID, err := signatureTraceID(r)
+		if err != nil {
+			m.fail(w, r, codes.AuthFailed, authlogic.AuthEventReasonSignatureFailed, err)
+			return
 		}
-		if signEnabled && len(policy.RequestSign) > 0 {
+		timestamp, err := requestTimestamp(r)
+		if err != nil {
+			m.fail(w, r, codes.AuthFailed, authlogic.AuthEventReasonSignatureFailed, err)
+			return
+		}
+		if policy.RequestSign != nil {
 			if err := m.verifyRequest(r, policy, appID, traceID, timestamp, signatureType); err != nil {
-				m.fail(w, r, http.StatusOK, codes.AuthFailed, authlogic.AuthEventReasonSignatureFailed, err)
+				m.fail(w, r, codes.AuthFailed, authlogic.AuthEventReasonSignatureFailed, err)
 				return
 			}
 		}
 
 		recorder := newBodyRecorder()
 		next(recorder, r)
-		if signEnabled {
-			recorder.Header().Set("X-Signature", signatureType)
-			recorder.Header().Set(requestctx.HeaderTraceID, traceID)
-			recorder.Header().Set(requestctx.HeaderTimestamp, timestamp)
-		} else {
-			recorder.Header().Del("X-Signature")
-		}
-		if signEnabled && len(policy.ResponseSign) > 0 && recorder.status < http.StatusBadRequest && recorder.body.Len() > 0 {
+		recorder.Header().Set("X-Signature", signatureType)
+		recorder.Header().Set(requestctx.HeaderTraceID, traceID)
+		recorder.Header().Set(requestctx.HeaderTimestamp, timestamp)
+		if policy.ResponseSign != nil && recorder.status < http.StatusBadRequest && recorder.body.Len() > 0 {
 			resolvedVersion, err := m.signResponse(recorder, policy, appID, traceID, timestamp, signatureType, r)
 			if err != nil {
-				m.fail(w, r, http.StatusOK, codes.InternalError, authlogic.AuthEventReasonResponseSignFailed, err)
+				m.fail(w, r, codes.InternalError, authlogic.AuthEventReasonResponseSignFailed, err)
 				return
 			}
 			if strings.TrimSpace(resolvedVersion) != "" {
@@ -108,6 +105,28 @@ func (m *SignatureMiddleware) Handle(next http.HandlerFunc, alias RouteAlias) ht
 		}
 		flushRecordedResponse(w, recorder)
 	}
+}
+
+// signatureTraceID 校验签名使用的追踪标识与实际请求链路一致。
+func signatureTraceID(r *http.Request) (string, error) {
+	if r == nil {
+		return "", errors.New("签名请求为空")
+	}
+	raw := strings.TrimSpace(r.Header.Get(requestctx.HeaderTraceID))
+	if raw == "" {
+		return "", errors.New("缺少请求头X-Trace-Id")
+	}
+	parsed, ok := parseHeaderTraceID(raw)
+	if !ok || raw != parsed.String() {
+		return "", errors.New("请求头X-Trace-Id必须是32位小写十六进制")
+	}
+	if meta := requestctx.FromContext(r.Context()); meta != nil {
+		actual := strings.TrimSpace(meta.TraceID)
+		if actual != "" && actual != raw {
+			return "", errors.New("请求头X-Trace-Id与实际链路不一致")
+		}
+	}
+	return raw, nil
 }
 
 // verifyRequest 校验请求参数中的 sign 字段。
@@ -198,8 +217,6 @@ func (m *SignatureMiddleware) signer(r *http.Request, appID string, signatureTyp
 	versionHint := requestSecretKeyVersionHint(r)
 	grayKey := requestSecretKeyGrayKey(r)
 	switch signatureType {
-	case security.SignatureTypeMD5:
-		return security.MD5Signer{}, "", nil
 	case security.SignatureTypeAES:
 		aesKey, resolvedVersion, err := secretKeyLogic.GetAESKey(appID, versionHint, grayKey)
 		if err != nil {
@@ -228,8 +245,11 @@ func (m *SignatureMiddleware) signer(r *http.Request, appID string, signatureTyp
 }
 
 // fail 写出签名中间件失败响应，错误详情只进入日志链路。
-func (m *SignatureMiddleware) fail(w http.ResponseWriter, r *http.Request, httpStatus int, code int, reason string, err error) {
+func (m *SignatureMiddleware) fail(w http.ResponseWriter, r *http.Request, code int, reason string, err error) {
+	markSecurityFailure(w)
+	clearSecurityResponseHeaders(w.Header())
 	code = resolveSecurityFailureCode(reason, code, err)
+	httpStatus := codes.HTTPStatus(code)
 	reason = resolveSecurityFailureReason(reason, err)
 	emitSecurityFailureEvent(r.Context(), m.svc, reason)
 	fields := []logx.LogField{
@@ -274,17 +294,17 @@ func hasSignFieldAll(fields []string) bool {
 	return false
 }
 
-// validateSignValues 校验参与签名的字段值，避免大对象或超长字符串进入签名串。
+// validateSignValues 校验参与签名的字段值；显式策略允许小型数组或对象按稳定 JSON 参与签名。
 func validateSignValues(data map[string]any, fields []string, scope string) error {
 	for _, field := range helper.UniqueNonEmptyStrings(fields) {
-		value, ok := data[field]
+		value, ok := security.SignFieldValue(data, field)
 		if !ok || value == nil {
 			continue
 		}
 		if text, ok := value.(string); ok && text == "" {
 			continue
 		}
-		if err := security.ValidateSecurityScalarValue(scope, field, value); err != nil {
+		if err := security.ValidateSecurityTextValue(scope, field, security.SignValueString(value), security.MaxSecurityFieldBytes); err != nil {
 			return errors.Tag(err)
 		}
 	}

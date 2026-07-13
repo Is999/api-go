@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -10,11 +11,88 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"gorm.io/plugin/dbresolver"
 )
 
+// testUserPrivacySecret 是模型隐私字段测试使用的固定密钥。
 const testUserPrivacySecret = "test-user-privacy-secret"
 
-// TestUserPhysicalTableName 验证 2 的幂物理表数量路由规则稳定。
+// TestUserQueriesPreserveDBResolverMode 验证模型会话复制不会把显式主库/副本路由清空。
+func TestUserQueriesPreserveDBResolverMode(t *testing.T) {
+	const userID int64 = 100001
+	sourcePath := filepath.Join(t.TempDir(), "source.db")
+	replicaPath := filepath.Join(t.TempDir(), "replica.db")
+	prepareUserResolverFixture(t, sourcePath, userID, "source-user", UserStatusDisabled)
+	prepareUserResolverFixture(t, replicaPath, userID, "replica-user", UserStatusEnabled)
+
+	db, err := gorm.Open(sqlite.Open(sourcePath), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("gorm.Open(source) error = %v", err)
+	}
+	if err = db.Use(dbresolver.Register(dbresolver.Config{
+		Replicas: []gorm.Dialector{sqlite.Open(replicaPath)},
+	})); err != nil {
+		t.Fatalf("register dbresolver error = %v", err)
+	}
+
+	writeUser, err := FindUserByID(db.Clauses(dbresolver.Write), userID, 1)
+	if err != nil {
+		t.Fatalf("FindUserByID(write) error = %v", err)
+	}
+	if writeUser == nil || writeUser.Username != "source-user" || writeUser.Status != UserStatusDisabled {
+		t.Fatalf("write query = %+v, want source user", writeUser)
+	}
+
+	readUser, err := FindUserByID(db.Clauses(dbresolver.Read), userID, 1)
+	if err != nil {
+		t.Fatalf("FindUserByID(read) error = %v", err)
+	}
+	if readUser == nil || readUser.Username != "replica-user" || readUser.Status != UserStatusEnabled {
+		t.Fatalf("read query = %+v, want replica user", readUser)
+	}
+}
+
+// prepareUserResolverFixture 在独立 SQLite 文件中写入可区分的用户与账号索引。
+func prepareUserResolverFixture(t *testing.T, path string, userID int64, username string, status int) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatalf("gorm.Open(%s) error = %v", path, err)
+	}
+	if err = db.Table(TableNameUser).AutoMigrate(&userSQLiteForTest{}); err != nil {
+		t.Fatalf("AutoMigrate(user) error = %v", err)
+	}
+	if err = migrateUserIdentityTablesForTest(db); err != nil {
+		t.Fatalf("migrateUserIdentityTablesForTest() error = %v", err)
+	}
+	now := time.Now()
+	shardNo := idgen.ShardNo(userID)
+	if err = db.Table(TableNameUser).Create(&userSQLiteForTest{
+		ID:           userID,
+		ShardNo:      shardNo,
+		Username:     username,
+		PasswordHash: "hash",
+		Status:       status,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}).Error; err != nil {
+		t.Fatalf("create user fixture error = %v", err)
+	}
+	if err = db.Table(TableNameUser).Where("id = ?", userID).Update("status", status).Error; err != nil {
+		t.Fatalf("update user fixture status error = %v", err)
+	}
+	if err = db.Table(TableNameUserIdentityUsername).Create(&userIdentitySQLiteForTest{
+		IdentityValue: "resolver-user",
+		UserID:        userID,
+		UserShardNo:   shardNo,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}).Error; err != nil {
+		t.Fatalf("create identity fixture error = %v", err)
+	}
+}
+
+// TestUserPhysicalTableName 验证固定逻辑桶稳定路由到用户物理表。
 func TestUserPhysicalTableName(t *testing.T) {
 	tests := []struct {
 		name            string // name 表示测试场景名称。
@@ -22,12 +100,13 @@ func TestUserPhysicalTableName(t *testing.T) {
 		routeShardCount int    // routeShardCount 表示物理路由分片数。
 		want            string // want 表示期望结果。
 	}{
+		{name: "default", shardNo: 0, routeShardCount: 0, want: "user"},
 		{name: "single", shardNo: 1023, routeShardCount: 1, want: "user"},
-		{name: "two first", shardNo: 0, routeShardCount: 2, want: "user_0000"},
-		{name: "two boundary", shardNo: 512, routeShardCount: 2, want: "user_0512"},
-		{name: "four middle", shardNo: 700, routeShardCount: 4, want: "user_0512"},
-		{name: "sixteen middle", shardNo: 345, routeShardCount: 16, want: "user_0320"},
-		{name: "full last", shardNo: 1023, routeShardCount: 1024, want: "user_1023"},
+		{name: "two first", shardNo: 0, routeShardCount: 2, want: "user"},
+		{name: "two boundary", shardNo: 512, routeShardCount: 2, want: "user_b0512"},
+		{name: "four middle", shardNo: 700, routeShardCount: 4, want: "user_b0512"},
+		{name: "sixteen middle", shardNo: 345, routeShardCount: 16, want: "user_b0320"},
+		{name: "full last", shardNo: 1023, routeShardCount: 1024, want: "user_b1023"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -69,10 +148,13 @@ func TestUserIdentityTableName(t *testing.T) {
 	}
 }
 
-// TestUserPhysicalTableNameRejectsInvalidRoute 验证路由数量只能按 2 的幂平滑拆分。
+// TestUserPhysicalTableNameRejectsInvalidRoute 验证物理分片数只接受平滑拆分档位。
 func TestUserPhysicalTableNameRejectsInvalidRoute(t *testing.T) {
 	if _, err := UserPhysicalTableName(1, 3); err == nil {
-		t.Fatal("期望非法物理表数量返回错误")
+		t.Fatal("期望非法物理分片数返回错误")
+	}
+	if _, err := UserPhysicalTableName(1, -1); err == nil {
+		t.Fatal("期望负数路由值返回错误")
 	}
 	if _, err := UserPhysicalTableName(1024, 2); err == nil {
 		t.Fatal("期望非法 shard_no 返回错误")
@@ -81,20 +163,23 @@ func TestUserPhysicalTableNameRejectsInvalidRoute(t *testing.T) {
 
 // TestUserIdentityTableNameRejectsMismatchedShardNo 验证身份索引不会接受错误分片号。
 func TestUserIdentityTableNameRejectsMismatchedShardNo(t *testing.T) {
-	userID := int64(123456789)
-	identity := &UserIdentity{
-		IdentityType:        UserIdentityTypeUsername,
-		Provider:            UserIdentityProviderLocal,
-		IdentityValue:       "demo_user",
-		UserID:              userID,
-		UserShardNo:         idgen.ShardNo(userID),
-		UserRouteShardCount: 1024,
+	userID := int64(1)
+	for idgen.ShardNo(userID) < 512 {
+		userID++
 	}
-	want, err := UserPhysicalTableName(identity.UserShardNo, identity.UserRouteShardCount)
+	identity := &UserIdentity{
+		IdentityType:  UserIdentityTypeUsername,
+		Provider:      UserIdentityProviderLocal,
+		IdentityValue: "demo_user",
+		UserID:        userID,
+		UserShardNo:   idgen.ShardNo(userID),
+	}
+	const currentRouteShardCount = 2
+	want, err := UserPhysicalTableName(identity.UserShardNo, currentRouteShardCount)
 	if err != nil {
 		t.Fatalf("UserPhysicalTableName() error = %v", err)
 	}
-	got, err := identity.UserTableName()
+	got, err := identity.UserTableName(currentRouteShardCount)
 	if err != nil {
 		t.Fatalf("UserTableName() error = %v", err)
 	}
@@ -102,8 +187,8 @@ func TestUserIdentityTableNameRejectsMismatchedShardNo(t *testing.T) {
 		t.Fatalf("UserTableName() = %q, want %q", got, want)
 	}
 
-	identity.UserShardNo = (identity.UserShardNo + 1) % userRouteShardMod
-	if _, err := identity.UserTableName(); err == nil {
+	identity.UserShardNo = (identity.UserShardNo + 1) % idgen.ShardMod
+	if _, err := identity.UserTableName(currentRouteShardCount); err == nil {
 		t.Fatal("期望身份索引 user_shard_no 与 user_id 不一致时返回错误")
 	}
 }
@@ -115,10 +200,12 @@ func TestSafeUserUpdatesRejectsImmutableFields(t *testing.T) {
 		"shard_no":      12,
 		"username":      "changed",
 		"password_hash": "unsafe",
+		"status":        UserStatusDisabled,
+		"auth_version":  uint64(2),
 		"email":         "raw@example.com",
 		"email_hash":    " hash ",
-	}, false)
-	for _, key := range []string{"id", "shard_no", "username", "password_hash", "email"} {
+	})
+	for _, key := range []string{"id", "shard_no", "username", "password_hash", "email", "status", "auth_version"} {
 		if _, ok := got[key]; ok {
 			t.Fatalf("safeUserUpdates() should reject %s: %+v", key, got)
 		}
@@ -128,9 +215,9 @@ func TestSafeUserUpdatesRejectsImmutableFields(t *testing.T) {
 	}
 }
 
-// TestCreateUserWithIdentitiesRoutesPhysicalTable 验证非默认物理表数量会真实写入并路由读取。
-func TestCreateUserWithIdentitiesRoutesPhysicalTable(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file:user_route_test?mode=memory&cache=shared"), &gorm.Config{
+// TestCreateUserWithIdentitiesUsesPhysicalTable 验证新用户和身份目录使用同一物理路由。
+func TestCreateUserWithIdentitiesUsesPhysicalTable(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "user-route.db")), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
@@ -141,8 +228,8 @@ func TestCreateUserWithIdentitiesRoutesPhysicalTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("UserPhysicalTableName() error = %v", err)
 	}
-	if tableName != "user_0512" {
-		t.Fatalf("route table = %s, want user_0512 for shard=%d", tableName, shardNo)
+	if tableName != "user_b0512" {
+		t.Fatalf("route table = %s, want user_b0512 for shard=%d", tableName, shardNo)
 	}
 	if err = migrateUserIdentityTablesForTest(db); err != nil {
 		t.Fatalf("migrateUserIdentityTablesForTest() error = %v", err)
@@ -173,7 +260,7 @@ func TestCreateUserWithIdentitiesRoutesPhysicalTable(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("routed table count = %d, want 1", count)
 	}
-	got, err := FindUserByIdentity(db, UserIdentityTypeUsername, UserIdentityProviderLocal, "route_user", testUserPrivacySecret)
+	got, err := FindUserByIdentity(db, UserIdentityTypeUsername, UserIdentityProviderLocal, "route_user", testUserPrivacySecret, 4)
 	if err != nil {
 		t.Fatalf("FindUserByIdentity(username) error = %v", err)
 	}
@@ -184,8 +271,8 @@ func TestCreateUserWithIdentitiesRoutesPhysicalTable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindUserIdentity(email) error = %v", err)
 	}
-	if identity == nil || identity.IdentityHash != user.EmailHash || identity.UserRouteShardCount != 4 || identity.UserShardNo != shardNo || identity.UserID != userID {
-		t.Fatalf("identity = %+v, want user=%d shard=%d route=4", identity, userID, shardNo)
+	if identity == nil || identity.IdentityHash != user.EmailHash || identity.UserShardNo != shardNo || identity.UserID != userID {
+		t.Fatalf("identity = %+v, want user=%d shard=%d", identity, userID, shardNo)
 	}
 	var emailCount int64
 	if err = db.Table(TableNameUserIdentityEmail).Where("user_id = ?", userID).Count(&emailCount).Error; err != nil {
@@ -194,7 +281,7 @@ func TestCreateUserWithIdentitiesRoutesPhysicalTable(t *testing.T) {
 	if emailCount != 1 {
 		t.Fatalf("email identity table count = %d, want 1", emailCount)
 	}
-	if err = UpdateUserProfileWithIdentities(db, userID, map[string]any{"email": "changed@example.test"}, testUserPrivacySecret); err != nil {
+	if err = UpdateUserProfileWithIdentities(db, userID, map[string]any{"email": "changed@example.test"}, testUserPrivacySecret, 4); err != nil {
 		t.Fatalf("UpdateUserProfileWithIdentities() error = %v", err)
 	}
 	if oldIdentity, err := FindUserIdentity(db, UserIdentityTypeEmail, UserIdentityProviderLocal, "route_user@example.test", testUserPrivacySecret); err != nil || oldIdentity != nil {
@@ -207,7 +294,7 @@ func TestCreateUserWithIdentitiesRoutesPhysicalTable(t *testing.T) {
 
 // TestUpdateUserProfileWithIdentitiesRollsBackOnIdentityConflict 验证身份索引冲突时主表资料同步回滚。
 func TestUpdateUserProfileWithIdentitiesRollsBackOnIdentityConflict(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file:user_identity_conflict_test?mode=memory&cache=shared"), &gorm.Config{
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "user-identity-conflict.db")), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
@@ -227,11 +314,11 @@ func TestUpdateUserProfileWithIdentitiesRollsBackOnIdentityConflict(t *testing.T
 	if err = CreateUserWithIdentities(db, secondUser, UserRouteShardCountDefault, testUserPrivacySecret); err != nil {
 		t.Fatalf("CreateUserWithIdentities(second) error = %v", err)
 	}
-	err = UpdateUserProfileWithIdentities(db, firstUser.ID, map[string]any{"email": secondUser.Email}, testUserPrivacySecret)
+	err = UpdateUserProfileWithIdentities(db, firstUser.ID, map[string]any{"email": secondUser.Email}, testUserPrivacySecret, UserRouteShardCountDefault)
 	if err == nil {
 		t.Fatal("期望邮箱身份冲突时返回错误")
 	}
-	got, err := FindUserByID(db, firstUser.ID)
+	got, err := FindUserByID(db, firstUser.ID, UserRouteShardCountDefault)
 	if err != nil {
 		t.Fatalf("FindUserByID(first) error = %v", err)
 	}
@@ -331,13 +418,14 @@ func createUserIdentitySQLiteIndexes(db *gorm.DB, tableName string) error {
 	return nil
 }
 
-// userSQLiteForTest 使用 SQLite 创建用户物理表，业务读写仍走 User。
+// userSQLiteForTest 使用 SQLite 创建用户逻辑表，业务读写仍走 User。
 type userSQLiteForTest struct {
 	ID              int64     `gorm:"column:id;type:integer;primaryKey"`                                                 // 用户 ID
 	ShardNo         int       `gorm:"column:shard_no;type:int;not null;index:idx_user_shard_no_id,priority:1"`           // 逻辑分片
 	Username        string    `gorm:"column:username;type:varchar(32);not null;uniqueIndex:uk_user_username"`            // 用户名
 	Nickname        string    `gorm:"column:nickname;type:varchar(64);not null;default:''"`                              // 昵称
 	PasswordHash    string    `gorm:"column:password_hash;type:varchar(255);not null"`                                   // 密码哈希
+	AuthVersion     uint64    `gorm:"column:auth_version;type:integer;not null;default:1"`                               // 会话撤销版本
 	EmailCiphertext string    `gorm:"column:email_ciphertext;type:varchar(512);not null;default:''"`                     // 邮箱密文
 	EmailHash       string    `gorm:"column:email_hash;type:char(64);not null;default:'';index:idx_user_email_hash"`     // 邮箱查询哈希
 	EmailMasked     string    `gorm:"column:email_masked;type:varchar(128);not null;default:''"`                         // 邮箱脱敏展示值
@@ -356,15 +444,14 @@ type userSQLiteForTest struct {
 
 // userIdentitySQLiteForTest 使用 SQLite 创建身份索引表，业务读写仍走 UserIdentity。
 type userIdentitySQLiteForTest struct {
-	ID                  uint64    `gorm:"column:id;type:integer;primaryKey;autoIncrement:true"`               // 主键
-	Provider            string    `gorm:"column:provider;type:varchar(32);not null;default:''"`               // 三方提供方
-	IdentityValue       string    `gorm:"column:identity_value;type:varchar(191);not null;default:''"`        // 身份值
-	IdentityHash        string    `gorm:"column:identity_hash;type:char(64);not null;default:''"`             // 联系方式身份哈希
-	UserID              int64     `gorm:"column:user_id;type:integer;not null"`                               // 用户 ID
-	UserShardNo         int       `gorm:"column:user_shard_no;type:int;not null"`                             // 用户分片
-	UserRouteShardCount int       `gorm:"column:user_route_shard_count;type:int;not null;default:1"`          // 用户物理表数量
-	CreatedAt           time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP"` // 创建时间
-	UpdatedAt           time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP"` // 更新时间
+	ID            uint64    `gorm:"column:id;type:integer;primaryKey;autoIncrement:true"`               // 主键
+	Provider      string    `gorm:"column:provider;type:varchar(32);not null;default:''"`               // 三方提供方
+	IdentityValue string    `gorm:"column:identity_value;type:varchar(191);not null;default:''"`        // 身份值
+	IdentityHash  string    `gorm:"column:identity_hash;type:char(64);not null;default:''"`             // 联系方式身份哈希
+	UserID        int64     `gorm:"column:user_id;type:integer;not null"`                               // 用户 ID
+	UserShardNo   int       `gorm:"column:user_shard_no;type:int;not null"`                             // 用户分片
+	CreatedAt     time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP"` // 创建时间
+	UpdatedAt     time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP"` // 更新时间
 }
 
 // TableName 表示测试辅助逻辑。

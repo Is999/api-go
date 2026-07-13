@@ -26,8 +26,10 @@ func TestValidateCollectorSkipsDisabledConfig(t *testing.T) {
 func TestValidateCollectorRejectsMissingKafkaBrokers(t *testing.T) {
 	cfg := config.Config{
 		Collector: config.CollectorConfig{
-			Enabled:     true,
-			DefaultTask: config.CollectorTaskConfig{Topic: "api_collector_events"},
+			Enabled: true,
+			Tasks: map[string]config.CollectorTaskConfig{
+				config.CollectorBizTypeAuthSecurity: {Topic: config.CollectorTopicAuthSecurity},
+			},
 		},
 	}
 	if err := ValidateCollector(cfg); err == nil {
@@ -59,7 +61,7 @@ func TestValidateCollectorAcceptsTaskTopic(t *testing.T) {
 				Brokers: []string{"127.0.0.1:9092"},
 			},
 			Tasks: map[string]config.CollectorTaskConfig{
-				"auth.security": {Topic: "api_collector_auth_security_events"},
+				config.CollectorBizTypeAuthSecurity: {Topic: config.CollectorTopicAuthSecurity},
 			},
 		},
 	}
@@ -77,10 +79,54 @@ func TestValidateCollectorRejectsInvalidKafkaWait(t *testing.T) {
 				Brokers:                    []string{"127.0.0.1:9092"},
 				WriteBatchWaitMilliseconds: maxCollectorKafkaWriteBatchWaitMilliseconds + 1,
 			},
-			DefaultTask: config.CollectorTaskConfig{Topic: "api_collector_events"},
+			Tasks: map[string]config.CollectorTaskConfig{
+				config.CollectorBizTypeAuthSecurity: {Topic: config.CollectorTopicAuthSecurity},
+			},
 		},
 	}
 	if err := ValidateCollector(cfg); err == nil {
 		t.Fatal("expected long collector.kafka.write_batch_wait_milliseconds to be rejected")
+	}
+}
+
+// TestValidateCollectorRejectsInvalidKafkaBatchSize 确保 Producer 批量不会被静默截断。
+func TestValidateCollectorRejectsInvalidKafkaBatchSize(t *testing.T) {
+	cfg := validCollectorConfig()
+	cfg.Collector.Kafka.WriteBatchSize = maxCollectorKafkaWriteBatchSize + 1
+	if err := ValidateCollector(cfg); err == nil {
+		t.Fatal("expected oversized collector.kafka.write_batch_size to be rejected")
+	}
+}
+
+// TestValidateCollectorRejectsInvalidKafkaWriteTimeout 确保认证请求不会被超长 Kafka 超时占用。
+func TestValidateCollectorRejectsInvalidKafkaWriteTimeout(t *testing.T) {
+	cfg := validCollectorConfig()
+	cfg.Collector.Kafka.WriteTimeout = maxCollectorKafkaWriteTimeoutSeconds + 1
+	if err := ValidateCollector(cfg); err == nil {
+		t.Fatal("expected long collector.kafka.write_timeout to be rejected")
+	}
+}
+
+// TestValidateCollectorRejectsEmptyTaskTopic 确保每个业务类型都显式配置可用 Topic。
+func TestValidateCollectorRejectsEmptyTaskTopic(t *testing.T) {
+	cfg := validCollectorConfig()
+	cfg.Collector.Tasks[config.CollectorBizTypeAuthSecurity] = config.CollectorTaskConfig{}
+	if err := ValidateCollector(cfg); err == nil {
+		t.Fatal("expected empty collector task topic to be rejected")
+	}
+}
+
+// validCollectorConfig 返回满足 API Collector 校验的最小配置。
+func validCollectorConfig() config.Config {
+	return config.Config{
+		Collector: config.CollectorConfig{
+			Enabled: true,
+			Kafka: config.CollectorKafkaConfig{
+				Brokers: []string{"127.0.0.1:9092"},
+			},
+			Tasks: map[string]config.CollectorTaskConfig{
+				config.CollectorBizTypeAuthSecurity: {Topic: config.CollectorTopicAuthSecurity},
+			},
+		},
 	}
 }

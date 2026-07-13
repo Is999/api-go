@@ -15,12 +15,22 @@ Timeout: 30000
 # HTTP 请求体最大字节数。
 MaxBytes: 10485760
 
+# 内网接口独立监听器；生产跨主机调用必须改为明确私网 IP 并配置 mTLS。
+internal_server:
+  host: "127.0.0.1"
+  port: 8891
+  cert_file: ""
+  key_file: ""
+  client_ca_file: ""
+
 # 站点/应用 ID，用于 Redis Key 命名空间。
 app_id: "1"
 # 应用密钥，用于安全链路扩展；生产环境请替换为强随机字符串。
 app_key: "replace-with-strong-app-key"
 # 当前实例 ID；为空时使用主机名，建议容器环境注入 Pod 名。
 instance_id: ""
+# 可信反向代理 IP/CIDR；空列表仅信任本机回环代理，生产按 LB/Ingress 实际网段收窄配置。
+trusted_proxies: []
 
 # 基于 github.com/bwmarrin/snowflake 的分布式雪花 ID；多实例通过 Redis 租约自动分配 node_id。
 snowflake:
@@ -31,8 +41,8 @@ snowflake:
     # node_id 租约作用域；同一套 api/admin 部署必须一致。
     scope: "main"
     # node_id 租约 TTL，单位秒。
-    lease_seconds: 120
-    # node_id 租约续期间隔，单位秒，必须小于 lease_seconds。
+    lease_seconds: 120 # 允许 10-86400 秒。
+    # node_id 租约续期间隔，单位秒，必须小于 lease_seconds 的一半。
     renew_interval_seconds: 30
     # 按业务 namespace 限制可竞争 node_id 池大小；未配置时使用完整 0-1023。
     namespaces:
@@ -62,9 +72,9 @@ snowflake:
     #     # Redis 高水位初始化值；0 表示首个 ID 从 1 开始。
     #     start: 0
 
-# 业务用户写入路由；提升前必须完成联系方式安全字段、user_identity_* 回填、目标表创建和多实例同步重启。
+# 业务用户物理表路由配置。
 user:
-  # 新增用户默认物理表数量，仅支持 1/2/4/8/16/32/64/128/256/512/1024。
+  # 当前用户物理表数量，仅支持 1/2/4/.../1024；Admin/API 必须保持一致。
   route_shard_count: 1
 
 # JWT 密钥，请替换为强随机字符串，并保证多实例配置一致。
@@ -189,9 +199,9 @@ security:
 #   secret_key:
 #     # 密钥版本，对应 X-Key-Version。
 #     key_version: "v1"
-#     # 签名验签状态：1启用，0停用。
+#     # 签名验签状态：1启用，0停用；与加密解密开关独立。
 #     sign_status: 1
-#     # 加密解密状态：1启用，0停用。
+#     # 加密解密状态：1启用，0停用；与签名验签开关独立。
 #     crypto_status: 1
 #     # 生产启用灰度时必须配置 gray_salt，并保证 stable/gray 版本均存在。
 #     # stable_version: "v1"
@@ -203,10 +213,10 @@ security:
 #     rsa_public_key_user_ref: "/run/secrets/api/rsa_public_key_user.pem"
 #     rsa_private_key_server_ref: "/run/secrets/api/rsa_private_key_server.pem"
 
-# 通用收集器，默认关闭；开启后只负责把结构化事件投递到 Kafka。
+# 通用收集器；API 只负责把结构化事件投递到 Kafka，Admin Worker 负责消费闭环。
 collector:
-  # 是否启用通用收集器。
-  enabled: false
+  # 生产环境必须启用，避免认证风控事件静默丢失。
+  enabled: true
   # Kafka 正常链路配置。
   kafka:
     # Kafka broker 地址列表。
@@ -218,22 +228,18 @@ collector:
     write_batch_wait_milliseconds: 20
     # Producer 写入超时时间，单位秒。
     write_timeout: 3
-  # 未单独配置 bizType 时的默认任务路由。
-  default_task:
-    # 默认 Kafka Topic；具体任务建议按 bizType 单独配置。
-    topic: "api_collector_events"
-  # 按 bizType 扩展投递 Topic；key 必须等于 Event.BizType。
+  # 按 bizType 显式配置投递 Topic；key 必须等于 Event.BizType。
   tasks:
     # 前台认证风控事件。
     auth.security:
-      # Kafka Topic。
+      # 固定 Kafka Topic，必须与 Admin auth.security 消费任务一致。
       topic: "api_collector_auth_security_events"
 
-# 运维级接口保护；内网热加载和运行态同步接口必须携带 X-Ops-Token 与 HMAC 签名。
+# 运维级接口保护；内网接口必须携带 token、时间戳、随机 nonce、请求体摘要和 HMAC。
 ops:
-  # 生产环境必须通过密钥管理注入强随机令牌，留空会拒绝访问运维接口。
-  config_reload_token: ""
-  # 可选内网 IP 或 CIDR 白名单，留空表示允许本机、私有地址和链路本地地址。
+  # 生产环境必须通过密钥管理注入强随机令牌，并替换占位值。
+  config_reload_token: "replace-with-strong-ops-token"
+  # 可选内网 IP 或 CIDR 白名单，留空表示允许本机和私有地址。
   config_reload_allowed_ips: []
 
 # MySQL 主库配置。

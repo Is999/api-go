@@ -39,6 +39,11 @@ func (m *CryptoMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		policy := security.PolicyByRoute(requestRouteAlias(r))
 		requestCipher := strings.TrimSpace(r.Header.Get("X-Cipher"))
+		// 无请求密文且路由未声明响应加密时直接透传，避免普通响应进入无上限整包缓冲。
+		if requestCipher == "" && len(policy.ResponseCipher) == 0 {
+			next(w, r)
+			return
+		}
 		// 未配置秘钥且请求未声明加密时保持普通 JSON 链路。
 		if !securityConfigConfigured(m.svc) && requestCipher == "" {
 			next(w, r)
@@ -63,14 +68,14 @@ func (m *CryptoMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 			}
 			cryptoEnabled = routeConfig.CryptoEnabled()
 		}
-		// 加密链路关闭时拒绝已声明的密文请求，普通响应则清理加密响应头。
+		// 加密链路关闭时拒绝已声明的密文请求，普通请求直接透传。
 		if !cryptoEnabled {
 			if requestCipher != "" {
 				m.fail(w, r, codes.AuthFailed, authlogic.AuthEventReasonCryptoDisabled, errors.New("当前应用已关闭加密解密链路"))
 				return
 			}
-			r.Header.Del("X-Cipher")
-			r.Header.Del("X-Crypto")
+			next(w, r)
+			return
 		}
 		if cryptoEnabled && requestCipher != "" {
 			requestCipherParams, err = decodeAndValidateCipherParams(requestCipher, policy.RequestCipher, "请求")
@@ -92,6 +97,9 @@ func (m *CryptoMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 
 		recorder := newBodyRecorder()
 		next(recorder, r)
+		if flushSecurityFailureResponse(w, recorder) {
+			return
+		}
 
 		responseCipher := strings.TrimSpace(recorder.Header().Get("X-Cipher"))
 		// 路由策略存在响应敏感字段时，由后端统一声明响应加密字段。
@@ -435,11 +443,13 @@ func recordResolvedSecretKeyVersion(r *http.Request, resolvedVersion string) {
 
 // fail 写出加密中间件失败响应。
 func (m *CryptoMiddleware) fail(w http.ResponseWriter, r *http.Request, code int, reason string, err error) {
+	clearSecurityResponseHeaders(w.Header())
 	code = resolveSecurityFailureCode(reason, code, err)
+	httpStatus := codes.HTTPStatus(code)
 	reason = resolveSecurityFailureReason(reason, err)
 	emitSecurityFailureEvent(r.Context(), m.svc, reason)
 	helper.NewJSONResp(r.Context(), w).
-		SetHTTPStatus(http.StatusOK).
+		SetHTTPStatus(httpStatus).
 		SetCode(code).
 		SetError(err).
 		Fail("")

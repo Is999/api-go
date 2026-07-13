@@ -8,9 +8,9 @@
       "access": "public",
       "chain": "none",
       "describe": "存活检查",
-      "requestSign": [],
+      "requestSign": null,
       "requestCipher": [],
-      "responseSign": [],
+      "responseSign": null,
       "responseCipher": [],
       "documentPath": "docs/site/接口文档/前台系统/健康检查接口.md"
     },
@@ -21,9 +21,9 @@
       "access": "public",
       "chain": "none",
       "describe": "就绪检查",
-      "requestSign": [],
+      "requestSign": null,
       "requestCipher": [],
-      "responseSign": [],
+      "responseSign": null,
       "responseCipher": [],
       "documentPath": "docs/site/接口文档/前台系统/健康检查接口.md"
     },
@@ -34,9 +34,9 @@
       "access": "public",
       "chain": "none",
       "describe": "指标抓取",
-      "requestSign": [],
+      "requestSign": null,
       "requestCipher": [],
-      "responseSign": [],
+      "responseSign": null,
       "responseCipher": [],
       "documentPath": "docs/site/接口文档/前台系统/健康检查接口.md"
     },
@@ -61,7 +61,9 @@
       ],
       "responseSign": [
         "token",
-        "expiresAt"
+        "expiresAt",
+        "user.email",
+        "user.phone"
       ],
       "responseCipher": [
         "token",
@@ -88,7 +90,9 @@
       ],
       "responseSign": [
         "token",
-        "expiresAt"
+        "expiresAt",
+        "user.email",
+        "user.phone"
       ],
       "responseCipher": [
         "token",
@@ -104,7 +108,7 @@
       "access": "auth",
       "chain": "auth",
       "describe": "刷新访问令牌",
-      "requestSign": [],
+      "requestSign": null,
       "requestCipher": [],
       "responseSign": [
         "token",
@@ -124,7 +128,7 @@
       "describe": "前台用户退出登录",
       "requestSign": [],
       "requestCipher": [],
-      "responseSign": [],
+      "responseSign": null,
       "responseCipher": [],
       "documentPath": "docs/site/接口文档/前台系统/认证接口.md"
     },
@@ -135,9 +139,12 @@
       "access": "auth",
       "chain": "auth",
       "describe": "获取当前用户资料",
-      "requestSign": [],
+      "requestSign": null,
       "requestCipher": [],
-      "responseSign": [],
+      "responseSign": [
+        "email",
+        "phone"
+      ],
       "responseCipher": [
         "email",
         "phone"
@@ -151,9 +158,9 @@
       "access": "internal",
       "chain": "internal",
       "describe": "内网同步前台用户运行态缓存",
-      "requestSign": [],
+      "requestSign": null,
       "requestCipher": [],
-      "responseSign": [],
+      "responseSign": null,
       "responseCipher": [],
       "documentPath": "docs/site/接口文档/前台系统/用户接口.md"
     },
@@ -164,9 +171,9 @@
       "access": "internal",
       "chain": "internal",
       "describe": "内网查询配置热加载状态",
-      "requestSign": [],
+      "requestSign": null,
       "requestCipher": [],
-      "responseSign": [],
+      "responseSign": null,
       "responseCipher": [],
       "documentPath": "docs/site/接口文档/前台系统/系统接口.md"
     },
@@ -177,9 +184,9 @@
       "access": "internal",
       "chain": "internal",
       "describe": "内网查询运行态配置项",
-      "requestSign": [],
+      "requestSign": null,
       "requestCipher": [],
-      "responseSign": [],
+      "responseSign": null,
       "responseCipher": [],
       "documentPath": "docs/site/接口文档/前台系统/系统接口.md"
     },
@@ -190,9 +197,9 @@
       "access": "internal",
       "chain": "internal",
       "describe": "内网手动触发配置热加载",
-      "requestSign": [],
+      "requestSign": null,
       "requestCipher": [],
-      "responseSign": [],
+      "responseSign": null,
       "responseCipher": [],
       "documentPath": "docs/site/接口文档/前台系统/系统接口.md"
     },
@@ -203,9 +210,9 @@
       "access": "internal",
       "chain": "internal",
       "describe": "内网读取API文档站根级资源",
-      "requestSign": [],
+      "requestSign": null,
       "requestCipher": [],
-      "responseSign": [],
+      "responseSign": null,
       "responseCipher": [],
       "documentPath": "docs/site/接口文档/前台系统/系统接口.md"
     },
@@ -216,9 +223,9 @@
       "access": "internal",
       "chain": "internal",
       "describe": "内网读取API文档二级资源",
-      "requestSign": [],
+      "requestSign": null,
       "requestCipher": [],
-      "responseSign": [],
+      "responseSign": null,
       "responseCipher": [],
       "documentPath": "docs/site/接口文档/前台系统/系统接口.md"
     },
@@ -229,9 +236,9 @@
       "access": "internal",
       "chain": "internal",
       "describe": "内网读取API文档三级资源",
-      "requestSign": [],
+      "requestSign": null,
       "requestCipher": [],
-      "responseSign": [],
+      "responseSign": null,
       "responseCipher": [],
       "documentPath": "docs/site/接口文档/前台系统/系统接口.md"
     }

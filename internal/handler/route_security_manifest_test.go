@@ -37,10 +37,10 @@ func TestDefaultRouteSecurityManifestMatchesRouteContracts(t *testing.T) {
 func TestDefaultRouteSecurityManifestMatchesPolicies(t *testing.T) {
 	for _, item := range DefaultRouteSecurityManifest() {
 		policy := security.PolicyByRoute(string(item.Alias))
-		if !reflect.DeepEqual(item.RequestSign, emptyToNil(policy.RequestSign)) ||
-			!reflect.DeepEqual(item.RequestCipher, emptyToNil(policy.RequestCipher)) ||
-			!reflect.DeepEqual(item.ResponseSign, emptyToNil(policy.ResponseSign)) ||
-			!reflect.DeepEqual(item.ResponseCipher, emptyToNil(policy.ResponseCipher)) {
+		if !reflect.DeepEqual(item.RequestSign, policy.RequestSign) ||
+			!reflect.DeepEqual(item.RequestCipher, policy.RequestCipher) ||
+			!reflect.DeepEqual(item.ResponseSign, policy.ResponseSign) ||
+			!reflect.DeepEqual(item.ResponseCipher, policy.ResponseCipher) {
 			t.Fatalf("manifest policy mismatch alias=%s item=%+v policy=%+v", item.Alias, item, policy)
 		}
 	}
@@ -73,14 +73,6 @@ func TestDefaultRouteSecurityManifestMatchesFrontendSnapshot(t *testing.T) {
 	if strings.TrimSpace(string(body)) != strings.TrimSpace(want) {
 		t.Fatalf("route security manifest snapshot drifted, update docs/site/route_security_manifest.json")
 	}
-}
-
-// emptyToNil 表示测试辅助逻辑。
-func emptyToNil(fields []string) []string {
-	if len(fields) == 0 {
-		return nil
-	}
-	return fields
 }
 
 // routeSecurityManifestSnapshot 表示测试使用的辅助结构。
@@ -128,9 +120,9 @@ func routeSecurityManifestSnapshotItems(items []RouteSecurityManifestItem) []rou
 			Access:         item.Access,
 			Chain:          item.Chain,
 			Describe:       item.Describe,
-			RequestSign:    emptyToSlice(item.RequestSign),
+			RequestSign:    item.RequestSign,
 			RequestCipher:  emptyToSlice(item.RequestCipher),
-			ResponseSign:   emptyToSlice(item.ResponseSign),
+			ResponseSign:   item.ResponseSign,
 			ResponseCipher: emptyToSlice(item.ResponseCipher),
 			DocumentPath:   item.DocumentPath,
 		})

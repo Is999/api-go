@@ -8,7 +8,7 @@ import (
 
 // CacheIsEmptyMarker 判断缓存值是否为空值占位符。
 func CacheIsEmptyMarker(value string) bool {
-	return value == keys.EmptyValueMarker || value == "__EMPTY__"
+	return value == keys.EmptyValueMarker
 }
 
 // JitterTTL 为基础过期时间添加抖动，降低同类缓存集中失效导致的雪崩风险。

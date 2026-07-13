@@ -8,7 +8,12 @@ import (
 	"github.com/Is999/go-utils/errors"
 )
 
-const maxCollectorKafkaWriteBatchWaitMilliseconds = 5000 // API 请求链路内 Producer 聚合等待上限。
+// API Collector Kafka Producer 配置上限。
+const (
+	maxCollectorKafkaWriteBatchSize             = 5000 // Producer 单批写入上限
+	maxCollectorKafkaWriteBatchWaitMilliseconds = 5000 // 请求链路内 Producer 聚合等待上限，单位毫秒
+	maxCollectorKafkaWriteTimeoutSeconds        = 30   // 请求链路内 Producer 写入超时上限，单位秒
+)
 
 // ValidateCollector 校验 API Collector Kafka 投递配置是否自洽。
 func ValidateCollector(c config.Config) error {
@@ -19,24 +24,24 @@ func ValidateCollector(c config.Config) error {
 	if len(nonEmptyStrings(cfg.Kafka.Brokers)) == 0 {
 		return errors.Errorf("collector.enabled=true 时必须配置 collector.kafka.brokers")
 	}
-	if cfg.Kafka.WriteBatchSize < 0 {
-		return errors.Errorf("collector.kafka.write_batch_size 不能小于 0")
+	if cfg.Kafka.WriteBatchSize < 0 || cfg.Kafka.WriteBatchSize > maxCollectorKafkaWriteBatchSize {
+		return errors.Errorf("collector.kafka.write_batch_size 必须在 0-%d 之间", maxCollectorKafkaWriteBatchSize)
 	}
 	if cfg.Kafka.WriteBatchWaitMilliseconds < 0 || cfg.Kafka.WriteBatchWaitMilliseconds > maxCollectorKafkaWriteBatchWaitMilliseconds {
 		return errors.Errorf("collector.kafka.write_batch_wait_milliseconds 必须在 0-%d 之间", maxCollectorKafkaWriteBatchWaitMilliseconds)
 	}
-	if cfg.Kafka.WriteTimeout < 0 {
-		return errors.Errorf("collector.kafka.write_timeout 不能小于 0")
+	if cfg.Kafka.WriteTimeout < 0 || cfg.Kafka.WriteTimeout > maxCollectorKafkaWriteTimeoutSeconds {
+		return errors.Errorf("collector.kafka.write_timeout 必须在 0-%d 之间", maxCollectorKafkaWriteTimeoutSeconds)
 	}
-	if strings.TrimSpace(cfg.DefaultTask.Topic) == "" && len(cfg.Tasks) == 0 {
-		return errors.Errorf("collector.enabled=true 时必须配置 collector.default_task.topic 或 collector.tasks.<bizType>.topic")
+	if len(cfg.Tasks) == 0 {
+		return errors.Errorf("collector.enabled=true 时必须配置 collector.tasks.<bizType>.topic")
 	}
 	for bizType, task := range cfg.Tasks {
 		bizType = strings.TrimSpace(bizType)
 		if bizType == "" {
 			return errors.Errorf("collector.tasks 存在空 bizType")
 		}
-		if strings.TrimSpace(task.Topic) == "" && strings.TrimSpace(cfg.DefaultTask.Topic) == "" {
+		if strings.TrimSpace(task.Topic) == "" {
 			return errors.Errorf("collector.tasks.%s.topic 不能为空", bizType)
 		}
 	}

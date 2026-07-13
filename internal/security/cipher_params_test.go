@@ -1,0 +1,33 @@
+package security
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"testing"
+)
+
+// TestEncodeCipherParams 验证对应场景符合预期。
+func TestEncodeCipherParams(t *testing.T) {
+	if got := EncodeCipherParams([]string{CipherWholeBody}); got != "" {
+		t.Fatalf("EncodeCipherParams whole body = %q, want empty", got)
+	}
+
+	got := EncodeCipherParams([]string{"token", " token ", "", "user.email"})
+	body, err := base64.StdEncoding.DecodeString(got)
+	if err != nil {
+		t.Fatalf("DecodeString() error = %v", err)
+	}
+	var params []string
+	if err := json.Unmarshal(body, &params); err != nil {
+		t.Fatalf("Unmarshal() error = %v", err)
+	}
+	want := []string{"token", "user.email"}
+	if len(params) != len(want) {
+		t.Fatalf("params len = %d, want %d", len(params), len(want))
+	}
+	for i := range want {
+		if params[i] != want[i] {
+			t.Fatalf("params[%d] = %q, want %q", i, params[i], want[i])
+		}
+	}
+}

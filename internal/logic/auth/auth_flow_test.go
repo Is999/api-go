@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"encoding/json"
-	stderrors "errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -13,6 +12,7 @@ import (
 
 	codes "api/common/codes"
 	"api/common/idgen"
+	keys "api/common/rediskeys"
 	"api/internal/config"
 	"api/internal/infra/collectorx"
 	userlogic "api/internal/logic/user"
@@ -44,8 +44,8 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 	if registerResp.User == nil || registerResp.User.ID <= 0 || registerResp.User.Email != "de***o@example.com" || registerResp.User.Phone != "138****0000" {
 		t.Fatalf("register user = %+v, want created profile", registerResp.User)
 	}
-	registerJTI := requireSessionToken(t, svcCtx, rds, registerResp.User.ID, registerResp.Token)
-	requireSessionIndexMembers(t, svcCtx, rds, registerResp.User.ID, []string{registerJTI})
+	registerSID := requireSessionToken(t, svcCtx, rds, registerResp.User.ID, registerResp.Token)
+	requireSessionIndexMembers(t, rds, registerResp.User.ID, []string{registerSID})
 
 	loginCtx := authFlowContext(AuthEventActionLoginSuccess, string(routealias.AuthLogin), http.MethodPost, "/api/auth/login", "10.0.0.9")
 	loginResp := requireAuthTokenResp(t, NewAuthLogic(loginCtx, svcCtx).Login(&types.LoginReq{
@@ -56,10 +56,11 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 	if loginResp.Token == registerResp.Token {
 		t.Fatal("login token should differ from register token")
 	}
-	loginJTI := requireSessionToken(t, svcCtx, rds, loginResp.User.ID, loginResp.Token)
-	requireSessionIndexMembers(t, svcCtx, rds, loginResp.User.ID, []string{registerJTI, loginJTI})
+	loginSID := requireSessionToken(t, svcCtx, rds, loginResp.User.ID, loginResp.Token)
+	requireSessionIndexMembers(t, rds, loginResp.User.ID, []string{registerSID, loginSID})
 
-	user, err := model.FindUserByIdentity(svcCtx.WriteDB(svc.DatabaseMain), model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, "demo_user", svcCtx.CurrentConfig().AppKey)
+	cfg := svcCtx.CurrentConfig()
+	user, err := model.FindUserByIdentity(svcCtx.WriteDB(svc.DatabaseMain), model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, "demo_user", cfg.AppKey, cfg.User.RouteShardCount)
 	if err != nil {
 		t.Fatalf("FindUserByIdentity(username) error = %v", err)
 	}
@@ -70,10 +71,10 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FindUserIdentity(phone) error = %v", err)
 	}
-	if identity == nil || identity.UserID != user.ID || identity.UserShardNo != user.ShardNo || identity.UserRouteShardCount != model.UserRouteShardCountDefault {
-		t.Fatalf("user identity = %+v, want user_id=%d user_shard_no=%d route=1", identity, user.ID, user.ShardNo)
+	if identity == nil || identity.UserID != user.ID || identity.UserShardNo != user.ShardNo {
+		t.Fatalf("user identity = %+v, want user_id=%d user_shard_no=%d", identity, user.ID, user.ShardNo)
 	}
-	if err := model.UpdateUserProfileWithIdentities(svcCtx.WriteDB(svc.DatabaseMain), user.ID, map[string]any{"email": "changed@example.com"}, svcCtx.CurrentConfig().AppKey); err != nil {
+	if err := model.UpdateUserProfileWithIdentities(svcCtx.WriteDB(svc.DatabaseMain), user.ID, map[string]any{"email": "changed@example.com"}, cfg.AppKey, cfg.User.RouteShardCount); err != nil {
 		t.Fatalf("UpdateUserProfileWithIdentities(email) error = %v", err)
 	}
 
@@ -91,17 +92,22 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 	if refreshResp.User == nil || refreshResp.User.Email != "ch****d@example.com" {
 		t.Fatalf("refresh user = %+v, want latest primary DB profile", refreshResp.User)
 	}
-	refreshJTI := requireSessionToken(t, svcCtx, rds, refreshResp.User.ID, refreshResp.Token)
-	requireSessionMissing(t, svcCtx, rds, refreshResp.User.ID, loginJTI)
-	requireSessionIndexMembers(t, svcCtx, rds, refreshResp.User.ID, []string{registerJTI, refreshJTI})
+	refreshSID := requireSessionToken(t, svcCtx, rds, refreshResp.User.ID, refreshResp.Token)
+	_, loginJTI := tokenSessionClaimsForTest(loginResp.Token, svcCtx.CurrentConfig().JwtSecret)
+	_, refreshJTI := tokenSessionClaimsForTest(refreshResp.Token, svcCtx.CurrentConfig().JwtSecret)
+	if refreshSID != loginSID || refreshJTI == "" || refreshJTI == loginJTI {
+		t.Fatalf("refresh claims sid=%q jti=%q, want sid=%q and a new jti", refreshSID, refreshJTI, loginSID)
+	}
+	requireSessionTokenNotCurrent(t, rds, refreshResp.User.ID, loginSID, loginResp.Token)
+	requireSessionIndexMembers(t, rds, refreshResp.User.ID, []string{registerSID, refreshSID})
 
 	logoutCtx := authFlowAuthenticatedContext(string(routealias.AuthLogout), http.MethodPost, "/api/auth/logout", "10.0.0.9", refreshResp)
 	logoutResult := NewAuthLogic(logoutCtx, svcCtx).Logout()
 	if logoutResult == nil || !logoutResult.IsSuccess() || logoutResult.Code != codes.Success {
 		t.Fatalf("Logout() = %+v, want success", logoutResult)
 	}
-	requireSessionMissing(t, svcCtx, rds, refreshResp.User.ID, refreshJTI)
-	requireSessionIndexMembers(t, svcCtx, rds, refreshResp.User.ID, []string{registerJTI})
+	requireSessionMissing(t, rds, refreshResp.User.ID, refreshSID)
+	requireSessionIndexMembers(t, rds, refreshResp.User.ID, []string{registerSID})
 
 	requireAuthFlowEvents(t, *seen, []authFlowEventWant{
 		{action: AuthEventActionRegisterSuccess, reason: AuthEventReasonSessionCreated, route: string(routealias.AuthRegister)},
@@ -109,6 +115,56 @@ func TestAuthMainFlowIntegration(t *testing.T) {
 		{action: AuthEventActionRefreshSuccess, reason: AuthEventReasonSessionRotated, route: string(routealias.AuthRefresh)},
 		{action: AuthEventActionLogoutSuccess, reason: AuthEventReasonCurrentSessionDeleted, route: string(routealias.AuthLogout)},
 	})
+}
+
+// TestRegisterRollsBackDatabaseWhenSessionCreationFails 确保 Redis 会话失败不会留下无法重试的半注册账号。
+func TestRegisterRollsBackDatabaseWhenSessionCreationFails(t *testing.T) {
+	svcCtx, _, _ := newAuthFlowTestService(t)
+	svcCtx.Rds = nil
+	result := NewAuthLogic(authFlowContext(AuthEventActionRegisterSuccess, string(routealias.AuthRegister), http.MethodPost, "/api/auth/register", "10.0.0.8"), svcCtx).Register(&types.RegisterReq{
+		Username: "rollback_user",
+		Password: "P@ssw0rd!",
+	})
+	if result == nil || result.Code != codes.ServerError {
+		t.Fatalf("Register() = %+v, want server error", result)
+	}
+	identity, err := model.FindUserIdentity(svcCtx.WriteDB(svc.DatabaseMain), model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, "rollback_user", svcCtx.CurrentConfig().AppKey)
+	if err != nil {
+		t.Fatalf("FindUserIdentity() error = %v", err)
+	}
+	if identity != nil {
+		t.Fatalf("identity = %+v, want transaction rollback", identity)
+	}
+}
+
+// TestRuntimeSyncRequiresCommittedAuthVersion 确保内网会话失效只接受主库已提交的新认证版本。
+func TestRuntimeSyncRequiresCommittedAuthVersion(t *testing.T) {
+	svcCtx, rds, _ := newAuthFlowTestService(t)
+	registerResp := requireAuthTokenResp(t, NewAuthLogic(authFlowContext(AuthEventActionRegisterSuccess, string(routealias.AuthRegister), http.MethodPost, "/api/auth/register", "10.0.0.8"), svcCtx).Register(&types.RegisterReq{
+		Username: "version_user",
+		Password: "P@ssw0rd!",
+	}), codes.CreateSuccess)
+	sessionID := requireSessionToken(t, svcCtx, rds, registerResp.User.ID, registerResp.Token)
+
+	// 测试直接模拟后台敏感变更事务已提交；生产通用 UpdateUser 不允许修改认证版本。
+	if err := svcCtx.WriteDB(svc.DatabaseMain).Table(model.TableNameUser).Where("id = ?", registerResp.User.ID).Update("auth_version", uint64(2)).Error; err != nil {
+		t.Fatalf("commit auth_version error = %v", err)
+	}
+	stale := NewAuthLogic(context.Background(), svcCtx).SyncUserRuntime(&types.UserRuntimeSyncReq{
+		ID: registerResp.User.ID, Sessions: true, AuthVersion: 3,
+	})
+	if stale == nil || stale.Code != codes.ServerError {
+		t.Fatalf("SyncUserRuntime(stale) = %+v, want server error", stale)
+	}
+	requireSessionToken(t, svcCtx, rds, registerResp.User.ID, registerResp.Token)
+
+	synced := NewAuthLogic(context.Background(), svcCtx).SyncUserRuntime(&types.UserRuntimeSyncReq{
+		ID: registerResp.User.ID, Sessions: true, AuthVersion: 2,
+	})
+	if synced == nil || synced.Code != codes.UpdateSuccess {
+		t.Fatalf("SyncUserRuntime(committed) = %+v, want update success", synced)
+	}
+	requireSessionMissing(t, rds, registerResp.User.ID, sessionID)
 }
 
 // authFlowEventWant 表示认证主流程期望采集到的风控事件关键字段。
@@ -193,6 +249,7 @@ type authFlowUserSQLite struct {
 	PhoneKeyVersion string    `gorm:"column:phone_key_version;type:varchar(32);not null;default:''"`                                                                  // 手机号密钥版本
 	Avatar          string    `gorm:"column:avatar;type:varchar(255);not null;default:''"`                                                                            // 头像
 	Status          int       `gorm:"column:status;type:tinyint;not null;default:1;index:idx_user_status_id,priority:1"`                                              // 用户状态
+	AuthVersion     uint64    `gorm:"column:auth_version;type:bigint unsigned;not null;default:1"`                                                                    // 认证版本
 	LastLoginAt     time.Time `gorm:"column:last_login_at;type:datetime"`                                                                                             // 最后登录时间
 	LastLoginIP     string    `gorm:"column:last_login_ip;type:varchar(45);not null;default:''"`                                                                      // 最后登录 IP
 	CreatedAt       time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP"`                                                             // 创建时间
@@ -206,15 +263,14 @@ func (*authFlowUserSQLite) TableName() string {
 
 // authFlowUserIdentitySQLite 使用 SQLite 创建用户身份索引表，业务读写仍走 model.UserIdentity。
 type authFlowUserIdentitySQLite struct {
-	ID                  uint64    `gorm:"column:id;type:integer;primaryKey;autoIncrement:true"`               // 主键
-	Provider            string    `gorm:"column:provider;type:varchar(32);not null;default:''"`               // 三方提供方
-	IdentityValue       string    `gorm:"column:identity_value;type:varchar(191);not null;default:''"`        // 身份值
-	IdentityHash        string    `gorm:"column:identity_hash;type:char(64);not null;default:''"`             // 联系方式身份哈希
-	UserID              int64     `gorm:"column:user_id;type:integer;not null"`                               // 用户 ID
-	UserShardNo         int       `gorm:"column:user_shard_no;type:int;not null"`                             // 用户分片
-	UserRouteShardCount int       `gorm:"column:user_route_shard_count;type:int;not null;default:1"`          // 用户物理表数量
-	CreatedAt           time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP"` // 创建时间
-	UpdatedAt           time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP"` // 更新时间
+	ID            uint64    `gorm:"column:id;type:integer;primaryKey;autoIncrement:true"`               // 主键
+	Provider      string    `gorm:"column:provider;type:varchar(32);not null;default:''"`               // 三方提供方
+	IdentityValue string    `gorm:"column:identity_value;type:varchar(191);not null;default:''"`        // 身份值
+	IdentityHash  string    `gorm:"column:identity_hash;type:char(64);not null;default:''"`             // 联系方式身份哈希
+	UserID        int64     `gorm:"column:user_id;type:integer;not null"`                               // 用户 ID
+	UserShardNo   int       `gorm:"column:user_shard_no;type:int;not null"`                             // 用户分片
+	CreatedAt     time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP"` // 创建时间
+	UpdatedAt     time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP"` // 更新时间
 }
 
 // TableName 返回认证流程 SQLite 身份索引测试模型映射的真实表名。
@@ -287,6 +343,8 @@ func authFlowAuthenticatedContext(route string, method string, path string, clie
 	if tokenResp != nil && tokenResp.User != nil {
 		requestctx.SetUser(ctx, tokenResp.User.ID, tokenResp.User.Username, clientIP)
 		requestctx.SetAccessToken(ctx, tokenResp.Token)
+		sessionID, _ := tokenSessionClaimsForTest(tokenResp.Token, "test-secret-please-change")
+		requestctx.SetSessionID(ctx, sessionID)
 	}
 	return ctx
 }
@@ -317,39 +375,51 @@ func requireUserProfile(t *testing.T, result *types.BizResult, code int) *types.
 	return profile
 }
 
-// requireSessionToken 断言 Redis session token 存在并返回 token 中的 jti。
+// requireSessionToken 断言 Redis session token 存在并返回 token 中的稳定 sid。
 func requireSessionToken(t *testing.T, svcCtx *svc.ServiceContext, rds redis.UniversalClient, userID int64, token string) string {
 	t.Helper()
-	jti := tokenJTI(token, svcCtx.CurrentConfig().JwtSecret)
-	if jti == "" {
-		t.Fatal("token jti is empty")
+	sessionID, jti := tokenSessionClaimsForTest(token, svcCtx.CurrentConfig().JwtSecret)
+	if sessionID == "" || jti == "" {
+		t.Fatal("token sid or jti is empty")
 	}
-	logicObj := NewAuthLogic(context.Background(), svcCtx)
-	got, err := rds.Get(context.Background(), logicObj.userSessionKey(userID, jti)).Result()
+	got, err := rds.HGet(context.Background(), keys.UserSessionHashKey(userID), sessionID).Result()
 	if err != nil {
-		t.Fatalf("Get(session %s) error = %v", jti, err)
+		t.Fatalf("Get(session %s) error = %v", sessionID, err)
 	}
 	if got != token {
-		t.Fatalf("session token mismatch jti=%s", jti)
+		t.Fatalf("session token mismatch sid=%s", sessionID)
 	}
-	return jti
+	return sessionID
 }
 
-// requireSessionMissing 断言指定 jti 对应的 Redis session 已不存在。
-func requireSessionMissing(t *testing.T, svcCtx *svc.ServiceContext, rds redis.UniversalClient, userID int64, jti string) {
+// requireSessionMissing 断言指定 sid 对应的 Redis session 已不存在。
+func requireSessionMissing(t *testing.T, rds redis.UniversalClient, userID int64, sessionID string) {
 	t.Helper()
-	logicObj := NewAuthLogic(context.Background(), svcCtx)
-	err := rds.Get(context.Background(), logicObj.userSessionKey(userID, jti)).Err()
-	if !stderrors.Is(err, redis.Nil) {
-		t.Fatalf("session %s err = %v, want redis.Nil", jti, err)
+	exists, err := rds.HExists(context.Background(), keys.UserSessionHashKey(userID), sessionID).Result()
+	if err != nil {
+		t.Fatalf("HExists(session %s) error = %v", sessionID, err)
+	}
+	if exists {
+		t.Fatalf("session %s exists, want missing", sessionID)
 	}
 }
 
-// requireSessionIndexMembers 断言用户 session 索引中仅包含期望的 jti 集合。
-func requireSessionIndexMembers(t *testing.T, svcCtx *svc.ServiceContext, rds redis.UniversalClient, userID int64, want []string) {
+// requireSessionTokenNotCurrent 断言指定旧 token 已被同 sid 下的新 token 覆盖。
+func requireSessionTokenNotCurrent(t *testing.T, rds redis.UniversalClient, userID int64, sessionID string, oldToken string) {
 	t.Helper()
-	logicObj := NewAuthLogic(context.Background(), svcCtx)
-	got, err := rds.ZRange(context.Background(), logicObj.userSessionIndexKey(userID), 0, -1).Result()
+	current, err := rds.HGet(context.Background(), keys.UserSessionHashKey(userID), sessionID).Result()
+	if err != nil {
+		t.Fatalf("HGet(session %s) error = %v", sessionID, err)
+	}
+	if current == oldToken {
+		t.Fatalf("session %s still stores the old token", sessionID)
+	}
+}
+
+// requireSessionIndexMembers 断言用户 session 索引中仅包含期望的 sid 集合。
+func requireSessionIndexMembers(t *testing.T, rds redis.UniversalClient, userID int64, want []string) {
+	t.Helper()
+	got, err := rds.ZRange(context.Background(), keys.UserSessionIndexKey(userID), 0, -1).Result()
 	if err != nil {
 		t.Fatalf("ZRange(session index) error = %v", err)
 	}

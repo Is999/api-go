@@ -13,16 +13,19 @@ import (
 
 // State 保存配置热加载运行态资源，零值可用。
 type State struct {
-	cancel     context.CancelFunc // 配置热加载后台协程取消函数
-	wg         sync.WaitGroup     // 等待配置热加载后台协程退出
-	stateMu    sync.RWMutex       // 保护 watcher 生命周期
-	statusMu   sync.Mutex         // 保护热加载状态快照更新
-	execMu     sync.Mutex         // 串行化实际配置重载
-	logMu      sync.Mutex         // 保护重复失败日志限频状态
-	watcherSeq uint64             // watcher 启动序号，避免旧协程退出时清掉新协程状态
-	activeSeq  uint64             // 当前运行中的 watcher 序号
-	lastError  string             // 最近一次失败日志签名
-	lastLogAt  time.Time          // 最近一次失败日志输出时间
+	watcher   *watcherRun  // 当前 watcher；停止完成前保持占位，阻止并发重启
+	stateMu   sync.RWMutex // 保护 watcher 生命周期
+	statusMu  sync.Mutex   // 保护热加载状态快照更新
+	execMu    sync.Mutex   // 串行化实际配置重载
+	logMu     sync.Mutex   // 保护重复失败日志限频状态
+	lastError string       // 最近一次失败日志签名
+	lastLogAt time.Time    // 最近一次失败日志输出时间
+}
+
+// watcherRun 保存单个 watcher 的取消与退出信号，避免 WaitGroup 的 Add/Wait 并发竞态。
+type watcherRun struct {
+	cancel context.CancelFunc // 取消当前 watcher
+	done   chan struct{}      // watcher 完全退出后关闭
 }
 
 // LockExec 锁定配置重载执行通道。
@@ -47,41 +50,43 @@ func (s *State) StartWatcher(run func(context.Context)) bool {
 		return false
 	}
 	s.stateMu.Lock()
-	if s.cancel != nil {
+	if s.watcher != nil {
 		s.stateMu.Unlock()
 		return false
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	s.watcherSeq++
-	seq := s.watcherSeq
-	s.cancel = cancel
-	s.activeSeq = seq
+	watcher := &watcherRun{cancel: cancel, done: make(chan struct{})}
+	s.watcher = watcher
 	s.stateMu.Unlock()
-	s.wg.Add(1)
 	go func() {
-		defer s.clearWatcher(seq)
-		defer s.wg.Done()
+		defer s.clearWatcher(watcher)
 		run(ctx)
 	}()
 	return true
 }
 
-// StopWatcher 停止热加载 watcher 并等待退出。
-func (s *State) StopWatcher() {
+// StopWatcher 停止热加载 watcher，并受应用统一停止期限约束。
+func (s *State) StopWatcher(ctx context.Context) error {
 	if s == nil {
-		return
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	s.stateMu.Lock()
-	if s.cancel == nil {
+	watcher := s.watcher
+	if watcher == nil {
 		s.stateMu.Unlock()
-		return
+		return nil
 	}
-	cancel := s.cancel
-	s.cancel = nil
-	s.activeSeq = 0
+	watcher.cancel()
 	s.stateMu.Unlock()
-	cancel()
-	s.wg.Wait()
+	select {
+	case <-watcher.done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // WatcherRunning 返回当前是否已有热加载 watcher 在运行。
@@ -91,16 +96,16 @@ func (s *State) WatcherRunning() bool {
 	}
 	s.stateMu.RLock()
 	defer s.stateMu.RUnlock()
-	return s.cancel != nil
+	return s.watcher != nil
 }
 
 // clearWatcher 在 watcher 自然退出后清理运行标记，允许后续重新启动。
-func (s *State) clearWatcher(seq uint64) {
+func (s *State) clearWatcher(watcher *watcherRun) {
 	s.stateMu.Lock()
-	if s.activeSeq == seq {
-		s.cancel = nil
-		s.activeSeq = 0
+	if s.watcher == watcher {
+		s.watcher = nil
 	}
+	close(watcher.done)
 	s.stateMu.Unlock()
 }
 

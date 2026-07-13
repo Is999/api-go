@@ -153,15 +153,15 @@ func validateSecuritySecretKeyVersion(item securitySecretKeyVersionItem, signEna
 		}
 	}
 	if signEnabled || cryptoEnabled {
-		if _, err := resolveSecurityRSAPublicKey(versionCfg.RSAPublicKeyUser, versionCfg.RSAPublicKeyUserRef, item.source+".rsa_public_key_user", production); err != nil {
+		if _, err := resolveSecurityRSAPublicKey(versionCfg.RSAPublicKeyUser, versionCfg.RSAPublicKeyUserRef, item.source+".rsa_public_key_user"); err != nil {
 			return errors.Wrap(err, "用户 RSA公钥不可用")
 		}
-		serverPrivatePEM, err := resolveSecurityRSAPrivateKey(versionCfg.RSAPrivateKeyServer, versionCfg.RSAPrivateKeyServerRef, item.source+".rsa_private_key_server", production)
+		serverPrivatePEM, err := resolveSecurityRSAPrivateKey(versionCfg.RSAPrivateKeyServer, versionCfg.RSAPrivateKeyServerRef, item.source+".rsa_private_key_server")
 		if err != nil {
 			return errors.Wrap(err, "服务端 RSA私钥不可用")
 		}
 		if hasSecuritySecretValue(versionCfg.RSAPublicKeyServer, versionCfg.RSAPublicKeyServerRef) {
-			if _, err := resolveSecurityRSAPublicKey(versionCfg.RSAPublicKeyServer, versionCfg.RSAPublicKeyServerRef, item.source+".rsa_public_key_server", production); err != nil {
+			if _, err := resolveSecurityRSAPublicKey(versionCfg.RSAPublicKeyServer, versionCfg.RSAPublicKeyServerRef, item.source+".rsa_public_key_server"); err != nil {
 				return errors.Wrap(err, "服务端 RSA公钥不可用")
 			}
 		} else if signEnabled {
@@ -173,15 +173,15 @@ func validateSecuritySecretKeyVersion(item securitySecretKeyVersionItem, signEna
 	return nil
 }
 
-// resolveSecuritySecretText 读取明文或文件引用秘钥，禁止同一字段双来源配置。
-func resolveSecuritySecretText(value string, ref string, name string, production bool) (string, error) {
+// resolveSecuritySecretText 读取明文或文件引用秘钥，并按调用方要求拒绝普通文本占位值。
+func resolveSecuritySecretText(value string, ref string, name string, rejectPlaceholder bool) (string, error) {
 	value = strings.TrimSpace(value)
 	ref = strings.TrimSpace(ref)
 	if value != "" && ref != "" {
 		return "", errors.Errorf("%s 只能配置明文或文件引用之一", name)
 	}
 	if value != "" {
-		if production && isPlaceholderSecret(value) {
+		if rejectPlaceholder && isPlaceholderSecret(value) {
 			return "", errors.Errorf("生产环境 %s 不能使用占位值", name)
 		}
 		return value, nil
@@ -197,15 +197,16 @@ func resolveSecuritySecretText(value string, ref string, name string, production
 	if text == "" {
 		return "", errors.Errorf("%s 文件内容为空", name)
 	}
-	if production && isPlaceholderSecret(text) {
+	if rejectPlaceholder && isPlaceholderSecret(text) {
 		return "", errors.Errorf("生产环境 %s 不能使用占位值", name)
 	}
 	return text, nil
 }
 
 // resolveSecurityRSAPublicKey 读取并校验 RSA 公钥 PEM。
-func resolveSecurityRSAPublicKey(value string, ref string, name string, production bool) (string, error) {
-	text, err := resolveSecuritySecretText(value, ref, name, production)
+func resolveSecurityRSAPublicKey(value string, ref string, name string) (string, error) {
+	// PEM 的 Base64 是随机材料，不能按普通文本搜索 todo 等占位词；有效性由严格密钥解析保证。
+	text, err := resolveSecuritySecretText(value, ref, name, false)
 	if err != nil {
 		return "", errors.Tag(err)
 	}
@@ -219,8 +220,9 @@ func resolveSecurityRSAPublicKey(value string, ref string, name string, producti
 }
 
 // resolveSecurityRSAPrivateKey 读取并校验 RSA 私钥 PEM。
-func resolveSecurityRSAPrivateKey(value string, ref string, name string, production bool) (string, error) {
-	text, err := resolveSecuritySecretText(value, ref, name, production)
+func resolveSecurityRSAPrivateKey(value string, ref string, name string) (string, error) {
+	// PEM 的 Base64 是随机材料，不能按普通文本搜索 todo 等占位词；有效性由严格密钥解析保证。
+	text, err := resolveSecuritySecretText(value, ref, name, false)
 	if err != nil {
 		return "", errors.Tag(err)
 	}
@@ -258,7 +260,10 @@ func configSecurityVersionItems(secretCfg config.SecuritySecretKeyConfig) ([]sec
 
 // configSecuritySecretKeyIsEmpty 判断配置文件秘钥段是否完全未填写。
 func configSecuritySecretKeyIsEmpty(secretCfg config.SecuritySecretKeyConfig) bool {
-	return strings.TrimSpace(secretCfg.KeyVersion) == "" &&
+	switchesEmpty := (secretCfg.SignStatus == 0 && secretCfg.CryptoStatus == 0) ||
+		(secretCfg.SignStatus == 1 && secretCfg.CryptoStatus == 1)
+	return switchesEmpty &&
+		strings.TrimSpace(secretCfg.KeyVersion) == "" &&
 		!configSecurityTopVersionHasMaterial(secretCfg) &&
 		len(secretCfg.Versions) == 0
 }

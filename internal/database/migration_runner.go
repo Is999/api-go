@@ -40,7 +40,7 @@ type MigrationRunItem struct {
 	Name     string // 迁移名称
 	Asset    string // 迁移资产
 	Checksum string // 当前 SQL checksum
-	Status   string // applied/pending/executed/blocked
+	Status   string // 迁移状态：applied/pending/executed/blocked
 	Reason   string // 状态原因，blocked 时必填
 }
 

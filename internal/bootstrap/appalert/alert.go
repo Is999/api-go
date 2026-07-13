@@ -68,7 +68,7 @@ func CollectorRuntimeAlert(alert collectorx.RuntimeAlert) larkx.RuntimeAlert {
 		Component:  strings.TrimSpace(alert.Component),
 		Operation:  strings.TrimSpace(alert.Operation),
 		BizType:    strings.TrimSpace(alert.BizType),
-		Transport:  strings.TrimSpace(alert.Transport),
+		Transport:  strings.TrimSpace(alert.Channel),
 		UniqueKey:  strings.TrimSpace(alert.UniqueKey),
 		Reason:     reason,
 		Advice:     strings.TrimSpace(alert.Advice),

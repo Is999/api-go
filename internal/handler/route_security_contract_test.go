@@ -71,7 +71,7 @@ func TestRouteSecurityPoliciesMatchSecurityContracts(t *testing.T) {
 				t.Fatalf("no-security route must not define frontend security policy: %s", contract.Alias)
 			}
 		case RouteSecurityInternal:
-			if len(policy.RequestSign) != 0 || len(policy.RequestCipher) != 0 || len(policy.ResponseSign) != 0 || len(policy.ResponseCipher) != 0 {
+			if policy.RequestSign != nil || policy.ResponseSign != nil || len(policy.RequestCipher) != 0 || len(policy.ResponseCipher) != 0 {
 				t.Fatalf("internal route must skip frontend sign/cipher policy: %s %+v", contract.Alias, policy)
 			}
 		}
@@ -97,6 +97,11 @@ func TestRouteSecurityPoliciesUseFieldLevelSecurity(t *testing.T) {
 		}
 		if hasSecurityField(policy.ResponseCipher, security.CipherWholeBody) {
 			t.Fatalf("route %s response cipher must not use cipher", alias)
+		}
+		for _, field := range policy.ResponseCipher {
+			if !hasSecurityField(policy.ResponseSign, field) {
+				t.Fatalf("route %s response cipher field %s must be covered by response sign", alias, field)
+			}
 		}
 		for label, fields := range map[string][]string{
 			"request sign":    policy.RequestSign,
@@ -125,11 +130,15 @@ func TestPublicAndAuthRoutesDeclareSecurityPolicy(t *testing.T) {
 
 // TestRouteNoTokenBehaviorMatchesSecurityContracts 通过真实 handler 验证未登录访问边界。
 func TestRouteNoTokenBehaviorMatchesSecurityContracts(t *testing.T) {
-	server := rest.MustNewServer(rest.RestConf{Host: "127.0.0.1", Port: 0})
-	defer server.Stop()
+	publicServer := rest.MustNewServer(rest.RestConf{Host: "127.0.0.1", Port: 0})
+	defer publicServer.Stop()
+	internalServer := rest.MustNewServer(rest.RestConf{Host: "127.0.0.1", Port: 0})
+	defer internalServer.Stop()
 
-	RegisterHandlers(server, svc.NewServiceContext(config.Config{JwtSecret: "test-secret-please-change"}, "test-version", svc.Dependencies{}))
-	routeHandlers := routeHandlerByKey(server.Routes())
+	svcCtx := svc.NewServiceContext(config.Config{JwtSecret: "test-secret-please-change"}, "test-version", svc.Dependencies{})
+	RegisterPublicHandlers(publicServer, svcCtx)
+	RegisterInternalHandlers(internalServer, svcCtx)
+	routeHandlers := routeHandlerByKey(append(publicServer.Routes(), internalServer.Routes()...))
 	securityByAlias := routeSecurityContractByAlias()
 
 	for _, routeContract := range DefaultRouteContracts() {

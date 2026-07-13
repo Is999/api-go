@@ -14,6 +14,8 @@ import (
 )
 
 const (
+	// TableCacheMetricsSubsystem 表示表缓存 Prometheus 指标子系统。
+	TableCacheMetricsSubsystem = "tcache"
 	// tableCacheRebuildLockTTL 表示 table-cache 回源锁默认持有时长。
 	tableCacheRebuildLockTTL = 10 * time.Second
 	// tableCacheWaitStep 表示等待其他实例回源完成的单次等待时间。
@@ -32,6 +34,7 @@ func TableCacheManager(base *corelogic.BaseLogic) (*tablecache.Manager, error) {
 		tablecache.WithEmptyMarker(keys.EmptyValueMarker, corelogic.EmptyCacheTTL()),
 		tablecache.WithLockTTL(tableCacheRebuildLockTTL),
 		tablecache.WithWait(tableCacheWaitStep, 3),
+		tablecache.WithMetrics(base.Svc.TableCacheMetrics),
 	)
 }
 

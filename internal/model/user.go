@@ -42,10 +42,13 @@ const (
 	// UserStatusEnabled 表示业务用户正常状态。
 	UserStatusEnabled = 1
 
-	// UserRouteShardCountDefault 表示当前默认仍写入单张 user 物理表。
+	// UserRouteShardCountDefault 是业务用户表默认物理分片数。
 	UserRouteShardCountDefault = 1
-	// userRouteShardMod 表示业务用户逻辑分片总数。
-	userRouteShardMod = idgen.ShardMod
+)
+
+var (
+	// ErrUserIdentityMissing 表示按用户 ID 查询时缺少主登录身份索引。
+	ErrUserIdentityMissing = errors.New("用户身份索引缺失")
 )
 
 // User 表示业务用户实体。
@@ -67,24 +70,24 @@ type User struct {
 	PhoneKeyVersion string    `gorm:"column:phone_key_version;type:varchar(32);not null;default:'';comment:手机号加密密钥版本" json:"-"`                                                        // 手机号加密密钥版本
 	Avatar          string    `gorm:"column:avatar;type:varchar(255);not null;default:'';comment:头像" json:"avatar"`                                                                    // 头像
 	Status          int       `gorm:"column:status;type:tinyint;not null;default:1;index:idx_user_status_id,priority:1;comment:状态：1 正常，0 禁用" json:"status"`                            // 状态：1 正常，0 禁用
+	AuthVersion     uint64    `gorm:"column:auth_version;type:bigint unsigned;not null;default:1;comment:认证版本，敏感变更时单调递增" json:"-"`                                                     // 认证版本，用于撤销该版本之前的全部登录态
 	LastLoginAt     time.Time `gorm:"column:last_login_at;type:datetime;comment:最后登录时间" json:"last_login_at"`                                                                          // 最后登录时间
 	LastLoginIP     string    `gorm:"column:last_login_ip;type:varchar(45);not null;default:'';comment:最后登录 IP" json:"last_login_ip"`                                                  // 最后登录 IP
 	CreatedAt       time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP;comment:创建时间" json:"created_at"`                                               // 创建时间
 	UpdatedAt       time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP;comment:更新时间" json:"updated_at"`                                               // 更新时间
 }
 
-// UserIdentity 表示业务用户登录身份索引，负责账号唯一性和物理表定位。
+// UserIdentity 表示业务用户登录身份索引，负责账号唯一性和固定逻辑桶定位。
 type UserIdentity struct {
-	ID                  uint64    `gorm:"column:id;type:bigint unsigned;primaryKey;autoIncrement:true;comment:主键 ID" json:"id"`                                                                                                         // 主键 ID
-	IdentityType        string    `gorm:"-" json:"identityType"`                                                                                                                                                                        // 身份类型，由物理表路由决定
-	Provider            string    `gorm:"column:provider;type:varchar(32);not null;default:'';comment:三方身份提供方" json:"provider"`                                                                                                         // 三方身份提供方，仅 oauth 表持久化
-	IdentityValue       string    `gorm:"column:identity_value;type:varchar(191);not null;comment:归一化身份值" json:"identityValue"`                                                                                                         // 归一化身份值，仅 username/oauth 表持久化
-	IdentityHash        string    `gorm:"column:identity_hash;type:char(64);not null;default:'';comment:邮箱或手机号身份 HMAC 哈希" json:"identityHash"`                                                                                          // 邮箱或手机号身份哈希
-	UserID              int64     `gorm:"column:user_id;type:bigint;not null;index:idx_user_identity_user_route,priority:3;index:idx_user_identity_shard_user,priority:2;comment:业务用户雪花 ID" json:"userId"`                              // 业务用户雪花 ID
-	UserShardNo         int       `gorm:"column:user_shard_no;type:int;not null;index:idx_user_identity_user_route,priority:2;index:idx_user_identity_shard_user,priority:1;comment:业务用户 ID 哈希分片，CRC32(id字符串)%1024" json:"userShardNo"` // 业务用户逻辑分片
-	UserRouteShardCount int       `gorm:"column:user_route_shard_count;type:smallint unsigned;not null;default:1;index:idx_user_identity_user_route,priority:1;comment:当前物理用户表数量：1/2/4/.../1024" json:"userRouteShardCount"`            // 当前物理用户表数量
-	CreatedAt           time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP;comment:创建时间" json:"createdAt"`                                                                                             // 创建时间
-	UpdatedAt           time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;comment:更新时间" json:"updatedAt"`                                                                 // 更新时间
+	ID            uint64    `gorm:"column:id;type:bigint unsigned;primaryKey;autoIncrement:true;comment:主键 ID" json:"id"`                                                           // 主键 ID
+	IdentityType  string    `gorm:"-" json:"identityType"`                                                                                                                          // 身份类型，由物理表路由决定
+	Provider      string    `gorm:"column:provider;type:varchar(32);not null;default:'';comment:三方身份提供方" json:"provider"`                                                           // 三方身份提供方，仅 oauth 表持久化
+	IdentityValue string    `gorm:"column:identity_value;type:varchar(191);not null;comment:归一化身份值" json:"identityValue"`                                                           // 归一化身份值，仅 username/oauth 表持久化
+	IdentityHash  string    `gorm:"column:identity_hash;type:char(64);not null;default:'';comment:邮箱或手机号身份 HMAC 哈希" json:"identityHash"`                                            // 邮箱或手机号身份哈希
+	UserID        int64     `gorm:"column:user_id;type:bigint;not null;index:idx_user_identity_shard_user,priority:2;comment:业务用户雪花 ID" json:"userId"`                              // 业务用户雪花 ID
+	UserShardNo   int       `gorm:"column:user_shard_no;type:int;not null;index:idx_user_identity_shard_user,priority:1;comment:业务用户 ID 哈希分片，CRC32(id字符串)%1024" json:"userShardNo"` // 业务用户逻辑分片
+	CreatedAt     time.Time `gorm:"column:created_at;type:datetime;not null;default:CURRENT_TIMESTAMP;comment:创建时间" json:"createdAt"`                                               // 创建时间
+	UpdatedAt     time.Time `gorm:"column:updated_at;type:datetime;not null;default:CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;comment:更新时间" json:"updatedAt"`                   // 更新时间
 }
 
 // TableName 返回业务用户表名。
@@ -95,31 +98,6 @@ func (*User) TableName() string {
 // TableName 返回默认账号登录身份索引表名，真实读写通过身份类型路由。
 func (*UserIdentity) TableName() string {
 	return TableNameUserIdentityUsername
-}
-
-// ValidateUserRouteShardCount 校验物理用户表数量是否支持平滑拆分。
-func ValidateUserRouteShardCount(routeShardCount int) error {
-	if validUserRouteShardCount(normalizeUserRouteShardCount(routeShardCount)) {
-		return nil
-	}
-	return errors.Errorf("用户物理表数量仅支持 1/2/4/8/16/32/64/128/256/512/1024")
-}
-
-// UserPhysicalTableName 返回逻辑分片当前所在的物理用户表名。
-func UserPhysicalTableName(shardNo int, routeShardCount int) (string, error) {
-	if shardNo < 0 || shardNo >= userRouteShardMod {
-		return "", errors.Errorf("用户 shard_no 必须在 0-%d 之间", userRouteShardMod-1)
-	}
-	routeShardCount = normalizeUserRouteShardCount(routeShardCount)
-	if err := ValidateUserRouteShardCount(routeShardCount); err != nil {
-		return "", errors.Tag(err)
-	}
-	if routeShardCount == 1 {
-		return TableNameUser, nil
-	}
-	rangeSize := userRouteShardMod / routeShardCount
-	rangeStart := (shardNo / rangeSize) * rangeSize
-	return fmt.Sprintf("%s_%04d", TableNameUser, rangeStart), nil
 }
 
 // UserIdentityTableName 返回身份类型对应的物理登录身份索引表名。
@@ -138,15 +116,15 @@ func UserIdentityTableName(identityType string) (string, error) {
 	}
 }
 
-// UserTableName 返回身份索引记录指向的物理用户表名。
-func (i *UserIdentity) UserTableName() (string, error) {
+// UserTableName 按当前启动配置返回身份索引记录对应的用户表名。
+func (i *UserIdentity) UserTableName(routeShardCount int) (string, error) {
 	if i == nil {
 		return "", errors.New("用户身份索引为空")
 	}
 	if err := validateUserIdentityRoute(i); err != nil {
 		return "", errors.Tag(err)
 	}
-	return UserPhysicalTableName(i.UserShardNo, i.UserRouteShardCount)
+	return UserPhysicalTableName(i.UserShardNo, routeShardCount)
 }
 
 // IdentityTableName 返回身份索引记录当前应写入的物理身份表名。
@@ -189,17 +167,17 @@ func UserIdentitySubject(identityType string, provider string, identityValue str
 	return normalizedType + ":" + normalizedValue
 }
 
-// FindUserByIdentity 根据登录身份查询业务用户；未命中时返回 nil。
-func FindUserByIdentity(db *gorm.DB, identityType string, provider string, identityValue string, privacySecret string) (*User, error) {
+// FindUserByIdentity 根据登录身份和当前路由配置查询业务用户；未命中时返回 nil。
+func FindUserByIdentity(db *gorm.DB, identityType string, provider string, identityValue string, privacySecret string, routeShardCount int) (*User, error) {
 	identity, err := FindUserIdentity(db, identityType, provider, identityValue, privacySecret)
 	if err != nil {
 		return nil, errors.Tag(err)
 	}
-	return FindUserByIdentityRow(db, identity)
+	return FindUserByIdentityRow(db, identity, routeShardCount)
 }
 
-// FindUserByID 根据 ID 查询业务用户；未命中时返回 nil。
-func FindUserByID(db *gorm.DB, id int64) (*User, error) {
+// FindUserByID 根据 ID 和当前路由配置查询业务用户；未命中时返回 nil。
+func FindUserByID(db *gorm.DB, id int64, routeShardCount int) (*User, error) {
 	if id <= 0 {
 		return nil, nil
 	}
@@ -208,15 +186,25 @@ func FindUserByID(db *gorm.DB, id int64) (*User, error) {
 		return nil, errors.Tag(err)
 	}
 	if identity == nil {
-		return nil, errors.Errorf("用户身份索引缺失 user_id=%d type=%s", id, UserIdentityTypeUsername)
+		return nil, errors.Wrapf(ErrUserIdentityMissing, "user_id=%d type=%s", id, UserIdentityTypeUsername)
 	}
-	return FindUserByIdentityRow(db, identity)
+	return FindUserByIdentityRow(db, identity, routeShardCount)
 }
 
 // CreateUserWithIdentities 创建业务用户并同步写入基础登录身份索引。
 func CreateUserWithIdentities(db *gorm.DB, user *User, routeShardCount int, privacySecret string, omitColumns ...string) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		return errors.Tag(CreateUserWithIdentitiesTx(tx, user, routeShardCount, privacySecret, omitColumns...))
+	})
+}
+
+// CreateUserWithIdentitiesTx 在调用方事务内创建业务用户及基础登录身份索引。
+func CreateUserWithIdentitiesTx(tx *gorm.DB, user *User, routeShardCount int, privacySecret string, omitColumns ...string) error {
 	if user == nil {
 		return errors.New("User.Create 用户为空")
+	}
+	if tx == nil {
+		return errors.New("User.Create 数据库事务为空")
 	}
 	normalizeUserProfile(user)
 	if user.Username == "" {
@@ -228,50 +216,44 @@ func CreateUserWithIdentities(db *gorm.DB, user *User, routeShardCount int, priv
 	if err := validateUserShardNo(user); err != nil {
 		return errors.Tag(err)
 	}
-	routeShardCount = normalizeUserRouteShardCount(routeShardCount)
-	if err := ValidateUserRouteShardCount(routeShardCount); err != nil {
-		return errors.Tag(err)
-	}
 	tableName, err := UserPhysicalTableName(user.ShardNo, routeShardCount)
 	if err != nil {
 		return errors.Tag(err)
 	}
-	identities, err := userProfileIdentities(user, routeShardCount)
+	identities, err := userProfileIdentities(user)
 	if err != nil {
 		return errors.Tag(err)
 	}
-	return db.Transaction(func(tx *gorm.DB) error {
-		for index := range identities {
-			if err := createUserIdentity(tx, &identities[index]); err != nil {
-				return errors.Tag(err)
-			}
+	for index := range identities {
+		if err := createUserIdentity(tx, &identities[index]); err != nil {
+			return errors.Tag(err)
 		}
-		query := tx.Table(tableName)
-		if len(omitColumns) > 0 {
-			query = query.Omit(omitColumns...)
-		}
-		return errors.Tag(query.Create(user).Error)
-	})
+	}
+	query := tx.Table(tableName)
+	if len(omitColumns) > 0 {
+		query = query.Omit(omitColumns...)
+	}
+	return errors.Tag(query.Create(user).Error)
 }
 
-// UpdateUser 按主键更新业务用户可变字段。
-func UpdateUser(db *gorm.DB, id int64, updates map[string]any) error {
+// UpdateUser 按当前路由配置和主键更新业务用户可变字段。
+func UpdateUser(db *gorm.DB, id int64, updates map[string]any, routeShardCount int) error {
 	if id <= 0 || len(updates) == 0 {
 		return nil
 	}
-	updates = safeUserUpdates(updates, false)
+	updates = safeUserUpdates(updates)
 	if len(updates) == 0 {
 		return nil
 	}
-	tableName, err := userTableNameByID(db, id)
+	tableName, err := userTableNameByID(db, id, routeShardCount)
 	if err != nil {
 		return errors.Tag(err)
 	}
-	return errors.Tag(cleanUserDB(db).Model(&User{}).Table(tableName).Where("id = ?", id).Updates(updates).Error)
+	return errors.Tag(userDBSession(db).Model(&User{}).Table(tableName).Where("shard_no = ? AND id = ?", idgen.ShardNo(id), id).Updates(updates).Error)
 }
 
 // UpdateUserProfileWithIdentities 更新用户资料并同步邮箱、手机号登录身份。
-func UpdateUserProfileWithIdentities(db *gorm.DB, id int64, updates map[string]any, privacySecret string) error {
+func UpdateUserProfileWithIdentities(db *gorm.DB, id int64, updates map[string]any, privacySecret string, routeShardCount int) error {
 	if id <= 0 || len(updates) == 0 {
 		return nil
 	}
@@ -280,7 +262,7 @@ func UpdateUserProfileWithIdentities(db *gorm.DB, id int64, updates map[string]a
 	if err != nil {
 		return errors.Tag(err)
 	}
-	updates = safeUserUpdates(updates, false)
+	updates = safeUserUpdates(updates)
 	if len(updates) == 0 {
 		return nil
 	}
@@ -289,14 +271,14 @@ func UpdateUserProfileWithIdentities(db *gorm.DB, id int64, updates map[string]a
 		return errors.Tag(err)
 	}
 	if identity == nil {
-		return errors.Errorf("用户身份索引缺失 user_id=%d type=%s", id, UserIdentityTypeUsername)
+		return errors.Wrapf(ErrUserIdentityMissing, "user_id=%d type=%s", id, UserIdentityTypeUsername)
 	}
-	tableName, err := identity.UserTableName()
+	tableName, err := identity.UserTableName(routeShardCount)
 	if err != nil {
 		return errors.Tag(err)
 	}
 	return db.Transaction(func(tx *gorm.DB) error {
-		if err := cleanUserDB(tx).Model(&User{}).Table(tableName).Where("id = ?", id).Updates(updates).Error; err != nil {
+		if err := userDBSession(tx).Model(&User{}).Table(tableName).Where("shard_no = ? AND id = ?", identity.UserShardNo, id).Updates(updates).Error; err != nil {
 			return errors.Tag(err)
 		}
 		if !profileIdentityChanged(updates) {
@@ -309,23 +291,8 @@ func UpdateUserProfileWithIdentities(db *gorm.DB, id int64, updates map[string]a
 		if row == nil {
 			return errors.Errorf("用户资料已更新但主表记录缺失 user_id=%d table=%s", id, tableName)
 		}
-		return syncUserContactIdentities(tx, row, identity.UserRouteShardCount)
+		return syncUserContactIdentities(tx, row)
 	})
-}
-
-// UpdateUserPasswordHash 更新业务用户密码哈希。
-func UpdateUserPasswordHash(db *gorm.DB, id int64, passwordHash string, updatedAt time.Time) error {
-	if id <= 0 || strings.TrimSpace(passwordHash) == "" {
-		return nil
-	}
-	tableName, err := userTableNameByID(db, id)
-	if err != nil {
-		return errors.Tag(err)
-	}
-	return errors.Tag(cleanUserDB(db).Model(&User{}).Table(tableName).Where("id = ?", id).Updates(map[string]any{
-		"password_hash": passwordHash,
-		"updated_at":    updatedAt,
-	}).Error)
 }
 
 // FindUserIdentity 根据身份类型、提供方和身份值查询索引；未命中时返回 nil。
@@ -342,7 +309,7 @@ func FindUserIdentity(db *gorm.DB, identityType string, provider string, identit
 		return nil, errors.Tag(err)
 	}
 	var row UserIdentity
-	query, err := userIdentityLookupQuery(cleanUserDB(db).Table(tableName), identityType, provider, identityValue, privacySecret)
+	query, err := userIdentityLookupQuery(userDBSession(db).Table(tableName), identityType, provider, identityValue, privacySecret)
 	if err != nil {
 		return nil, errors.Tag(err)
 	}
@@ -370,7 +337,7 @@ func FindUserIdentityByUserIDAndType(db *gorm.DB, userID int64, identityType str
 		return nil, errors.Tag(err)
 	}
 	var row UserIdentity
-	query := cleanUserDB(db).Table(tableName).Where("user_id = ?", userID)
+	query := userDBSession(db).Table(tableName).Where("user_id = ?", userID)
 	if identityType == UserIdentityTypeOAuth {
 		query = query.Where("provider = ?", provider)
 	}
@@ -384,12 +351,12 @@ func FindUserIdentityByUserIDAndType(db *gorm.DB, userID int64, identityType str
 	return &row, nil
 }
 
-// FindUserByIdentityRow 根据身份索引定位物理表并读取业务用户。
-func FindUserByIdentityRow(db *gorm.DB, identity *UserIdentity) (*User, error) {
+// FindUserByIdentityRow 根据身份索引固定桶和当前配置读取用户表。
+func FindUserByIdentityRow(db *gorm.DB, identity *UserIdentity, routeShardCount int) (*User, error) {
 	if identity == nil {
 		return nil, nil
 	}
-	tableName, err := identity.UserTableName()
+	tableName, err := identity.UserTableName(routeShardCount)
 	if err != nil {
 		return nil, errors.Tag(err)
 	}
@@ -401,24 +368,6 @@ func FindUserByIdentityRow(db *gorm.DB, identity *UserIdentity) (*User, error) {
 		return nil, errors.Errorf("用户身份索引存在但主表记录缺失 user_id=%d table=%s", identity.UserID, tableName)
 	}
 	return row, nil
-}
-
-// HasSplitUserIdentities 判断账号身份表中是否已有用户表拆分路由记录。
-func HasSplitUserIdentities(db *gorm.DB) (bool, error) {
-	var marker int
-	err := splitUserIdentityQuery(db).Scan(&marker).Error
-	if err != nil {
-		return false, errors.Wrap(err, "UserIdentity.HasSplit 查询已拆分身份索引失败")
-	}
-	return marker == 1, nil
-}
-
-// splitUserIdentityQuery 构造已拆分用户路由探测查询，必须保持走 user_route_shard_count 索引前缀并只取一行。
-func splitUserIdentityQuery(db *gorm.DB) *gorm.DB {
-	return cleanUserDB(db).Table(TableNameUserIdentityUsername).
-		Select("1").
-		Where("user_route_shard_count > ?", UserRouteShardCountDefault).
-		Limit(1)
 }
 
 // userIdentityLookupQuery 根据身份表结构构造唯一索引查询。
@@ -448,29 +397,28 @@ func createUserIdentity(db *gorm.DB, identity *UserIdentity) error {
 	if err != nil {
 		return errors.Tag(err)
 	}
-	query := cleanUserDB(db).Table(tableName)
+	query := userDBSession(db).Table(tableName)
 	switch identity.IdentityType {
 	case UserIdentityTypeUsername:
-		query = query.Select("identity_value", "user_id", "user_shard_no", "user_route_shard_count")
+		query = query.Select("identity_value", "user_id", "user_shard_no")
 	case UserIdentityTypeEmail, UserIdentityTypePhone:
-		query = query.Select("identity_hash", "user_id", "user_shard_no", "user_route_shard_count")
+		query = query.Select("identity_hash", "user_id", "user_shard_no")
 	case UserIdentityTypeOAuth:
-		query = query.Select("provider", "identity_value", "user_id", "user_shard_no", "user_route_shard_count")
+		query = query.Select("provider", "identity_value", "user_id", "user_shard_no")
 	default:
 		return errors.Errorf("不支持的用户登录身份类型[%s]", identity.IdentityType)
 	}
 	return errors.Tag(query.Create(identity).Error)
 }
 
-// updateUserIdentity 按身份表结构更新可变身份值和用户表路由信息。
+// updateUserIdentity 按身份表结构更新可变身份值和固定逻辑桶。
 func updateUserIdentity(db *gorm.DB, tableName string, id uint64, next *UserIdentity) error {
 	if strings.TrimSpace(tableName) == "" || id == 0 || next == nil {
 		return nil
 	}
 	updates := map[string]any{
-		"user_shard_no":          next.UserShardNo,
-		"user_route_shard_count": next.UserRouteShardCount,
-		"updated_at":             time.Now(),
+		"user_shard_no": next.UserShardNo,
+		"updated_at":    time.Now(),
 	}
 	switch next.IdentityType {
 	case UserIdentityTypeEmail, UserIdentityTypePhone:
@@ -478,13 +426,13 @@ func updateUserIdentity(db *gorm.DB, tableName string, id uint64, next *UserIden
 	case UserIdentityTypeUsername, UserIdentityTypeOAuth:
 		updates["identity_value"] = next.IdentityValue
 	}
-	return errors.Tag(cleanUserDB(db).Table(tableName).Where("id = ?", id).Updates(updates).Error)
+	return errors.Tag(userDBSession(db).Table(tableName).Where("id = ?", id).Updates(updates).Error)
 }
 
-// findUserByIDInTable 在指定物理用户表中按 ID 查询用户，未命中返回 nil。
+// findUserByIDInTable 在指定用户表中按固定桶和 ID 查询用户，未命中返回 nil。
 func findUserByIDInTable(db *gorm.DB, tableName string, id int64) (*User, error) {
 	var row User
-	if err := cleanUserDB(db).Table(tableName).Where("id = ?", id).First(&row).Error; err != nil {
+	if err := userDBSession(db).Table(tableName).Where("shard_no = ? AND id = ?", idgen.ShardNo(id), id).First(&row).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
@@ -493,16 +441,16 @@ func findUserByIDInTable(db *gorm.DB, tableName string, id int64) (*User, error)
 	return &row, nil
 }
 
-// userTableNameByID 返回用户当前所在的物理表。
-func userTableNameByID(db *gorm.DB, id int64) (string, error) {
+// userTableNameByID 根据身份目录固定桶和当前配置返回用户表。
+func userTableNameByID(db *gorm.DB, id int64, routeShardCount int) (string, error) {
 	identity, err := FindUserIdentityByUserIDAndType(db, id, UserIdentityTypeUsername, UserIdentityProviderLocal)
 	if err != nil {
 		return "", errors.Tag(err)
 	}
 	if identity == nil {
-		return "", errors.Errorf("用户身份索引缺失 user_id=%d type=%s", id, UserIdentityTypeUsername)
+		return "", errors.Wrapf(ErrUserIdentityMissing, "user_id=%d type=%s", id, UserIdentityTypeUsername)
 	}
-	return identity.UserTableName()
+	return identity.UserTableName(routeShardCount)
 }
 
 // normalizeUserProfile 归一化用户资料中的登录身份字段。
@@ -510,28 +458,31 @@ func normalizeUserProfile(user *User) {
 	if user == nil {
 		return
 	}
+	if user.AuthVersion == 0 {
+		user.AuthVersion = 1
+	}
 	user.Username = strings.TrimSpace(user.Username)
 	user.Email = strings.ToLower(strings.TrimSpace(user.Email))
 	user.Phone = strings.TrimSpace(user.Phone)
 }
 
 // userProfileIdentities 生成用户资料对应的基础登录身份索引。
-func userProfileIdentities(user *User, routeShardCount int) ([]UserIdentity, error) {
+func userProfileIdentities(user *User) ([]UserIdentity, error) {
 	items := make([]UserIdentity, 0, 3)
-	usernameIdentity, err := newUserIdentity(user, routeShardCount, UserIdentityTypeUsername, UserIdentityProviderLocal, user.Username, "")
+	usernameIdentity, err := newUserIdentity(user, UserIdentityTypeUsername, UserIdentityProviderLocal, user.Username, "")
 	if err != nil {
 		return nil, errors.Tag(err)
 	}
 	items = append(items, *usernameIdentity)
 	if strings.TrimSpace(user.EmailHash) != "" {
-		emailIdentity, err := newUserIdentity(user, routeShardCount, UserIdentityTypeEmail, UserIdentityProviderLocal, "", user.EmailHash)
+		emailIdentity, err := newUserIdentity(user, UserIdentityTypeEmail, UserIdentityProviderLocal, "", user.EmailHash)
 		if err != nil {
 			return nil, errors.Tag(err)
 		}
 		items = append(items, *emailIdentity)
 	}
 	if strings.TrimSpace(user.PhoneHash) != "" {
-		phoneIdentity, err := newUserIdentity(user, routeShardCount, UserIdentityTypePhone, UserIdentityProviderLocal, "", user.PhoneHash)
+		phoneIdentity, err := newUserIdentity(user, UserIdentityTypePhone, UserIdentityProviderLocal, "", user.PhoneHash)
 		if err != nil {
 			return nil, errors.Tag(err)
 		}
@@ -541,16 +492,16 @@ func userProfileIdentities(user *User, routeShardCount int) ([]UserIdentity, err
 }
 
 // syncUserContactIdentities 同步用户邮箱和手机号身份索引。
-func syncUserContactIdentities(db *gorm.DB, user *User, routeShardCount int) error {
+func syncUserContactIdentities(db *gorm.DB, user *User) error {
 	normalizeUserProfile(user)
-	if err := syncUserContactIdentity(db, user, routeShardCount, UserIdentityTypeEmail, user.EmailHash); err != nil {
+	if err := syncUserContactIdentity(db, user, UserIdentityTypeEmail, user.EmailHash); err != nil {
 		return errors.Tag(err)
 	}
-	return errors.Tag(syncUserContactIdentity(db, user, routeShardCount, UserIdentityTypePhone, user.PhoneHash))
+	return errors.Tag(syncUserContactIdentity(db, user, UserIdentityTypePhone, user.PhoneHash))
 }
 
 // syncUserContactIdentity 按资料字段新增、更新或删除单个联系身份。
-func syncUserContactIdentity(db *gorm.DB, user *User, routeShardCount int, identityType string, identityHash string) error {
+func syncUserContactIdentity(db *gorm.DB, user *User, identityType string, identityHash string) error {
 	identityType, provider, err := normalizeUserIdentityTypeProvider(identityType, UserIdentityProviderLocal)
 	if err != nil {
 		return errors.Tag(err)
@@ -567,9 +518,9 @@ func syncUserContactIdentity(db *gorm.DB, user *User, routeShardCount int, ident
 		if err != nil {
 			return errors.Tag(err)
 		}
-		return errors.Tag(cleanUserDB(db).Table(tableName).Where("id = ?", exists.ID).Delete(&UserIdentity{}).Error)
+		return errors.Tag(userDBSession(db).Table(tableName).Where("id = ?", exists.ID).Delete(&UserIdentity{}).Error)
 	}
-	next, err := newUserIdentity(user, routeShardCount, identityType, provider, "", identityHash)
+	next, err := newUserIdentity(user, identityType, provider, "", identityHash)
 	if err != nil {
 		return errors.Tag(err)
 	}
@@ -585,7 +536,7 @@ func syncUserContactIdentity(db *gorm.DB, user *User, routeShardCount int, ident
 		return errors.Tag(err)
 	}
 	if existsTableName != nextTableName {
-		if err := cleanUserDB(db).Table(existsTableName).Where("id = ?", exists.ID).Delete(&UserIdentity{}).Error; err != nil {
+		if err := userDBSession(db).Table(existsTableName).Where("id = ?", exists.ID).Delete(&UserIdentity{}).Error; err != nil {
 			return errors.Tag(err)
 		}
 		return errors.Tag(createUserIdentity(db, next))
@@ -593,8 +544,8 @@ func syncUserContactIdentity(db *gorm.DB, user *User, routeShardCount int, ident
 	return errors.Tag(updateUserIdentity(db, existsTableName, exists.ID, next))
 }
 
-// newUserIdentity 构造带路由信息的用户身份索引。
-func newUserIdentity(user *User, routeShardCount int, identityType string, provider string, identityValue string, identityHash string) (*UserIdentity, error) {
+// newUserIdentity 构造带固定逻辑桶的用户身份索引。
+func newUserIdentity(user *User, identityType string, provider string, identityValue string, identityHash string) (*UserIdentity, error) {
 	if user == nil {
 		return nil, errors.New("用户为空")
 	}
@@ -611,10 +562,6 @@ func newUserIdentity(user *User, routeShardCount int, identityType string, provi
 			return nil, errors.Tag(err)
 		}
 	}
-	routeShardCount = normalizeUserRouteShardCount(routeShardCount)
-	if err := ValidateUserRouteShardCount(routeShardCount); err != nil {
-		return nil, errors.Tag(err)
-	}
 	identityHash = strings.TrimSpace(identityHash)
 	if identityType == UserIdentityTypeEmail || identityType == UserIdentityTypePhone {
 		if len(identityHash) != userContactHashHexSize {
@@ -623,13 +570,12 @@ func newUserIdentity(user *User, routeShardCount int, identityType string, provi
 		identityValue = ""
 	}
 	return &UserIdentity{
-		IdentityType:        identityType,
-		Provider:            provider,
-		IdentityValue:       identityValue,
-		IdentityHash:        identityHash,
-		UserID:              user.ID,
-		UserShardNo:         user.ShardNo,
-		UserRouteShardCount: routeShardCount,
+		IdentityType:  identityType,
+		Provider:      provider,
+		IdentityValue: identityValue,
+		IdentityHash:  identityHash,
+		UserID:        user.ID,
+		UserShardNo:   user.ShardNo,
 	}, nil
 }
 
@@ -659,19 +605,6 @@ func profileIdentityChanged(updates map[string]any) bool {
 		}
 	}
 	return false
-}
-
-// normalizeUserRouteShardCount 规范化物理表数量，空值使用单表默认值。
-func normalizeUserRouteShardCount(routeShardCount int) int {
-	if routeShardCount <= 0 {
-		return UserRouteShardCountDefault
-	}
-	return routeShardCount
-}
-
-// validUserRouteShardCount 判断物理表数量是否为 1024 逻辑分片可平分的 2 的幂。
-func validUserRouteShardCount(routeShardCount int) bool {
-	return routeShardCount > 0 && routeShardCount <= userRouteShardMod && routeShardCount&(routeShardCount-1) == 0
 }
 
 // validateUserIdentityRoute 校验身份索引中的身份类型、用户 ID 与逻辑分片一致。
@@ -712,27 +645,23 @@ func validateUserShardNo(user *User) error {
 	return nil
 }
 
-// safeUserUpdates 过滤用户通用更新字段，避免改动主键、分片、账号和密码哈希。
-func safeUserUpdates(updates map[string]any, allowPassword bool) map[string]any {
+// safeUserUpdates 过滤用户通用更新字段，敏感状态必须走认证版本联动专用流程。
+func safeUserUpdates(updates map[string]any) map[string]any {
 	filtered := make(map[string]any, len(updates))
 	for key, value := range updates {
 		switch strings.ToLower(strings.TrimSpace(key)) {
-		case "", "id", "shard_no", "username", "email", "phone", "created_at":
+		case "", "id", "shard_no", "username", "password_hash", "email", "phone", "status", "auth_version", "created_at":
 			continue
 		case "email_ciphertext", "email_hash", "email_masked", "email_key_version",
 			"phone_ciphertext", "phone_hash", "phone_masked", "phone_key_version":
 			value = strings.TrimSpace(fmt.Sprint(value))
-		case "password_hash":
-			if !allowPassword {
-				continue
-			}
 		}
 		filtered[key] = value
 	}
 	return filtered
 }
 
-// cleanUserDB 返回不继承上层查询条件的 GORM 会话，避免动态表查询被外层 Model 污染。
-func cleanUserDB(db *gorm.DB) *gorm.DB {
-	return db.Session(&gorm.Session{NewDB: true})
+// userDBSession 复制调用方提供的干净 base/tx 会话，并保留 dbresolver 读写路由与事务上下文。
+func userDBSession(db *gorm.DB) *gorm.DB {
+	return db.Session(&gorm.Session{})
 }

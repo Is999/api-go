@@ -2,12 +2,15 @@ package svc
 
 import (
 	"context"
+	"net/http"
 	"sync/atomic"
 	"time"
 
 	"api/internal/config"
 	"api/internal/infra/collectorx"
 
+	utils "github.com/Is999/go-utils"
+	tablecache "github.com/Is999/table-cache"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 )
@@ -20,13 +23,15 @@ type SiteDatabases struct {
 
 // Dependencies 表示 ServiceContext 运行所需的外部依赖集合。
 type Dependencies struct {
-	SiteDBs        SiteDatabases         // 主库与可选扩展库连接集合
-	Rds            redis.UniversalClient // Redis 客户端
-	SnowflakeLease SnowflakeLease        // 雪花 node_id Redis 租约
+	SiteDBs           SiteDatabases         // 主库与可选扩展库连接集合
+	Rds               redis.UniversalClient // Redis 客户端
+	SnowflakeLease    SnowflakeLease        // 雪花 node_id Redis 租约
+	TableCacheMetrics tablecache.Metrics    // 表缓存运行指标记录器
 }
 
 // SnowflakeLease 约束雪花 node_id 租约的关闭能力。
 type SnowflakeLease interface {
+	Ready(context.Context) error
 	Close(context.Context) error
 }
 
@@ -39,6 +44,7 @@ type ConfigReloadExecutor interface {
 type Collector interface {
 	Enqueue(context.Context, collectorx.Event) (string, error) // 投递一条结构化 Collector 事件
 	SetAlertHook(collectorx.AlertHook)                         // 接入运行异常告警钩子
+	Ready(context.Context) error                               // 检查 Kafka 投递链路
 	Close(context.Context) error                               // 释放 Collector 持有的外部资源
 }
 
@@ -67,23 +73,31 @@ type HotReloadStatus struct {
 
 // ServiceContext 将外部依赖集中管理。
 type ServiceContext struct {
-	configValue    atomic.Value          // 当前生效的配置快照
-	version        atomic.Value          // 当前配置版本指纹
-	reloadValue    atomic.Value          // 配置热加载状态快照
-	SiteDBs        SiteDatabases         // 主库与可选扩展库连接集合
-	Rds            redis.UniversalClient // Redis 客户端
-	SnowflakeLease SnowflakeLease        // 雪花 node_id Redis 租约
-	ConfigReload   ConfigReloadExecutor  // 配置热加载执行器
-	Collector      Collector             // 通用收集器
-	components     *ComponentRegistry    // 启动期组件生命周期清单
+	configValue       atomic.Value          // 当前生效的配置快照
+	version           atomic.Value          // 当前配置版本指纹
+	reloadValue       atomic.Value          // 配置热加载状态快照
+	SiteDBs           SiteDatabases         // 主库与可选扩展库连接集合
+	Rds               redis.UniversalClient // Redis 客户端
+	SnowflakeLease    SnowflakeLease        // 雪花 node_id Redis 租约
+	TableCacheMetrics tablecache.Metrics    // 表缓存运行指标记录器
+	TrustedProxies    *utils.TrustedProxies // 启动期解析完成的可信反向代理白名单
+	ConfigReload      ConfigReloadExecutor  // 配置热加载执行器
+	Collector         Collector             // 通用收集器
+	components        *ComponentRegistry    // 启动期组件生命周期清单
 }
 
 // NewServiceContext 只接收已经初始化完成的依赖。
 func NewServiceContext(c config.Config, version string, deps Dependencies) *ServiceContext {
+	trustedProxies, _ := utils.NewTrustedProxies(c.TrustedProxies...)
+	if len(c.TrustedProxies) == 0 {
+		trustedProxies = nil
+	}
 	svcCtx := &ServiceContext{
-		SiteDBs:        deps.SiteDBs,
-		Rds:            deps.Rds,
-		SnowflakeLease: deps.SnowflakeLease,
+		SiteDBs:           deps.SiteDBs,
+		Rds:               deps.Rds,
+		SnowflakeLease:    deps.SnowflakeLease,
+		TableCacheMetrics: deps.TableCacheMetrics,
+		TrustedProxies:    trustedProxies,
 	}
 	svcCtx.UpdateConfig(c)
 	svcCtx.UpdateVersion(version)
@@ -97,9 +111,11 @@ func (s *ServiceContext) ScopedWithContext(ctx context.Context) *ServiceContext 
 		return nil
 	}
 	scoped := &ServiceContext{
-		SiteDBs:        s.SiteDBs.WithContext(ctx),
-		Rds:            s.Rds,
-		SnowflakeLease: s.SnowflakeLease,
+		SiteDBs:           s.SiteDBs.WithContext(ctx),
+		Rds:               s.Rds,
+		SnowflakeLease:    s.SnowflakeLease,
+		TableCacheMetrics: s.TableCacheMetrics,
+		TrustedProxies:    s.TrustedProxies,
 	}
 	scoped.configValue.Store(s.CurrentConfig())
 	scoped.version.Store(s.CurrentVersion())
@@ -108,6 +124,14 @@ func (s *ServiceContext) ScopedWithContext(ctx context.Context) *ServiceContext 
 	scoped.components = s.components
 	scoped.UpdateHotReloadStatus(s.CurrentHotReloadStatus())
 	return scoped
+}
+
+// ClientIP 仅在远端命中显式可信代理时解析转发头；空配置保留只信任回环代理的安全默认值。
+func (s *ServiceContext) ClientIP(r *http.Request) string {
+	if s != nil && s.TrustedProxies != nil {
+		return utils.ClientIPWithTrustedProxies(r, s.TrustedProxies)
+	}
+	return utils.ClientIP(r)
 }
 
 // ComponentRegistry 返回启动期组件生命周期清单。

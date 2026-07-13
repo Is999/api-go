@@ -2,9 +2,23 @@
 
 `api` 是面向前台用户的 HTTP API 服务，负责前台认证、用户资料、登录态、运行期配置查询和少量内网运维能力。后台管理、运营任务和管理端权限由 `admin` 项目负责；本服务只保留前台链路必须具备的运行时能力，避免把管理后台职责混入前台 API。
 
+## 分支定位
+
+`admin` 与 `api` 的表路由方案必须成对选择同名分支，不能混用两套路由配置或迁移流程。三个长期分支的职责如下：
+
+| 分支 | 功能定位 | 表路由与扩容职责 |
+| --- | --- | --- |
+| `main` | 日常开发、集成和交付基线；默认直连 MySQL 并以单表运行，同时提供可复用的固定桶物理表路由。 | `user.route_shard_count` 默认 1，运行时支持 `1/2/4/.../1024`；生产拆分仍必须选择下面对应分支的迁移流程。 |
+| `table-sharding/shardingsphere-proxy-alternative` | ShardingSphere-Proxy 候选方案，Admin/API 始终访问逻辑表。 | Proxy 管理物理表、存储单元和路由；部署、回填和规则生成工具集中在 Admin 同名分支。 |
+| `table-sharding/app-table-sharding` | 应用内分表候选方案，适用于同一 MySQL 内按固定桶水平拆表。 | Admin/API 按当前物理表数量计算表名；在线复制和切换由 Admin 同名分支的 `cmd/tableshard` 完成，不部署常驻分表代理。 |
+
+两个候选分支是互斥方案，不是可叠加功能；切换方案前必须同时核对 Admin/API 分支、配置和数据迁移状态。
+
+`main` 是唯一公共开发基线。Proxy 分支除 README 的分支定位和目录说明外，代码、配置、测试及专题文档必须与 `main` 完全一致；部署时保持 `user.route_shard_count=1`，应用访问逻辑表，由 Proxy 负责物理路由。应用分表分支只保留迁移方式所需的路由配置、迁移资产、测试和文档差异。合并后运行 `make branch-drift-check`，功能分支可通过 `BRANCH_VARIANT=proxy` 或 `BRANCH_VARIANT=app` 指定目标方案。
+
 ## 技术栈
 
-- Go `1.26.4`
+- Go `1.26.5`
 - go-zero HTTP 服务框架
 - GORM + MySQL，支持主从读写路由和站点扩展库
 - go-redis，支持单机、Cluster 和 redsync 分布式锁
@@ -33,9 +47,13 @@ cmd/api
   "status": true,
   "code": 1000,
   "message": "成功",
-  "data": {}
+  "data": {},
+  "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+  "spanId": "00f067aa0ba902b7"
 }
 ```
+
+`traceId` 用于串联一次请求的完整链路，`spanId` 用于定位当前服务的处理片段；标准 HTTP 中间件还会通过 `X-Trace-Id`、`X-Span-Id` 响应头回传相同标识，便于前端报错与日志、审计和 Trace 平台对齐。
 
 ## 目录结构
 
@@ -50,10 +68,10 @@ api
 ├── docs                      # 开发规范、接口文档、运维手册和监控资产
 │   ├── site
 │   │   ├── 角色文档
-│   │   │   ├── 后端开发    # AI 规范、扩展指南、组件清单、安全同步说明
-│   │   │   └── 运维        # 部署发布、数据库迁移治理
+│   │   │   ├── 后端开发       # AI 规范、扩展指南、组件清单、安全同步说明
+│   │   │   └── 运维          # 部署发布、数据库迁移治理
 │   │   └── 接口文档
-│   │       └── 前台系统    # 认证、用户、系统、健康检查接口
+│   │       └── 前台系统       # 认证、用户、系统、健康检查接口
 │   ├── prometheus            # Prometheus 告警规则
 │   ├── grafana               # Grafana 面板
 │   └── handler.go            # 内网文档资源读取入口
@@ -68,10 +86,11 @@ api
     ├── infra                 # MySQL、Redis、redsync、日志、Trace、Collector 适配
     ├── logic                 # 用例编排、规则校验、缓存保护和运行时扩展
     ├── middleware            # 鉴权、签名、加解密、内网 Ops、访问日志、Recover
-    ├── model                 # GORM Model、表名、分表定位和数据访问
+    ├── model                 # GORM Model、身份目录、物理表定位和数据访问
     ├── requestctx            # 链路字段、调用方、耗时和 trace 元数据
     ├── routealias            # 路由别名常量
     ├── security              # 路由字段级签名、加密、大小限制和测试向量
+    ├── sharding              # 固定桶物理表数量校验和稳定表名映射
     ├── svc                   # ServiceContext 与基础设施依赖聚合
     └── types                 # API 请求、响应、列表项和参数校验
 ```
@@ -102,15 +121,15 @@ api
 
 ## 核心能力
 
-- 前台认证：注册、登录、刷新、退出，登录态使用 JWT + Redis session，支持多实例部署。
+- 前台认证：注册、登录、刷新、退出，JWT 携带稳定 `sid`、唯一 `jti` 和 `auth_version`，会话使用同槽 Redis Hash/ZSET/Lua 原子维护，单用户硬上限 8 个并支持多实例部署。
 - 用户资料：按 `user_identity_username/user_identity_email/user_identity_phone/user_identity_oauth` 定位用户所在物理表，邮箱和手机号身份只通过 HMAC 哈希匹配，避免未来拆表后扫描所有用户表。
 - 参数校验：请求结构体在 `internal/types` 实现 go-zero `Validate()`，handler 解析请求后自动触发基础校验和字段归一化。
-- 安全链路：`security.secret_key` 配置后启用 `X-App-Id`、`X-Signature`、`X-Crypto`、`X-Cipher`、`X-Key-Version` 等请求头校验；未配置秘钥时允许普通 JSON 请求。
+- 安全链路：`security.secret_key` 配置后启用 `X-App-Id`、`X-Signature`、`X-Crypto`、`X-Cipher`、`X-Key-Version` 等请求头校验；前台签名接受 M/MD5、R/RSA 和 A/AES，未配置秘钥时允许普通 JSON 请求。
 - 路由治理：路由由 `RouteSpec` 单点描述，并同步生成 route contract、route security manifest 和接口文档引用。
-- 运行期配置：`hot_reload.enabled=true` 后监听主配置文件和允许外置的运行期配置段；HTTP 监听、MySQL、Redis、OTLP 等启动期配置变化只提示重启，不在线重建核心组件。
-- 内网运维接口：`/internal/system/...`、`/internal/users/:id/runtime-sync` 和 `/internal/docs/...` 只允许内网来源，并要求 `X-Ops-Token` 与运维 HMAC 请求签名。
+- 运行期配置：`hot_reload.enabled=true` 后监听主配置文件和允许外置的运行期配置段；完整 HTTP 配置、AppID/AppKey、JWT、Security、Collector、MySQL、Redis、OTLP 等启动期配置变化只提示重启，并保留当前运行值。
+- 内网运维接口：`/internal/system/...`、`/internal/users/:id/runtime-sync` 和 `/internal/docs/...` 只注册在独立 `internal_server`；同时校验私网来源、Ops 令牌、HMAC、时间窗口和 Redis nonce，生产跨主机监听强制 mTLS。
 - 业务配置缓存：`sys_config` 使用 Redis Hash、本地缓存、redsync 回源锁和空值占位保护。
-- Collector：轻量业务事件可投递到同步 Processor 或 Redis Stream，认证风控事件默认会输出脱敏指标。
+- Collector：API 同步投递脱敏认证事件到 Kafka，Admin Worker 负责消费、聚合、失败重试和死信闭环。
 - 可观测性：提供 `/api/live`、`/api/ready`、`/api/metrics`，并配套访问日志、错误链路日志和 OpenTelemetry Trace。
 
 ## 本地启动
@@ -177,8 +196,8 @@ make migrate-up
 
 `config_files.runtime` 只允许外置部分运行期配置段，当前由 `internal/bootstrap/configload/runtimefile:sectionSpecs` 明确声明。新增配置时必须区分：
 
-- 运行期参数：可热加载，例如部分认证、安全、Collector、运维令牌等配置。
-- 启动期能力：必须重启，例如 HTTP 监听、MySQL、Redis、OTLP、路由和组件注册。
+- 运行期参数：仅限已有运行期应用器明确支持的字段，例如部分认证限流、热加载轮询和运维参数。
+- 启动期能力：必须重启，例如完整 HTTP 配置、AppID/AppKey、JWT、Security、Collector、MySQL、Redis、OTLP、路由和组件注册。
 
 ## 接口文档
 
@@ -216,7 +235,7 @@ git diff --check
 make ci
 ```
 
-`make ci` 会执行格式检查、全量测试、主服务构建、迁移工具构建、秘钥扫描、Prometheus 规则检查和 `git diff --check`。如果本机没有 `promtool`，规则检查会优先尝试 Docker 镜像。
+`make ci` 会执行格式检查、全量测试、主服务构建、迁移工具构建、秘钥扫描、Prometheus 规则检查、分支差异门禁和 `git diff --check`。如果本机没有 `promtool`，规则检查会优先尝试 Docker 镜像。
 
 ## 发布与观测
 

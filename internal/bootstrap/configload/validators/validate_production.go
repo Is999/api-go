@@ -30,6 +30,14 @@ func ValidateProduction(c config.Config) error {
 	if c.Redis.TLSInsecureSkipVerify {
 		return errors.Errorf("生产环境 redis.tls_insecure_skip_verify 不能为 true")
 	}
+	if !c.Collector.Enabled {
+		return errors.Errorf("生产环境必须启用 collector，认证风控事件依赖该链路")
+	}
+	// authTask 是生产认证风控事件的固定 Kafka 路由。
+	authTask, ok := c.Collector.Tasks[config.CollectorBizTypeAuthSecurity]
+	if !ok || strings.TrimSpace(authTask.Topic) != config.CollectorTopicAuthSecurity {
+		return errors.Errorf("生产环境 collector.tasks.%s.topic 必须配置为 %s", config.CollectorBizTypeAuthSecurity, config.CollectorTopicAuthSecurity)
+	}
 	if !c.Auth.LoginRateLimit.Enabled {
 		return errors.Errorf("生产环境必须启用 auth.login_rate_limit")
 	}

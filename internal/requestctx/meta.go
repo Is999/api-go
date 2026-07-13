@@ -30,6 +30,7 @@ type Meta struct {
 	UserID        int64     // 当前用户 ID
 	UserName      string    // 当前用户名称
 	AccessToken   string    // 当前请求携带的访问令牌
+	SessionID     string    // 当前登录会话 ID
 	Node          string    // 当前服务节点
 	Mode          string    // 当前运行模式
 	HTTPStatus    int       // HTTP 状态码
@@ -140,6 +141,13 @@ func SetUser(ctx context.Context, userID int64, userName, clientIP string) {
 func SetAccessToken(ctx context.Context, token string) {
 	if meta := FromContext(ctx); meta != nil && token != "" {
 		meta.AccessToken = token
+	}
+}
+
+// SetSessionID 保存鉴权中间件已经解析出的会话 ID。
+func SetSessionID(ctx context.Context, sessionID string) {
+	if meta := FromContext(ctx); meta != nil {
+		meta.SessionID = strings.TrimSpace(sessionID)
 	}
 }
 

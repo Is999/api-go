@@ -1,53 +1,30 @@
 package middleware
 
 import (
-	"net/http"
+	"bytes"
+	"encoding/json"
 	"net/http/httptest"
-	"strings"
 	"testing"
-
-	"api/internal/security"
-
-	"github.com/Is999/go-utils/errors"
 )
 
-// TestReadRequestBodyRejectsOversizeContentLength 验证对应场景符合预期。
-func TestReadRequestBodyRejectsOversizeContentLength(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/api/demo", strings.NewReader("{}"))
-	req.ContentLength = security.MaxSecurityRequestBodyBytes + 1
+// TestRequestJSONMapRejectsTrailingContent 校验安全请求体不能夹带第二个 JSON 值。
+func TestRequestJSONMapRejectsTrailingContent(t *testing.T) {
+	req := httptest.NewRequest("POST", "/api/test", bytes.NewBufferString(`{"username":"first"} {"username":"second"}`))
 
-	if _, err := readRequestBody(req); !errors.Is(err, security.ErrSecurityPayloadTooLarge) {
-		t.Fatalf("readRequestBody() error = %v, want ErrSecurityPayloadTooLarge", err)
+	if _, err := requestJSONMap(req); err == nil {
+		t.Fatal("期望尾随 JSON 内容被拒绝")
 	}
 }
 
-// TestReadRequestBodyRejectsOversizeStream 验证对应场景符合预期。
-func TestReadRequestBodyRejectsOversizeStream(t *testing.T) {
-	body := strings.Repeat("x", security.MaxSecurityRequestBodyBytes+1)
-	req := httptest.NewRequest(http.MethodPost, "/api/demo", strings.NewReader(body))
-	req.ContentLength = -1
+// TestRequestParamsAcceptsSingleJSONObject 校验合法单对象仍可参与签名参数提取。
+func TestRequestParamsAcceptsSingleJSONObject(t *testing.T) {
+	req := httptest.NewRequest("POST", "/api/test", bytes.NewBufferString("{\"count\":1}\n"))
 
-	if _, err := readRequestBody(req); !errors.Is(err, security.ErrSecurityPayloadTooLarge) {
-		t.Fatalf("readRequestBody() error = %v, want ErrSecurityPayloadTooLarge", err)
-	}
-}
-
-// TestReadRequestBodyKeepsReadableBody 验证对应场景符合预期。
-func TestReadRequestBodyKeepsReadableBody(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/api/demo", strings.NewReader(`{"name":"demo"}`))
-
-	body, err := readRequestBody(req)
+	params, err := requestParams(req)
 	if err != nil {
-		t.Fatalf("readRequestBody() error = %v", err)
+		t.Fatalf("解析合法 JSON 失败: %v", err)
 	}
-	if string(body) != `{"name":"demo"}` {
-		t.Fatalf("readRequestBody() = %q", string(body))
-	}
-	bodyAgain, err := readRequestBody(req)
-	if err != nil {
-		t.Fatalf("readRequestBody() second read error = %v", err)
-	}
-	if string(bodyAgain) != string(body) {
-		t.Fatalf("second body = %q, want %q", string(bodyAgain), string(body))
+	if params["count"] != json.Number("1") {
+		t.Fatalf("期望保留 JSON 数字精度，实际 %#v", params["count"])
 	}
 }

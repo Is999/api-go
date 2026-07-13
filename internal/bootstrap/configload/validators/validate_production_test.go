@@ -24,6 +24,26 @@ func TestValidateProductionRejectsMissingOpsToken(t *testing.T) {
 	}
 }
 
+// TestValidateProductionRequiresCollector 确保生产认证风控事件不会被静默丢弃。
+func TestValidateProductionRequiresCollector(t *testing.T) {
+	cfg := validProductionConfig()
+	cfg.Collector.Enabled = false
+	if err := ValidateProduction(cfg); err == nil {
+		t.Fatal("expected disabled collector to be rejected")
+	}
+}
+
+// TestValidateProductionRequiresAuthSecurityRoute 确保生产认证事件固定进入 Admin 消费 Topic。
+func TestValidateProductionRequiresAuthSecurityRoute(t *testing.T) {
+	for _, topic := range []string{"", "wrong_topic"} {
+		cfg := validProductionConfig()
+		cfg.Collector.Tasks[config.CollectorBizTypeAuthSecurity] = config.CollectorTaskConfig{Topic: topic}
+		if err := ValidateProduction(cfg); err == nil {
+			t.Fatalf("expected auth.security topic %q to be rejected", topic)
+		}
+	}
+}
+
 // validProductionConfig 返回满足生产硬校验的最小配置。
 func validProductionConfig() config.Config {
 	cfg := config.Config{
@@ -38,6 +58,12 @@ func validProductionConfig() config.Config {
 		},
 		Ops: config.OpsConfig{
 			ConfigReloadToken: "prod-ops-9f3b6e1c7a2d4f0b",
+		},
+		Collector: config.CollectorConfig{
+			Enabled: true,
+			Tasks: map[string]config.CollectorTaskConfig{
+				config.CollectorBizTypeAuthSecurity: {Topic: config.CollectorTopicAuthSecurity},
+			},
 		},
 	}
 	cfg.Mode = "pro"

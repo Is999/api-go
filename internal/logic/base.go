@@ -144,7 +144,8 @@ func (l *BaseLogic) RdsSetJSONValue(key string, value any, expireSec int64) erro
 	return errors.Tag(l.Svc.Rds.Set(l.Ctx, key, data, JitterTTL(time.Duration(expireSec)*time.Second)).Err())
 }
 
-// RdsDelKeys 批量删除当前 app_id 命名空间下的 Redis 键。
+// RdsDelKeys 通过独立 DEL 命令批量删除当前 app_id 命名空间下的 Redis 键。
+// 普通 pipeline 会按节点分发不同 slot，避免 Redis Cluster 多 key DEL 返回 CROSSSLOT。
 func (l *BaseLogic) RdsDelKeys(keys ...string) error {
 	if len(keys) == 0 {
 		return nil
@@ -163,7 +164,15 @@ func (l *BaseLogic) RdsDelKeys(keys ...string) error {
 	if len(normalized) == 0 {
 		return errors.New("Redis key 为空")
 	}
-	return errors.Tag(l.Svc.Rds.Del(l.Ctx, normalized...).Err())
+	if len(normalized) == 1 {
+		return errors.Tag(l.Svc.Rds.Del(l.Ctx, normalized[0]).Err())
+	}
+	pipe := l.Svc.Rds.Pipeline()
+	for _, key := range normalized {
+		pipe.Del(l.Ctx, key)
+	}
+	_, err := pipe.Exec(l.Ctx)
+	return errors.Tag(err)
 }
 
 // WrapLogicError 给业务错误补充调用点上下文。

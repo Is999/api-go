@@ -20,8 +20,10 @@ func TestValidateConfigRejectsWeakJWTSecret(t *testing.T) {
 func TestValidateConfigRejectsInvalidCollectorKafka(t *testing.T) {
 	cfg := validBootstrapConfig()
 	cfg.Collector = config.CollectorConfig{
-		Enabled:     true,
-		DefaultTask: config.CollectorTaskConfig{Topic: "api_collector_events"},
+		Enabled: true,
+		Tasks: map[string]config.CollectorTaskConfig{
+			config.CollectorBizTypeAuthSecurity: {Topic: config.CollectorTopicAuthSecurity},
+		},
 	}
 	if err := Validate(cfg); err == nil {
 		t.Fatal("expected collector without kafka brokers to be rejected")
@@ -34,6 +36,71 @@ func TestValidateConfigRejectsMissingAppID(t *testing.T) {
 	cfg.AppID = ""
 	if err := Validate(cfg); err == nil {
 		t.Fatal("expected missing app_id to be rejected")
+	}
+}
+
+// TestValidateConfigRejectsInvalidTrustedProxy 确保错误代理网段不会静默退化为错误客户端 IP。
+func TestValidateConfigRejectsInvalidTrustedProxy(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.TrustedProxies = []string{"not-a-cidr"}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected invalid trusted_proxies to be rejected")
+	}
+}
+
+// TestValidateConfigRejectsUnsafeAppID 确保 Redis 命名空间不能被分隔符或空白破坏。
+func TestValidateConfigRejectsUnsafeAppID(t *testing.T) {
+	for _, appID := range []string{"site:other", "site name", "site/{slot}"} {
+		cfg := validBootstrapConfig()
+		cfg.AppID = appID
+		if err := Validate(cfg); err == nil {
+			t.Fatalf("expected unsafe app_id %q to be rejected", appID)
+		}
+	}
+}
+
+// TestValidateConfigRejectsInvalidRedisMode 确保 Redis 模式拼写和地址语义不会静默推断成其它客户端。
+func TestValidateConfigRejectsInvalidRedisMode(t *testing.T) {
+	tests := []config.RedisConfig{
+		{Type: "cluser", Addrs: []string{"127.0.0.1:6379"}, PoolSize: 1},
+		{Type: "single", Addrs: []string{"127.0.0.1:6379", "127.0.0.1:6380"}, PoolSize: 1},
+		{Type: "single", Addrs: []string{"127.0.0.1:6379"}, AddrMap: map[string]string{"a": "b"}, PoolSize: 1},
+		{Type: "cluster", Addrs: []string{"127.0.0.1:6379"}, DB: 1, PoolSize: 1},
+	}
+	for _, redisCfg := range tests {
+		cfg := validBootstrapConfig()
+		cfg.Redis = redisCfg
+		if err := Validate(cfg); err == nil {
+			t.Fatalf("expected invalid redis config to be rejected: %+v", redisCfg)
+		}
+	}
+}
+
+// TestValidateConfigRejectsUnsafeRuntimeBounds 确保密码、热加载和 trace 配置不会溢出底层运行时边界。
+func TestValidateConfigRejectsUnsafeRuntimeBounds(t *testing.T) {
+	tests := []func(*config.Config){
+		func(cfg *config.Config) { cfg.Auth.PasswordMinLength = maxPasswordBytes + 1 },
+		func(cfg *config.Config) { cfg.HotReload.CheckIntervalSeconds = maxHotReloadIntervalSeconds + 1 },
+		func(cfg *config.Config) { cfg.Observability.SampleRatio = 1.01 },
+	}
+	for _, mutate := range tests {
+		cfg := validBootstrapConfig()
+		mutate(&cfg)
+		if err := Validate(cfg); err == nil {
+			t.Fatalf("expected unsafe runtime bounds to be rejected: %+v", cfg)
+		}
+	}
+}
+
+// TestValidateConfigRejectsNormalizedSiteMySQLCollision 确保扩展库名不会在连接注册时 trim/大小写覆盖。
+func TestValidateConfigRejectsNormalizedSiteMySQLCollision(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.SiteMySQL = config.SiteMySQLConfig{
+		"site":   {},
+		" Site ": {},
+	}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected normalized site_mysql name collision to be rejected")
 	}
 }
 
@@ -88,6 +155,23 @@ func TestValidateConfigRejectsInvalidSnowflakeNamespaceNodeCount(t *testing.T) {
 	}
 	if err := Validate(cfg); err == nil {
 		t.Fatal("expected negative snowflake.redis namespace node_count to be rejected")
+	}
+}
+
+// TestValidateConfigRejectsNonCanonicalSnowflakeNamespace 确保 namespace 不会在运行时 trim 后无序覆盖或因大小写失配失效。
+func TestValidateConfigRejectsNonCanonicalSnowflakeNamespace(t *testing.T) {
+	for _, namespace := range []string{" user ", "User"} {
+		cfg := validBootstrapConfig()
+		cfg.Snowflake.WorkerID = nil
+		cfg.Snowflake.Redis = config.SnowflakeRedisConfig{
+			Enabled: true,
+			Namespaces: map[string]config.SnowflakeRedisNamespaceConfig{
+				namespace: {NodeCount: 10},
+			},
+		}
+		if err := Validate(cfg); err == nil {
+			t.Fatalf("expected non-canonical namespace %q to be rejected", namespace)
+		}
 	}
 }
 
@@ -183,6 +267,20 @@ func TestValidateConfigRejectsUnsafeSnowflakeLeaseInterval(t *testing.T) {
 	}
 }
 
+// TestValidateConfigRejectsOversizedSnowflakeLease 确保极端租约值不会溢出 time.Duration 并触发 ticker panic。
+func TestValidateConfigRejectsOversizedSnowflakeLease(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Snowflake.WorkerID = nil
+	cfg.Snowflake.Redis = config.SnowflakeRedisConfig{
+		Enabled:              true,
+		LeaseSeconds:         maxSnowflakeRedisLeaseSeconds + 1,
+		RenewIntervalSeconds: 1,
+	}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected oversized snowflake Redis lease to be rejected")
+	}
+}
+
 // TestValidateConfigRejectsInvalidSnowflakeWorkerID 确保雪花 worker_id 越界时启动失败。
 func TestValidateConfigRejectsInvalidSnowflakeWorkerID(t *testing.T) {
 	cfg := validBootstrapConfig()
@@ -201,12 +299,31 @@ func TestValidateConfigRejectsInvalidUserRouteShardCount(t *testing.T) {
 	}
 }
 
+// TestValidateConfigAcceptsUserRouteShardCount 验证运行时允许已支持的物理拆分档位。
+func TestValidateConfigAcceptsUserRouteShardCount(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.User.RouteShardCount = 2
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("valid user.route_shard_count should pass: %v", err)
+	}
+}
+
 // TestNormalizeConfigDefaultsUserRouteShardCount 确保业务用户写入路由缺省时稳定回落单表。
 func TestNormalizeConfigDefaultsUserRouteShardCount(t *testing.T) {
 	cfg := config.Config{}
 	Normalize(&cfg)
 	if cfg.User.RouteShardCount != defaultUserRouteShardCount {
 		t.Fatalf("route_shard_count = %d, want %d", cfg.User.RouteShardCount, defaultUserRouteShardCount)
+	}
+}
+
+// TestNormalizeConfigPreservesInvalidUserRouteShardCount 确保非法负数不会被默认值掩盖。
+func TestNormalizeConfigPreservesInvalidUserRouteShardCount(t *testing.T) {
+	cfg := config.Config{}
+	cfg.User.RouteShardCount = -1
+	Normalize(&cfg)
+	if cfg.User.RouteShardCount != -1 {
+		t.Fatalf("route_shard_count = %d, want -1", cfg.User.RouteShardCount)
 	}
 }
 
@@ -241,7 +358,7 @@ func TestValidateConfigAcceptsCollectorTaskTopic(t *testing.T) {
 	cfg.Collector.Enabled = true
 	cfg.Collector.Kafka.Brokers = []string{"127.0.0.1:9092"}
 	cfg.Collector.Tasks = map[string]config.CollectorTaskConfig{
-		"auth.security": {Topic: "api_collector_auth_security_events"},
+		config.CollectorBizTypeAuthSecurity: {Topic: config.CollectorTopicAuthSecurity},
 	}
 	if err := Validate(cfg); err != nil {
 		t.Fatalf("valid collector task topic should pass: %v", err)
@@ -359,6 +476,48 @@ func TestValidateConfigAcceptsProductionSafeConfig(t *testing.T) {
 	}
 }
 
+// TestValidateConfigRejectsProductionWildcardInternalHost 确保生产内网监听器不能退化为全网卡监听。
+func TestValidateConfigRejectsProductionWildcardInternalHost(t *testing.T) {
+	cfg := validProductionBootstrapConfig()
+	cfg.InternalServer.Host = "0.0.0.0"
+	if err := Validate(cfg); err == nil {
+		t.Fatal("期望生产 internal_server 通配监听被拒绝，实际为 nil")
+	}
+}
+
+// TestValidateConfigRequiresMTLSForPrivateInternalHost 确保生产跨主机内网监听必须配置完整 mTLS。
+func TestValidateConfigRequiresMTLSForPrivateInternalHost(t *testing.T) {
+	cfg := validProductionBootstrapConfig()
+	cfg.InternalServer.Host = "10.0.0.10"
+	if err := Validate(cfg); err == nil {
+		t.Fatal("期望生产私网监听缺少 mTLS 被拒绝，实际为 nil")
+	}
+	cfg.InternalServer.CertFile = "/etc/tls/server.crt"
+	cfg.InternalServer.KeyFile = "/etc/tls/server.key"
+	cfg.InternalServer.ClientCAFile = "/etc/tls/client-ca.crt"
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("完整 mTLS 私网监听配置应通过校验: %v", err)
+	}
+}
+
+// TestValidateConfigRejectsPartialInternalMTLS 确保任意环境都不能接受半配置的 mTLS。
+func TestValidateConfigRejectsPartialInternalMTLS(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.InternalServer.CertFile = "/etc/tls/server.crt"
+	if err := Validate(cfg); err == nil {
+		t.Fatal("期望不完整 mTLS 配置被拒绝，实际为 nil")
+	}
+}
+
+// TestValidateConfigRejectsCIDRThatExtendsIntoPublicSpace 确保白名单 CIDR 不能仅因起始地址私有而覆盖公网。
+func TestValidateConfigRejectsCIDRThatExtendsIntoPublicSpace(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Ops.ConfigReloadAllowedIPs = []string{"10.0.0.0/7"}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("期望跨出私网范围的 CIDR 被拒绝，实际为 nil")
+	}
+}
+
 // validBootstrapConfig 返回满足默认启动校验的 API 测试配置。
 func validBootstrapConfig() config.Config {
 	return config.Config{
@@ -373,6 +532,13 @@ func validBootstrapConfig() config.Config {
 		Redis: config.RedisConfig{
 			Addrs:    []string{"127.0.0.1:6379"},
 			PoolSize: 1,
+		},
+		Ops: config.OpsConfig{
+			ConfigReloadToken: "test-ops-token-0123456789",
+		},
+		InternalServer: config.InternalServerConfig{
+			Host: "127.0.0.1",
+			Port: 8891,
 		},
 	}
 }
@@ -396,6 +562,16 @@ func validProductionBootstrapConfig() config.Config {
 		LockSeconds:   600,
 	}
 	cfg.Ops.ConfigReloadToken = "prod-ops-9f3b6e1c7a2d4f0b"
+	// Collector 生产测试配置接通认证风控固定 Kafka 路由。
+	cfg.Collector = config.CollectorConfig{
+		Enabled: true,
+		Kafka: config.CollectorKafkaConfig{
+			Brokers: []string{"127.0.0.1:9092"},
+		},
+		Tasks: map[string]config.CollectorTaskConfig{
+			config.CollectorBizTypeAuthSecurity: {Topic: config.CollectorTopicAuthSecurity},
+		},
+	}
 	return cfg
 }
 

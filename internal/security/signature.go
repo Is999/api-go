@@ -2,129 +2,81 @@ package security
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"api/helper"
-	"api/internal/routealias"
 
 	utils "github.com/Is999/go-utils"
 	"github.com/Is999/go-utils/errors"
 )
 
-// 路由安全策略字段标记常量。
-const (
-	// SignFieldAll 表示签名时所有首层字段参与排序签名。
-	SignFieldAll = "*"
-	// CipherWholeBody 表示禁用的整包加密标记，仅用于识别并拒绝非法输入。
-	CipherWholeBody = "cipher"
-	// CipherJSONPrefix 表示字段值在加解密前需要按 JSON 编解码。
-	CipherJSONPrefix = "json:"
-)
+// SignFieldAll 表示所有首层字段参与排序签名。
+const SignFieldAll = "*"
 
-// RouteSecurityPolicy 定义单个路由的请求验签、响应回签与响应加密策略。
-type RouteSecurityPolicy struct {
-	RequestSign    []string // RequestSign 表示请求验签关键字段；新接口禁止使用 *
-	RequestCipher  []string // RequestCipher 表示请求允许解密的字段；禁止使用 cipher 整包加密
-	ResponseSign   []string // ResponseSign 表示响应回签关键字段；禁止使用 *
-	ResponseCipher []string // ResponseCipher 表示响应需要加密的字段路径；禁止使用 cipher 整包加密
-}
-
-// RouteSecurityPolicies 定义前台 API 的推荐安全策略，key 来自统一路由别名常量。
-var RouteSecurityPolicies = map[routealias.Alias]RouteSecurityPolicy{
-	// auth.register 保护注册账号、密码、联系方式和新会话 token。
-	routealias.AuthRegister: {
-		RequestSign:    []string{"username", "password", "nickname", "email", "phone"},
-		RequestCipher:  []string{"password", "email", "phone"},
-		ResponseSign:   []string{"token", "expiresAt"},
-		ResponseCipher: []string{"token", "user.email", "user.phone"},
-	},
-	// auth.login 保护登录身份、密码和响应 token。
-	routealias.AuthLogin: {
-		RequestSign:    []string{"identityType", "identityValue", "password"},
-		RequestCipher:  []string{"identityValue", "password"},
-		ResponseSign:   []string{"token", "expiresAt"},
-		ResponseCipher: []string{"token", "user.email", "user.phone"},
-	},
-	// auth.refresh 保护刷新后的访问 token。
-	routealias.AuthRefresh: {
-		ResponseSign:   []string{"token", "expiresAt"},
-		ResponseCipher: []string{"token"},
-	},
-	// auth.logout 只依赖登录态和服务端 session 校验，不额外声明字段级安全策略。
-	routealias.AuthLogout: {},
-	// user.profile 只加密当前用户联系方式。
-	routealias.UserProfile: {
-		ResponseCipher: []string{"email", "phone"},
-	},
-	// user.runtime.sync 走内网运维链路，不参与前台签名加密。
-	routealias.UserRuntimeSync: {},
-	// system.config_reload.status 走内网运维链路，不参与前台签名加密。
-	routealias.SystemConfigReloadStatus: {},
-	// system.config_reload.items 走内网运维链路，不参与前台签名加密。
-	routealias.SystemConfigReloadItems: {},
-	// system.config_reload.run 走内网运维链路，不参与前台签名加密。
-	routealias.SystemConfigReloadRun: {},
-}
-
-// PolicyByRoute 根据路由别名读取统一安全策略。
-func PolicyByRoute(route string) RouteSecurityPolicy {
-	alias := routealias.Alias(strings.TrimSpace(route))
-	if alias == "" || strings.EqualFold(string(alias), string(routealias.Ignore)) {
-		return RouteSecurityPolicy{}
-	}
-	if policy, ok := RouteSecurityPolicies[alias]; ok {
-		return policy
-	}
-	return RouteSecurityPolicy{}
-}
-
-// BuildSignString 生成待签名字符串，按字段排序后拼接时间绑定的请求盐值。
+// BuildSignString 使用版本化长度前缀协议生成无歧义签名串。
+// AppID、traceID、timestamp 和字段值均按 UTF-8 字节长度编码。
 func BuildSignString(data map[string]any, signParams []string, traceID, timestamp, appID string) string {
 	params := resolveSignParams(data, signParams)
 	sort.Strings(params)
 
 	var builder strings.Builder
+	builder.WriteString("v2|app=")
+	writeSignStringPart(&builder, appID)
+	builder.WriteString("|trace=")
+	writeSignStringPart(&builder, traceID)
+	builder.WriteString("|timestamp=")
+	writeSignStringPart(&builder, timestamp)
 	for _, key := range params {
-		value, ok := data[key]
+		value, ok := SignFieldValue(data, key)
 		if !ok || isEmptySignValue(value) {
 			continue
 		}
-		builder.WriteString(key)
-		builder.WriteString("=")
-		builder.WriteString(SignValueString(value))
-		builder.WriteString("&")
+		builder.WriteString("|field=")
+		writeSignStringPart(&builder, key)
+		writeSignStringPart(&builder, SignValueString(value))
 	}
-	builder.WriteString("key=")
-	builder.WriteString(utils.MD5(appID + "-" + traceID + "-" + timestamp))
 	return builder.String()
 }
 
-// EncodeCipherParams 把字段级加密配置编码成请求头值；整包加密标记不再生成请求头。
-func EncodeCipherParams(params []string) string {
-	params = helper.UniqueNonEmptyStrings(params)
-	if len(params) == 0 {
-		return ""
+// SignFieldValue 按点路径读取参与签名的首层或嵌套字段值。
+func SignFieldValue(data map[string]any, field string) (any, bool) {
+	path := strings.Split(strings.TrimSpace(field), ".")
+	if len(path) == 0 {
+		return nil, false
 	}
-	for _, param := range params {
-		if strings.EqualFold(param, CipherWholeBody) {
-			return ""
+	var current any = data
+	for _, segment := range path {
+		segment = strings.TrimSpace(segment)
+		if segment == "" {
+			return nil, false
+		}
+		object, ok := current.(map[string]any)
+		if !ok {
+			return nil, false
+		}
+		current, ok = object[segment]
+		if !ok {
+			return nil, false
 		}
 	}
-	body, err := json.Marshal(params)
-	if err != nil {
-		return ""
-	}
-	return base64.StdEncoding.EncodeToString(body)
+	return current, true
+}
+
+// writeSignStringPart 写入 UTF-8 字节长度和原文，避免字段分隔符出现在值中时产生碰撞。
+func writeSignStringPart(builder *strings.Builder, value string) {
+	builder.WriteString(strconv.Itoa(len(value)))
+	builder.WriteByte(':')
+	builder.WriteString(value)
 }
 
 // resolveSignParams 解析签名字段列表；配置了 * 时，对当前 map 的所有首层字段签名。
 func resolveSignParams(data map[string]any, signParams []string) []string {
 	params := helper.UniqueNonEmptyStrings(signParams)
-	if !utils.IsHas(SignFieldAll, params) {
+	if !utils.Contains(SignFieldAll, params) {
 		return params
 	}
 	result := make([]string, 0, len(data))

@@ -8,7 +8,7 @@ import (
 	"api/internal/svc"
 )
 
-// RouteSpecs 返回 API 内网文档资源路由规格。
+// RouteSpecs 返回 API 内网文档资源路由规格；管理员文档权限由 Admin 代理层统一校验。
 func RouteSpecs() []shared.RouteSpec {
 	return []shared.RouteSpec{
 		{

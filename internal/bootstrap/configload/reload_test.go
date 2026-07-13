@@ -1,6 +1,8 @@
 package configload
 
 import (
+	"reflect"
+	"strings"
 	"testing"
 
 	"api/internal/config"
@@ -14,9 +16,7 @@ func TestDetectReloadRestartImpact(t *testing.T) {
 			CheckIntervalSeconds: 5,
 		},
 	}
-	oldCfg.Mode = "dev"
 	newCfg := oldCfg
-	newCfg.Mode = "prod"
 	newCfg.HotReload.CheckIntervalSeconds = 10
 
 	restartRequired, reason := DetectReloadRestartImpact(oldCfg, newCfg)
@@ -35,12 +35,19 @@ func TestDetectReloadRestartImpact(t *testing.T) {
 func TestHotReloadRestartSpecsValid(t *testing.T) {
 	specs := hotReloadRestartSpecs()
 	wantReasons := []string{
-		"HTTP监听地址变更",
+		"HTTP服务配置变更",
+		"应用ID变更",
+		"应用密钥变更",
+		"实例标识变更",
+		"可信代理配置变更",
+		"JWT认证配置变更",
+		"安全链路配置变更",
+		"Collector配置变更",
 		"雪花ID worker 配置变更",
 		"用户写入分表路由配置变更",
 		"MySQL连接配置变更",
 		"Redis连接配置变更",
-		"OTLP导出配置变更",
+		"可观测性配置变更",
 		"Lark告警配置变更",
 	}
 	if len(specs) != len(wantReasons) {
@@ -67,7 +74,25 @@ func TestHotReloadRestartSpecsValid(t *testing.T) {
 // TestBuildReloadEffectiveConfigPreservesRestartOnlyFields 确保待重启字段保留原值，运行期字段仍可刷新。
 func TestBuildReloadEffectiveConfigPreservesRestartOnlyFields(t *testing.T) {
 	oldCfg := config.Config{
-		AppID: "old-app",
+		AppID:      "old-app",
+		AppKey:     "old-app-key",
+		InstanceID: "old-instance",
+		TrustedProxies: []string{
+			"127.0.0.1/32",
+		},
+		JwtSecret:    "old-jwt-secret",
+		JwtExpiresIn: 3600,
+		Auth: config.AuthConfig{
+			Issuer:                 "old-issuer",
+			ProfileCacheTTLSeconds: 300,
+		},
+		Security: config.SecurityConfig{
+			SecretKey: config.SecuritySecretKeyConfig{KeyVersion: "old-v1", SignStatus: 1},
+		},
+		Collector: config.CollectorConfig{
+			Enabled: true,
+			Kafka:   config.CollectorKafkaConfig{Brokers: []string{"old-kafka:9092"}},
+		},
 		MySQL: config.MySQLConfig{
 			WriteDataSource: "old-write",
 			MaxOpenConns:    10,
@@ -86,6 +111,7 @@ func TestBuildReloadEffectiveConfigPreservesRestartOnlyFields(t *testing.T) {
 		},
 		Observability: config.ObservabilityConfig{
 			ServiceName:  "old-service",
+			Environment:  "dev",
 			OTLPEndpoint: "old-collector:4317",
 			OTLPProtocol: "grpc",
 		},
@@ -96,6 +122,15 @@ func TestBuildReloadEffectiveConfigPreservesRestartOnlyFields(t *testing.T) {
 
 	newCfg := oldCfg
 	newCfg.AppID = "new-app"
+	newCfg.AppKey = "new-app-key"
+	newCfg.InstanceID = "new-instance"
+	newCfg.TrustedProxies = []string{"10.0.0.0/8"}
+	newCfg.JwtSecret = "new-jwt-secret"
+	newCfg.JwtExpiresIn = 7200
+	newCfg.Auth.Issuer = "new-issuer"
+	newCfg.Auth.ProfileCacheTTLSeconds = 600
+	newCfg.Security.SecretKey.KeyVersion = "new-v2"
+	newCfg.Collector.Kafka.Brokers = []string{"new-kafka:9092"}
 	newCfg.Host = "0.0.0.0"
 	newCfg.Port = 8891
 	newCfg.Mode = "prod"
@@ -105,6 +140,7 @@ func TestBuildReloadEffectiveConfigPreservesRestartOnlyFields(t *testing.T) {
 	newCfg.SiteMySQL = config.SiteMySQLConfig{"site": {WriteDataSource: "new-site"}}
 	newCfg.Redis = config.RedisConfig{Addrs: []string{"127.0.0.1:6380"}}
 	newCfg.Observability.ServiceName = "new-service"
+	newCfg.Observability.Environment = "prod"
 	newCfg.Observability.OTLPEndpoint = "new-collector:4317"
 	newCfg.Observability.OTLPProtocol = "http"
 	oldCfg.Alert.Lark.Enabled = false
@@ -130,17 +166,40 @@ func TestBuildReloadEffectiveConfigPreservesRestartOnlyFields(t *testing.T) {
 	if effective.User.RouteShardCount != oldCfg.User.RouteShardCount {
 		t.Fatalf("期望用户写入分表路由保持原值，实际为 %+v", effective.User)
 	}
-	if effective.Observability.OTLPEndpoint != oldCfg.Observability.OTLPEndpoint ||
-		effective.Observability.OTLPProtocol != oldCfg.Observability.OTLPProtocol {
-		t.Fatalf("期望 OTLP 导出配置保持原值，实际为 %+v", effective.Observability)
+	if !reflect.DeepEqual(effective.Observability, oldCfg.Observability) {
+		t.Fatalf("期望可观测性配置整体保持原值，实际为 %+v", effective.Observability)
 	}
-	if effective.Observability.ServiceName != newCfg.Observability.ServiceName {
-		t.Fatalf("期望观测运行参数刷新为新值，实际 service_name=%s", effective.Observability.ServiceName)
+	if effective.Observability.Environment != oldCfg.Observability.Environment {
+		t.Fatalf("期望观测环境跟随旧运行模式，实际 environment=%s", effective.Observability.Environment)
 	}
 	if effective.Alert.Lark.Enabled != oldCfg.Alert.Lark.Enabled || effective.Alert.Lark.WebhookURL != oldCfg.Alert.Lark.WebhookURL {
 		t.Fatalf("期望 Lark 告警配置保持原值，实际为 %+v", effective.Alert.Lark)
 	}
-	if effective.AppID != newCfg.AppID {
-		t.Fatalf("期望普通运行期配置刷新为新值，实际 app_id=%s", effective.AppID)
+	if effective.AppID != oldCfg.AppID || effective.AppKey != oldCfg.AppKey {
+		t.Fatalf("期望应用身份配置保持原值，实际 app_id=%s app_key=%s", effective.AppID, effective.AppKey)
+	}
+	if effective.InstanceID != oldCfg.InstanceID || !reflect.DeepEqual(effective.TrustedProxies, oldCfg.TrustedProxies) {
+		t.Fatalf("期望实例与可信代理配置保持原值，实际 instance_id=%s trusted_proxies=%v", effective.InstanceID, effective.TrustedProxies)
+	}
+	if effective.JwtSecret != oldCfg.JwtSecret || effective.JwtExpiresIn != oldCfg.JwtExpiresIn || effective.Auth.Issuer != oldCfg.Auth.Issuer {
+		t.Fatalf("期望 JWT 配置保持原值，实际 secret=%s expires=%d issuer=%s", effective.JwtSecret, effective.JwtExpiresIn, effective.Auth.Issuer)
+	}
+	if effective.Auth.ProfileCacheTTLSeconds != newCfg.Auth.ProfileCacheTTLSeconds {
+		t.Fatalf("期望认证运行参数刷新为新值，实际 profile_cache_ttl=%d", effective.Auth.ProfileCacheTTLSeconds)
+	}
+	if !reflect.DeepEqual(effective.Security, oldCfg.Security) {
+		t.Fatalf("期望安全链路配置保持原值，实际为 %+v", effective.Security)
+	}
+	if !reflect.DeepEqual(effective.Collector, oldCfg.Collector) {
+		t.Fatalf("期望 Collector 配置保持原值，实际为 %+v", effective.Collector)
+	}
+	restartRequired, reason := DetectReloadRestartImpact(oldCfg, newCfg)
+	if !restartRequired {
+		t.Fatal("期望启动期配置变化提示重启")
+	}
+	for _, want := range []string{"HTTP服务配置变更", "应用ID变更", "应用密钥变更", "实例标识变更", "可信代理配置变更", "JWT认证配置变更", "安全链路配置变更", "Collector配置变更", "可观测性配置变更"} {
+		if !strings.Contains(reason, want) {
+			t.Fatalf("重启原因 %q 缺少 %q", reason, want)
+		}
 	}
 }

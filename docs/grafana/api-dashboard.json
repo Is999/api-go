@@ -26,13 +26,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (app_id, action, category) (rate(api_auth_security_events_total[5m]))",
-          "legendFormat": "{{app_id}} / {{action}} / {{category}}",
+          "expr": "sum by (result) (rate(api_collector_kafka_publish_events_total[5m]))",
+          "legendFormat": "{{result}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "认证安全事件",
+      "title": "Collector Kafka 投递结果",
       "type": "timeseries"
     },
     {
@@ -56,13 +56,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (transport, result) (rate(api_collector_enqueue_events_total[5m]))",
-          "legendFormat": "{{transport}} / {{result}}",
+          "expr": "histogram_quantile(0.95, sum by (le, biz_type, strategy, result) (rate(api_idgen_generate_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{biz_type}} / {{strategy}} / {{result}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Collector 入队结果",
+      "title": "ID 生成耗时 P95",
       "type": "timeseries"
     },
     {
@@ -86,13 +86,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "histogram_quantile(0.95, sum by (le, biz_type, result) (rate(api_collector_processor_batch_duration_seconds_bucket[5m])))",
-          "legendFormat": "P95 {{biz_type}} / {{result}}",
+          "expr": "histogram_quantile(0.95, sum by (le, biz_type, result) (rate(api_idgen_segment_allocation_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{biz_type}} / {{result}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "Collector Processor 耗时 P95",
+      "title": "ID Segment 申请耗时 P95",
       "type": "timeseries"
     },
     {
@@ -116,13 +116,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum by (app_id, reason) (rate(api_auth_security_events_total{category=\"security_config\"}[5m]))",
-          "legendFormat": "{{app_id}} / {{reason}}",
+          "expr": "sum by (biz_type, event) (rate(api_idgen_snowflake_lease_events_total[5m]))",
+          "legendFormat": "{{biz_type}} / {{event}}",
           "range": true,
           "refId": "A"
         }
       ],
-      "title": "服务端安全配置异常",
+      "title": "Snowflake 租约事件",
       "type": "timeseries"
     },
     {

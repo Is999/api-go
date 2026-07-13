@@ -6,6 +6,7 @@ import (
 	"sort"
 
 	codes "api/common/codes"
+	"api/common/idgen"
 	"api/internal/bootstrap/register"
 	"api/internal/svc"
 
@@ -21,6 +22,10 @@ const (
 	nameMySQL = "mysql"
 	// nameRedis 表示默认 Redis 组件。
 	nameRedis = "redis"
+	// nameSnowflake 表示分布式 ID 生成组件。
+	nameSnowflake = "snowflake"
+	// nameCollector 表示事件收集器组件。
+	nameCollector = "collector"
 	// sourceSiteMySQL 表示命名扩展库组件来源。
 	sourceSiteMySQL = "site_mysql"
 )
@@ -96,6 +101,34 @@ func DefaultSpecs() []Spec {
 				return []svc.Component{redisComponent(ctx.ServiceContext.Rds)}
 			},
 		},
+		{
+			Spec: register.Spec{
+				Name:        nameSnowflake,
+				File:        "internal/bootstrap/components/components.go",
+				Method:      "snowflakeComponent / NewRegistry",
+				Description: "注册雪花 ID 运行资源健康探测和关闭入口",
+			},
+			build: func(ctx buildContext) []svc.Component {
+				if ctx.ServiceContext == nil {
+					return nil
+				}
+				return []svc.Component{snowflakeComponent(ctx.ServiceContext.SnowflakeLease)}
+			},
+		},
+		{
+			Spec: register.Spec{
+				Name:        nameCollector,
+				File:        "internal/bootstrap/components/components.go",
+				Method:      "collectorComponent / NewRegistry",
+				Description: "注册 Collector Kafka 投递链路健康探测和关闭入口",
+			},
+			build: func(ctx buildContext) []svc.Component {
+				if ctx.ServiceContext == nil || !ctx.ServiceContext.CurrentConfig().Collector.Enabled {
+					return nil
+				}
+				return []svc.Component{collectorComponent(ctx.ServiceContext.Collector)}
+			},
+		},
 	}
 }
 
@@ -149,7 +182,7 @@ func mysqlComponent(name string, db *gorm.DB, closeGuard *gormDBCloseGuard) svc.
 		Check: func(ctx context.Context) error {
 			return errors.Tag(checkGormDB(ctx, db))
 		},
-		Close: func() error {
+		Close: func(context.Context) error {
 			return closeGuard.close(name, db)
 		},
 	}
@@ -166,11 +199,54 @@ func redisComponent(rds redis.UniversalClient) svc.Component {
 			}
 			return errors.Tag(rds.Ping(ctx).Err())
 		},
-		Close: func() error {
+		Close: func(context.Context) error {
 			if rds == nil {
 				return nil
 			}
 			return errors.Tag(rds.Close())
+		},
+	}
+}
+
+// snowflakeComponent 创建分布式 ID 运行资源探测和释放入口。
+func snowflakeComponent(lease svc.SnowflakeLease) svc.Component {
+	return svc.Component{
+		Name:      nameSnowflake,
+		ErrorCode: codes.DependencyUnavailable,
+		Check: func(ctx context.Context) error {
+			if lease != nil {
+				return errors.Tag(lease.Ready(ctx))
+			}
+			if _, ok := idgen.CurrentWorkerID(); !ok {
+				return errors.Errorf("雪花 worker_id 未初始化")
+			}
+			return nil
+		},
+		Close: func(ctx context.Context) error {
+			if lease == nil {
+				return nil
+			}
+			return errors.Tag(lease.Close(ctx))
+		},
+	}
+}
+
+// collectorComponent 创建 Collector Kafka 投递链路探测和释放入口。
+func collectorComponent(collector svc.Collector) svc.Component {
+	return svc.Component{
+		Name:      nameCollector,
+		ErrorCode: codes.DependencyUnavailable,
+		Check: func(ctx context.Context) error {
+			if collector == nil {
+				return errors.Errorf("Collector未初始化")
+			}
+			return errors.Tag(collector.Ready(ctx))
+		},
+		Close: func(ctx context.Context) error {
+			if collector == nil {
+				return nil
+			}
+			return errors.Tag(collector.Close(ctx))
 		},
 	}
 }

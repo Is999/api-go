@@ -45,13 +45,38 @@ func TestValidateConfigRejectsSecurityMissingAESWhenCryptoEnabled(t *testing.T) 
 	cfg.AppID = "demo-app"
 	cfg.Security.SecretKey = config.SecuritySecretKeyConfig{
 		KeyVersion:          "v1",
-		SignStatus:          0,
+		SignStatus:          1,
 		CryptoStatus:        1,
 		RSAPublicKeyUser:    userPublicPEM,
 		RSAPrivateKeyServer: serverPrivatePEM,
 	}
 	if err := Validate(cfg); err == nil {
 		t.Fatal("expected crypto-enabled security without aes material to be rejected")
+	}
+}
+
+// TestValidateConfigAcceptsIndependentSecuritySwitches 确保签名和加密可以分别启用。
+func TestValidateConfigAcceptsIndependentSecuritySwitches(t *testing.T) {
+	for _, baseCfg := range []config.Config{validBootstrapConfig(), validProductionBootstrapConfig()} {
+		for _, switches := range [][2]int{{1, 0}, {0, 1}} {
+			cfg := baseCfg
+			cfg.AppID = "demo-app"
+			cfg.Security.SecretKey = validSecuritySecretKey(t, "v1")
+			cfg.Security.SecretKey.SignStatus = switches[0]
+			cfg.Security.SecretKey.CryptoStatus = switches[1]
+			if err := Validate(cfg); err != nil {
+				t.Fatalf("mode %q sign=%d crypto=%d error = %v", cfg.Mode, switches[0], switches[1], err)
+			}
+		}
+	}
+}
+
+// TestValidateConfigAcceptsDefaultedEmptySecurity 确保空安全段的解析默认值不会误启用链路。
+func TestValidateConfigAcceptsDefaultedEmptySecurity(t *testing.T) {
+	cfg := validBootstrapConfig()
+	cfg.Security.SecretKey = config.SecuritySecretKeyConfig{SignStatus: 1, CryptoStatus: 1}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() defaulted empty security error = %v", err)
 	}
 }
 
@@ -82,6 +107,22 @@ func TestValidateConfigAcceptsSecurityMultiVersionGray(t *testing.T) {
 			validSecuritySecretKeyVersion(t, "v2"),
 		},
 	}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("Validate() error = %v", err)
+	}
+}
+
+// TestValidateConfigAcceptsPEMPlaceholderSubstring 确保合法 PEM 内的随机文本不会被普通密钥占位词规则误杀。
+func TestValidateConfigAcceptsPEMPlaceholderSubstring(t *testing.T) {
+	cfg := validProductionBootstrapConfig()
+	cfg.AppID = "demo-app"
+	cfg.Security.SecretKey = validSecuritySecretKey(t, "v1")
+	publicBlock, rest := pem.Decode([]byte(cfg.Security.SecretKey.RSAPublicKeyUser))
+	if publicBlock == nil || len(rest) != 0 {
+		t.Fatal("test RSA public key should be a single PEM block")
+	}
+	publicBlock.Headers = map[string]string{"Comment": "todo"}
+	cfg.Security.SecretKey.RSAPublicKeyUser = string(pem.EncodeToMemory(publicBlock))
 	if err := Validate(cfg); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}

@@ -1,12 +1,6 @@
 package auth
 
-// RuntimeRegistrySpec 描述认证业务提供的轻量运行时扩展入口。
-type RuntimeRegistrySpec struct {
-	Name        string // 注册名称，必须在运行时扩展清单中唯一
-	File        string // 注册实现所在文件
-	Method      string // 注册入口方法
-	Description string // 注册项中文说明
-}
+import corelogic "api/internal/logic"
 
 const (
 	// RuntimeRegistryAuthSecurityEvent 表示认证风控事件投递入口。
@@ -14,7 +8,7 @@ const (
 )
 
 // runtimeRegistrySpecs 是认证业务运行时注册入口的清单源。
-var runtimeRegistrySpecs = []RuntimeRegistrySpec{
+var runtimeRegistrySpecs = []corelogic.RuntimeRegistrySpec{
 	{
 		Name:        RuntimeRegistryAuthSecurityEvent,
 		File:        "internal/logic/auth/auth_event.go",
@@ -24,6 +18,6 @@ var runtimeRegistrySpecs = []RuntimeRegistrySpec{
 }
 
 // RuntimeRegistrySpecs 返回认证业务运行时注册入口规格快照。
-func RuntimeRegistrySpecs() []RuntimeRegistrySpec {
-	return append([]RuntimeRegistrySpec(nil), runtimeRegistrySpecs...)
+func RuntimeRegistrySpecs() []corelogic.RuntimeRegistrySpec {
+	return append([]corelogic.RuntimeRegistrySpec(nil), runtimeRegistrySpecs...)
 }

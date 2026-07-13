@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"api/internal/config"
+	"api/internal/infra/collectorx"
 	"api/internal/svc"
 
 	"gorm.io/gorm"
@@ -11,7 +12,8 @@ import (
 
 // TestNewRegistryIncludesCoreDependencies 确保核心依赖进入组件生命周期清单。
 func TestNewRegistryIncludesCoreDependencies(t *testing.T) {
-	svcCtx := svc.NewServiceContext(config.Config{}, "test-version", svc.Dependencies{
+	cfg := config.Config{Collector: config.CollectorConfig{Enabled: true}}
+	svcCtx := svc.NewServiceContext(cfg, "test-version", svc.Dependencies{
 		SiteDBs: svc.SiteDatabases{
 			NamedDBs: map[svc.DBName]*gorm.DB{
 				svc.DBName("user"):    nil,
@@ -19,6 +21,11 @@ func TestNewRegistryIncludesCoreDependencies(t *testing.T) {
 			},
 		},
 	})
+	collector, err := collectorx.New(cfg.Collector)
+	if err != nil {
+		t.Fatalf("collectorx.New() error = %v", err)
+	}
+	svcCtx.Collector = collector
 	registry, err := NewRegistry(svcCtx)
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
@@ -28,7 +35,7 @@ func TestNewRegistryIncludesCoreDependencies(t *testing.T) {
 	for index, name := range got {
 		indexByName[name] = index
 	}
-	for _, name := range []string{nameMySQL, "mysql_archive", "mysql_user", nameRedis} {
+	for _, name := range []string{nameMySQL, "mysql_archive", "mysql_user", nameRedis, nameSnowflake, nameCollector} {
 		if _, ok := indexByName[name]; !ok {
 			t.Fatalf("组件生命周期清单缺少核心依赖 %q，实际为 %v", name, got)
 		}

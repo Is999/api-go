@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,8 +22,8 @@ import (
 	"github.com/Is999/go-utils/errors"
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
-	"github.com/redis/go-redis/v9"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 )
 
 // 认证入口限流动作名称。
@@ -32,18 +33,31 @@ const (
 	authRateLimitActionRegisterIP    = "register_ip"    // 注册 IP 维度
 )
 
+const (
+	// authLoginDummyPasswordHash 用于不存在账号的等时 bcrypt 校验，避免通过响应耗时枚举用户账号。
+	authLoginDummyPasswordHash = "$2y$10$ory3FZfUy1VExaUHmEkeluYtVtP/4CiCCfeSPfD12T9dbpWqO52Eq"
+)
+
 // 前台用户 ID 生成命名空间。
 const (
 	userIDNamespace = "user" // api/admin 写同一用户表必须使用同一业务命名空间
 )
 
-// 批量会话操作保护边界。
+// 前台用户会话保护边界。
 const (
-	maxUserSessionInvalidateBatch = 100 // 批量失效用户会话时单批删除的 session key 数
+	maxUserSessions            = 8               // 单个用户最多保留的有效会话数，超出时原子淘汰最早过期会话
+	registrationCleanupTimeout = 3 * time.Second // 注册事务失败后的 Redis 补偿超时
 )
 
-// ErrAuthRateLimited 表示认证入口触发限流。
-var ErrAuthRateLimited = errors.New("认证入口触发限流")
+// 认证与会话内部错误哨兵。
+var (
+	// ErrAuthRateLimited 表示认证入口触发限流。
+	ErrAuthRateLimited = errors.New("认证入口触发限流")
+	// ErrSessionStale 表示刷新使用的旧会话已被消费或失效。
+	ErrSessionStale = errors.New("用户会话已失效")
+	// ErrAuthVersionMismatch 表示 Redis 认证版本已领先于调用方数据库快照。
+	ErrAuthVersionMismatch = errors.New("用户认证版本不一致")
+)
 
 // AuthLogic 承载前台注册、登录和会话刷新逻辑。
 type AuthLogic struct {
@@ -109,6 +123,7 @@ func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
 		Email:        req.Email,
 		Phone:        req.Phone,
 		Status:       model.UserStatusEnabled,
+		AuthVersion:  1,
 		LastLoginAt:  now,
 		LastLoginIP:  l.ClientIP(),
 		CreatedAt:    now,
@@ -117,7 +132,27 @@ func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
 	if user.Nickname == "" {
 		user.Nickname = user.Username
 	}
-	if err = model.CreateUserWithIdentities(l.Svc.WriteDB(svc.DatabaseMain), user, cfg.User.RouteShardCount, cfg.AppKey); err != nil {
+	var created *createdSession
+	var sessionErr error
+	var sessionAttempted bool
+	db := l.Svc.WriteDB(svc.DatabaseMain)
+	err = db.Transaction(func(tx *gorm.DB) error {
+		if err := model.CreateUserWithIdentitiesTx(tx, user, cfg.User.RouteShardCount, cfg.AppKey); err != nil {
+			return errors.Tag(err)
+		}
+		sessionAttempted = true
+		created, sessionErr = l.createSession(user)
+		return errors.Tag(sessionErr)
+	})
+	if err != nil {
+		if sessionAttempted {
+			if cleanupErr := l.discardRegistrationRuntimeState(user.ID); cleanupErr != nil {
+				err = errors.Wrapf(err, "注册事务失败且清理预创建会话失败 cleanup_error=%v", cleanupErr)
+			}
+		}
+		if sessionErr != nil {
+			return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Register 创建用户[%s]会话失败", req.Username).ToBizResult()
+		}
 		if corelogic.IsMySQLDuplicateEntryError(err) {
 			return types.NewBizResult(codes.UserAlreadyExists).
 				SetI18nMessage(i18n.MsgKeyUserAlreadyExists).
@@ -125,16 +160,12 @@ func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
 		}
 		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Register 创建用户[%s]", req.Username).ToBizResult()
 	}
-	created, err := l.createSessionWithJTI(user)
-	if err != nil {
-		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Register 创建用户[%s]会话失败", req.Username).ToBizResult()
-	}
 	l.emitAuthEvent(AuthEventInput{
-		Action:   AuthEventActionRegisterSuccess,
-		UserID:   user.ID,
-		Identity: model.UserIdentitySubject(model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, user.Username),
-		JTI:      created.JTI,
-		Reason:   AuthEventReasonSessionCreated,
+		Action:    AuthEventActionRegisterSuccess,
+		UserID:    user.ID,
+		Identity:  model.UserIdentitySubject(model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, user.Username),
+		SessionID: created.SessionID,
+		Reason:    AuthEventReasonSessionCreated,
 	})
 	return types.NewBizResult(codes.CreateSuccess).
 		SetI18nMessage(i18n.MsgKeyCreateSuccess).
@@ -169,11 +200,13 @@ func (l *AuthLogic) Login(req *types.LoginReq) *types.BizResult {
 		}
 		return authRateLimitResult(err)
 	}
-	user, err := model.FindUserByIdentity(l.Svc.WriteDB(svc.DatabaseMain), req.IdentityType, model.UserIdentityProviderLocal, req.IdentityValue, cfg.AppKey)
+	user, err := model.FindUserByIdentity(l.Svc.WriteDB(svc.DatabaseMain), req.IdentityType, model.UserIdentityProviderLocal, req.IdentityValue, cfg.AppKey, cfg.User.RouteShardCount)
 	if err != nil {
 		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Login 查询登录身份类型[%s]", req.IdentityType).ToBizResult()
 	}
 	if user == nil {
+		// 用户不存在时仍执行固定哈希校验，使失败路径耗时接近，避免通过响应时间枚举账号。
+		_ = bcrypt.CompareHashAndPassword([]byte(authLoginDummyPasswordHash), []byte(req.Password))
 		l.emitAuthEvent(AuthEventInput{
 			Action:   AuthEventActionLoginFailed,
 			Identity: identitySubject,
@@ -206,24 +239,24 @@ func (l *AuthLogic) Login(req *types.LoginReq) *types.BizResult {
 		"last_login_at": now,
 		"last_login_ip": l.ClientIP(),
 		"updated_at":    now,
-	}); err != nil {
+	}, cfg.User.RouteShardCount); err != nil {
 		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Login 更新用户[%s]登录信息", user.Username).ToBizResult()
 	}
 	user.LastLoginAt = now
 	user.LastLoginIP = l.ClientIP()
 	user.UpdatedAt = now
-	created, err := l.createSessionWithJTI(user)
+	created, err := l.createSession(user)
 	if err != nil {
 		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Login 创建用户[%s]会话失败", user.Username).ToBizResult()
 	}
 	l.clearAuthRateLimit(authRateLimitActionLoginIP, l.ClientIP())
 	l.clearAuthRateLimit(authRateLimitActionLoginIdentity, identitySubject)
 	l.emitAuthEvent(AuthEventInput{
-		Action:   AuthEventActionLoginSuccess,
-		UserID:   user.ID,
-		Identity: identitySubject,
-		JTI:      created.JTI,
-		Reason:   AuthEventReasonSessionCreated,
+		Action:    AuthEventActionLoginSuccess,
+		UserID:    user.ID,
+		Identity:  identitySubject,
+		SessionID: created.SessionID,
+		Reason:    AuthEventReasonSessionCreated,
 	})
 	return types.NewBizResult(codes.Success).
 		SetI18nMessage(i18n.MsgKeySuccess).
@@ -249,20 +282,30 @@ func (l *AuthLogic) Refresh() *types.BizResult {
 			SetI18nMessage(i18n.MsgKeyUserDisabled).
 			WithError(corelogic.WrapLogicError(err, "AuthLogic.Refresh 用户 ID[%d]状态无效", ctxUser.ID))
 	}
-	previousJTI := ""
+	sessionID := ""
 	if meta := l.Meta(); meta != nil {
-		previousJTI = tokenJTI(meta.AccessToken, l.Svc.CurrentConfig().JwtSecret)
+		sessionID = meta.SessionID
 	}
-	resp, err := l.rotateSession(user, previousJTI)
+	if sessionID == "" {
+		return types.NewBizResult(codes.TokenInvalid).
+			SetI18nMessage(i18n.MsgKeyTokenInvalid).
+			WithError(errors.New("AuthLogic.Refresh 当前 token 缺少 sid"))
+	}
+	resp, err := l.rotateSession(user, sessionID, l.AccessToken())
 	if err != nil {
+		if errors.Is(err, ErrSessionStale) || errors.Is(err, ErrAuthVersionMismatch) {
+			return types.NewBizResult(codes.SessionExpired).
+				SetI18nMessage(i18n.MsgKeySessionExpired).
+				WithError(corelogic.WrapLogicError(err, "AuthLogic.Refresh 用户 ID[%d]原会话已失效", ctxUser.ID))
+		}
 		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Refresh 用户 ID[%d]轮换会话", ctxUser.ID).ToBizResult()
 	}
 	l.emitAuthEvent(AuthEventInput{
-		Action:   AuthEventActionRefreshSuccess,
-		UserID:   user.ID,
-		Identity: model.UserIdentitySubject(model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, user.Username),
-		JTI:      tokenJTI(resp.Token, l.Svc.CurrentConfig().JwtSecret),
-		Reason:   AuthEventReasonSessionRotated,
+		Action:    AuthEventActionRefreshSuccess,
+		UserID:    user.ID,
+		Identity:  model.UserIdentitySubject(model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, user.Username),
+		SessionID: sessionID,
+		Reason:    AuthEventReasonSessionRotated,
 	})
 	return types.NewBizResult(codes.Success).
 		SetI18nMessage(i18n.MsgKeySuccess).
@@ -277,21 +320,24 @@ func (l *AuthLogic) Logout() *types.BizResult {
 			SetI18nMessage(i18n.MsgKeyUnauthorizedText).
 			WithError(errors.New("AuthLogic.Logout 当前请求未登录"))
 	}
-	jti := tokenJTI(l.AccessToken(), l.Svc.CurrentConfig().JwtSecret)
-	if jti == "" {
+	sessionID := ""
+	if meta := l.Meta(); meta != nil {
+		sessionID = meta.SessionID
+	}
+	if sessionID == "" {
 		return types.NewBizResult(codes.TokenInvalid).
 			SetI18nMessage(i18n.MsgKeyTokenInvalid).
-			WithError(errors.New("AuthLogic.Logout 当前 token 缺少 jti"))
+			WithError(errors.New("AuthLogic.Logout 当前 token 缺少 sid"))
 	}
-	if err := l.deleteUserSession(ctxUser.ID, jti); err != nil {
+	if err := l.deleteUserSession(ctxUser.ID, sessionID); err != nil {
 		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Logout 用户 ID[%d]清理会话", ctxUser.ID).ToBizResult()
 	}
 	l.emitAuthEvent(AuthEventInput{
-		Action:   AuthEventActionLogoutSuccess,
-		UserID:   ctxUser.ID,
-		Identity: model.UserIdentitySubject(model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, ctxUser.Name),
-		JTI:      jti,
-		Reason:   AuthEventReasonCurrentSessionDeleted,
+		Action:    AuthEventActionLogoutSuccess,
+		UserID:    ctxUser.ID,
+		Identity:  model.UserIdentitySubject(model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, ctxUser.Name),
+		SessionID: sessionID,
+		Reason:    AuthEventReasonCurrentSessionDeleted,
 	})
 	return types.NewBizResult(codes.Success).
 		SetI18nMessage(i18n.MsgKeyLogoutSuccess)
@@ -299,38 +345,53 @@ func (l *AuthLogic) Logout() *types.BizResult {
 
 // createdSession 表示已写入 Redis 的新会话。
 type createdSession struct {
-	Response *types.AuthTokenResp // Response 表示返回给客户端的 token 数据
-	JTI      string               // JTI 表示本次新会话的 JWT ID
+	Response  *types.AuthTokenResp // Response 表示返回给客户端的 token 数据
+	SessionID string               // SessionID 表示一次登录会话内保持稳定的会话 ID
 }
 
-// createSessionWithJTI 生成 JWT、写入 Redis 会话并返回内部 jti。
-func (l *AuthLogic) createSessionWithJTI(user *model.User) (*createdSession, error) {
+// createSession 生成独立 sid 与 jti，并原子写入 Redis 会话。
+func (l *AuthLogic) createSession(user *model.User) (*createdSession, error) {
 	if user == nil {
 		return nil, errors.New("用户为空")
 	}
-	jti := strings.ReplaceAll(uuid.NewString(), "-", "")
-	token, expiresAt, err := l.generateJWT(user, jti)
+	if user.AuthVersion == 0 {
+		return nil, errors.New("用户认证版本不能为空")
+	}
+	sessionID := newTokenID()
+	jti := newTokenID()
+	token, expiresAt, err := l.generateJWT(user, sessionID, jti)
 	if err != nil {
 		return nil, errors.Tag(err)
 	}
 	if l.Redis() == nil {
 		return nil, errors.New("Redis 未初始化")
 	}
+	now := time.Now()
 	ttlSeconds := l.sessionTTL()
-	sessionExpiresAt := time.Now().Add(time.Duration(ttlSeconds) * time.Second).Unix()
-	if err = l.Redis().Set(l.Ctx, l.userSessionKey(user.ID, jti), token, time.Duration(ttlSeconds)*time.Second).Err(); err != nil {
-		return nil, errors.Wrapf(err, "写入用户会话失败 user_id=%d jti=%s", user.ID, jti)
+	sessionExpiresAtMS := now.Add(time.Duration(ttlSeconds) * time.Second).UnixMilli()
+	created, err := userSessionCreateScript.Run(
+		l.Ctx,
+		l.Redis(),
+		keys.UserSessionKeys(user.ID),
+		now.UnixMilli(),
+		user.AuthVersion,
+		sessionID,
+		token,
+		sessionExpiresAtMS,
+		maxUserSessions,
+	).Int64()
+	if err != nil {
+		return nil, errors.Wrapf(err, "原子创建用户会话失败 user_id=%d sid=%s", user.ID, sessionID)
 	}
-	if err = l.addUserSessionIndex(user.ID, jti, sessionExpiresAt, ttlSeconds); err != nil {
-		_ = l.deleteUserSession(user.ID, jti)
-		return nil, errors.Wrapf(err, "写入用户会话索引失败 user_id=%d jti=%s", user.ID, jti)
+	if created < 0 {
+		return nil, ErrAuthVersionMismatch
 	}
 	profile := userlogic.BuildUserProfile(user)
 	userLogic := userlogic.NewUserLogic(l.Ctx, l.Svc)
 	// 用户资料缓存只做加速，写入失败不影响已创建的 Redis 会话。
 	_ = userLogic.CacheUserProfile(user.ID, profile)
 	return &createdSession{
-		JTI: jti,
+		SessionID: sessionID,
 		Response: &types.AuthTokenResp{
 			Token:     token,
 			ExpiresAt: expiresAt,
@@ -339,164 +400,143 @@ func (l *AuthLogic) createSessionWithJTI(user *model.User) (*createdSession, err
 	}, nil
 }
 
-// rotateSession 创建新会话后删除原会话，删除失败时回滚新会话。
-func (l *AuthLogic) rotateSession(user *model.User, previousJTI string) (*types.AuthTokenResp, error) {
-	previousJTI = strings.TrimSpace(previousJTI)
+// rotateSession 在稳定 sid 下原子比较完整旧 token 并写入新 token。
+func (l *AuthLogic) rotateSession(user *model.User, sessionID string, previousToken string) (*types.AuthTokenResp, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	previousToken = strings.TrimSpace(previousToken)
 	if user == nil {
 		return nil, errors.New("用户为空")
 	}
-	if previousJTI == "" {
-		return nil, errors.New("原会话 jti 为空")
+	if user.AuthVersion == 0 {
+		return nil, errors.New("用户认证版本不能为空")
 	}
-	created, err := l.createSessionWithJTI(user)
+	if sessionID == "" || previousToken == "" {
+		return nil, errors.New("原会话标识不能为空")
+	}
+	if l.Redis() == nil {
+		return nil, errors.New("Redis 未初始化")
+	}
+	newJTI := newTokenID()
+	newToken, expiresAt, err := l.generateJWT(user, sessionID, newJTI)
 	if err != nil {
 		return nil, errors.Tag(err)
 	}
-	if err := l.deleteUserSession(user.ID, previousJTI); err != nil {
-		_ = l.deleteUserSession(user.ID, created.JTI)
-		return nil, errors.Wrapf(err, "删除原用户会话失败 user_id=%d previous_jti=%s", user.ID, previousJTI)
+	now := time.Now()
+	result, err := userSessionRotateScript.Run(
+		l.Ctx,
+		l.Redis(),
+		keys.UserSessionKeys(user.ID),
+		now.UnixMilli(),
+		user.AuthVersion,
+		sessionID,
+		previousToken,
+		newToken,
+		now.Add(time.Duration(l.sessionTTL())*time.Second).UnixMilli(),
+	).Int64()
+	if err != nil {
+		return nil, errors.Wrapf(err, "原子轮换用户会话失败 user_id=%d sid=%s", user.ID, sessionID)
 	}
-	return created.Response, nil
+	switch result {
+	case -1:
+		return nil, ErrAuthVersionMismatch
+	case 0:
+		return nil, ErrSessionStale
+	}
+	profile := userlogic.BuildUserProfile(user)
+	_ = userlogic.NewUserLogic(l.Ctx, l.Svc).CacheUserProfile(user.ID, profile)
+	return &types.AuthTokenResp{Token: newToken, ExpiresAt: expiresAt, User: profile}, nil
 }
 
-// generateJWT 生成包含用户、站点和 jti 信息的访问令牌。
-func (l *AuthLogic) generateJWT(user *model.User, jti string) (string, int64, error) {
+// generateJWT 生成包含用户、站点、稳定 sid 和唯一 jti 的访问令牌。
+func (l *AuthLogic) generateJWT(user *model.User, sessionID string, jti string) (string, int64, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	jti = strings.TrimSpace(jti)
+	if user == nil || user.ID <= 0 || user.AuthVersion == 0 || sessionID == "" || jti == "" {
+		return "", 0, errors.New("用户或认证版本非法")
+	}
 	cfg := l.Svc.CurrentConfig()
 	now := time.Now()
 	expiresAt := now.Add(time.Duration(cfg.JwtExpiresIn) * time.Second).Unix()
 	claims := jwt.MapClaims{
-		"sub":      user.ID,
-		"username": user.Username,
-		"jti":      jti,
-		"iss":      cfg.Auth.Issuer,
-		"app_id":   strings.TrimSpace(cfg.AppID),
-		"iat":      now.Unix(),
-		"exp":      expiresAt,
+		"sub":          strconv.FormatInt(user.ID, 10),
+		"username":     user.Username,
+		"sid":          sessionID,
+		"jti":          jti,
+		"iss":          cfg.Auth.Issuer,
+		"app_id":       strings.TrimSpace(cfg.AppID),
+		"auth_version": user.AuthVersion,
+		"iat":          now.Unix(),
+		"exp":          expiresAt,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(cfg.JwtSecret))
 	return tokenString, expiresAt, errors.Tag(err)
 }
 
-// userSessionKey 生成当前站点下的用户会话 Redis Key。
-func (l *AuthLogic) userSessionKey(userID int64, jti string) string {
-	return l.AppRedisKey(fmt.Sprintf(keys.UserSession, userID, strings.TrimSpace(jti)))
-}
-
-// userSessionIndexKey 生成当前站点下的用户会话 jti 索引 Redis Key。
-func (l *AuthLogic) userSessionIndexKey(userID int64) string {
-	return l.AppRedisKey(fmt.Sprintf(keys.UserSessionIndex, userID))
-}
-
-// deleteUserSession 删除指定 jti 对应的用户会话。
-func (l *AuthLogic) deleteUserSession(userID int64, jti string) error {
-	jti = strings.TrimSpace(jti)
-	if userID <= 0 || jti == "" {
+// deleteUserSession 删除指定 sid 对应的当前登录会话。
+func (l *AuthLogic) deleteUserSession(userID int64, sessionID string) error {
+	sessionID = strings.TrimSpace(sessionID)
+	if userID <= 0 || sessionID == "" {
 		return errors.New("用户会话标识不能为空")
-	}
-	if err := l.RdsDelKeys(l.userSessionKey(userID, jti)); err != nil {
-		return errors.Tag(err)
-	}
-	return errors.Tag(l.removeUserSessionIndex(userID, jti))
-}
-
-// InvalidateUserSessions 按用户会话索引批量删除全部登录态。
-func (l *AuthLogic) InvalidateUserSessions(userID int64) error {
-	if userID <= 0 {
-		return errors.New("用户 ID 不能为空")
 	}
 	if l.Redis() == nil {
 		return errors.New("Redis 未初始化")
 	}
-	indexKey := l.userSessionIndexKey(userID)
-	if err := l.pruneExpiredUserSessionIndex(userID); err != nil {
-		return errors.Tag(err)
+	_, err := userSessionDeleteScript.Run(
+		l.Ctx,
+		l.Redis(),
+		[]string{keys.UserSessionHashKey(userID), keys.UserSessionIndexKey(userID)},
+		sessionID,
+	).Int64()
+	return errors.Tag(err)
+}
+
+// discardRegistrationRuntimeState 使用独立超时上下文清理注册回滚后的会话和资料缓存。
+func (l *AuthLogic) discardRegistrationRuntimeState(userID int64) error {
+	if userID <= 0 || l.Redis() == nil {
+		return nil
 	}
-	jtis, err := l.Redis().ZRange(l.Ctx, indexKey, 0, -1).Result()
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), registrationCleanupTimeout)
+	defer cancel()
+	sessionErr := l.Redis().Del(cleanupCtx, keys.UserSessionKeys(userID)...).Err()
+	profileErr := userlogic.NewUserLogic(cleanupCtx, l.Svc).DeleteUserProfileCache(userID)
+	if sessionErr != nil && profileErr != nil {
+		return errors.Wrapf(sessionErr, "清理用户资料缓存失败 profile_error=%v", profileErr)
+	}
+	if sessionErr != nil {
+		return errors.Tag(sessionErr)
+	}
+	return errors.Tag(profileErr)
+}
+
+// InvalidateUserSessions 按已提交的数据库认证版本原子删除全部登录态。
+func (l *AuthLogic) InvalidateUserSessions(userID int64, authVersion uint64) error {
+	if userID <= 0 || authVersion == 0 {
+		return errors.New("用户 ID 和认证版本不能为空")
+	}
+	if l.Redis() == nil {
+		return errors.New("Redis 未初始化")
+	}
+	invalidatedCount, err := userSessionInvalidateScript.Run(
+		l.Ctx,
+		l.Redis(),
+		keys.UserSessionKeys(userID),
+		authVersion,
+		l.authVersionFenceTTL(),
+	).Int64()
 	if err != nil {
-		return errors.Wrapf(err, "读取用户会话索引失败 user_id=%d", userID)
+		return errors.Wrapf(err, "原子失效用户会话失败 user_id=%d auth_version=%d", userID, authVersion)
 	}
-	sessionKeys := make([]string, 0, len(jtis))
-	seen := make(map[string]struct{}, len(jtis))
-	for _, jti := range jtis {
-		jti = strings.TrimSpace(jti)
-		if jti == "" {
-			continue
-		}
-		if _, ok := seen[jti]; ok {
-			continue
-		}
-		seen[jti] = struct{}{}
-		sessionKeys = append(sessionKeys, l.userSessionKey(userID, jti))
-	}
-	invalidatedCount := len(sessionKeys)
-	for len(sessionKeys) > 0 {
-		batchSize := maxUserSessionInvalidateBatch
-		if len(sessionKeys) < batchSize {
-			batchSize = len(sessionKeys)
-		}
-		if err := l.RdsDelKeys(sessionKeys[:batchSize]...); err != nil {
-			return errors.Wrapf(err, "批量删除用户会话失败 user_id=%d", userID)
-		}
-		sessionKeys = sessionKeys[batchSize:]
-	}
-	if err := l.RdsDelKeys(indexKey); err != nil {
-		return errors.Tag(err)
+	if invalidatedCount < 0 {
+		return ErrAuthVersionMismatch
 	}
 	l.emitAuthEvent(AuthEventInput{
 		Action: AuthEventActionSessionInvalidateAll,
 		UserID: userID,
 		Reason: AuthEventReasonUserSessionsInvalidated,
-		Count:  invalidatedCount,
+		Count:  int(invalidatedCount),
 	})
 	return nil
-}
-
-// addUserSessionIndex 写入用户 jti 索引，并顺带清理已过期的索引成员。
-func (l *AuthLogic) addUserSessionIndex(userID int64, jti string, expiresAt int64, ttlSeconds int64) error {
-	jti = strings.TrimSpace(jti)
-	if userID <= 0 || jti == "" {
-		return errors.New("用户会话索引标识不能为空")
-	}
-	if l.Redis() == nil {
-		return errors.New("Redis 未初始化")
-	}
-	if err := l.pruneExpiredUserSessionIndex(userID); err != nil {
-		return errors.Tag(err)
-	}
-	indexKey := l.userSessionIndexKey(userID)
-	if err := l.Redis().ZAdd(l.Ctx, indexKey, redis.Z{
-		Score:  float64(expiresAt),
-		Member: jti,
-	}).Err(); err != nil {
-		return errors.Wrapf(err, "写入用户会话索引失败 user_id=%d jti=%s", userID, jti)
-	}
-	if ttlSeconds <= 0 {
-		ttlSeconds = l.sessionTTL()
-	}
-	if err := l.Redis().Expire(l.Ctx, indexKey, time.Duration(ttlSeconds)*time.Second).Err(); err != nil {
-		_ = l.removeUserSessionIndex(userID, jti)
-		return errors.Wrapf(err, "设置用户会话索引过期时间失败 user_id=%d", userID)
-	}
-	return nil
-}
-
-// removeUserSessionIndex 删除用户 jti 索引成员。
-func (l *AuthLogic) removeUserSessionIndex(userID int64, jti string) error {
-	jti = strings.TrimSpace(jti)
-	if userID <= 0 || jti == "" || l.Redis() == nil {
-		return nil
-	}
-	return errors.Tag(l.Redis().ZRem(l.Ctx, l.userSessionIndexKey(userID), jti).Err())
-}
-
-// pruneExpiredUserSessionIndex 删除已自然过期的 jti 索引成员。
-func (l *AuthLogic) pruneExpiredUserSessionIndex(userID int64) error {
-	if userID <= 0 || l.Redis() == nil {
-		return nil
-	}
-	now := time.Now().Unix()
-	return errors.Tag(l.Redis().ZRemRangeByScore(l.Ctx, l.userSessionIndexKey(userID), "-inf", fmt.Sprintf("%d", now)).Err())
 }
 
 // sessionTTL 返回 Redis 会话 TTL，不超过 JWT 过期时间。
@@ -512,6 +552,15 @@ func (l *AuthLogic) sessionTTL() int64 {
 	return jwtTTL
 }
 
+// authVersionFenceTTL 返回认证版本栅栏 TTL，覆盖 JWT 最长存活期。
+func (l *AuthLogic) authVersionFenceTTL() int64 {
+	jwtTTL := l.Svc.CurrentConfig().JwtExpiresIn
+	if jwtTTL <= 0 {
+		return 86400
+	}
+	return jwtTTL
+}
+
 // checkAuthRateLimit 校验认证入口在 Redis 中的限流状态。
 func (l *AuthLogic) checkAuthRateLimit(action, subject string, cfg config.AuthRateLimitConfig) error {
 	cfg = normalizeAuthRateLimitConfig(action, cfg)
@@ -522,24 +571,18 @@ func (l *AuthLogic) checkAuthRateLimit(action, subject string, cfg config.AuthRa
 		return errors.Errorf("认证限流 Redis 未初始化 action=%s", action)
 	}
 	countKey, lockKey := l.authRateLimitKeys(action, subject)
-	if err := l.Redis().Get(l.Ctx, lockKey).Err(); err == nil {
-		return ErrAuthRateLimited
-	} else if err != nil && !errors.Is(err, redis.Nil) {
-		return errors.Wrapf(err, "读取认证限流锁失败 action=%s", action)
-	}
-	count, err := l.Redis().Incr(l.Ctx, countKey).Result()
+	result, err := authRateLimitScript.Run(
+		l.Ctx,
+		l.Redis(),
+		[]string{countKey, lockKey},
+		cfg.WindowSeconds,
+		cfg.MaxAttempts,
+		cfg.LockSeconds,
+	).Int64()
 	if err != nil {
-		return errors.Wrapf(err, "写入认证限流计数失败 action=%s", action)
+		return errors.Wrapf(err, "原子更新认证限流失败 action=%s", action)
 	}
-	if count == 1 {
-		if err := l.Redis().Expire(l.Ctx, countKey, time.Duration(cfg.WindowSeconds)*time.Second).Err(); err != nil {
-			return errors.Wrapf(err, "设置认证限流窗口失败 action=%s", action)
-		}
-	}
-	if count > int64(cfg.MaxAttempts) {
-		if err := l.Redis().Set(l.Ctx, lockKey, "1", time.Duration(cfg.LockSeconds)*time.Second).Err(); err != nil {
-			return errors.Wrapf(err, "写入认证限流锁失败 action=%s", action)
-		}
+	if result < 0 {
 		return ErrAuthRateLimited
 	}
 	return nil
@@ -551,7 +594,7 @@ func (l *AuthLogic) clearAuthRateLimit(action, subject string) {
 		return
 	}
 	countKey, lockKey := l.authRateLimitKeys(action, subject)
-	_ = l.RdsDelKeys(countKey, lockKey)
+	_ = l.Redis().Del(l.Ctx, countKey, lockKey).Err()
 }
 
 // authRateLimitKeys 生成认证入口限流计数和锁定 Redis Key。
@@ -622,18 +665,7 @@ func authRateLimitResult(err error) *types.BizResult {
 	return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.RateLimit").ToBizResult()
 }
 
-// tokenJTI 从访问令牌中解析 jti，解析失败时返回空字符串。
-func tokenJTI(tokenString string, secret string) string {
-	tokenString = strings.TrimSpace(tokenString)
-	if tokenString == "" || strings.TrimSpace(secret) == "" {
-		return ""
-	}
-	claims := jwt.MapClaims{}
-	token, err := jwt.ParseWithClaims(tokenString, claims, func(t *jwt.Token) (interface{}, error) {
-		return []byte(secret), nil
-	})
-	if err != nil || token == nil {
-		return ""
-	}
-	return strings.TrimSpace(fmt.Sprint(claims["jti"]))
+// newTokenID 生成不含分隔符的随机 token 标识。
+func newTokenID() string {
+	return strings.ReplaceAll(uuid.NewString(), "-", "")
 }

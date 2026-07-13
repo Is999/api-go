@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS `user` (
   `phone_key_version` varchar(32) NOT NULL DEFAULT '' COMMENT '手机号加密密钥版本',
   `avatar` varchar(255) NOT NULL DEFAULT '' COMMENT '头像',
   `status` tinyint NOT NULL DEFAULT 1 COMMENT '状态：1 正常，0 禁用',
+  `auth_version` bigint unsigned NOT NULL DEFAULT 1 COMMENT '认证版本，敏感变更时单调递增',
   `last_login_at` datetime NULL DEFAULT NULL COMMENT '最后登录时间',
   `last_login_ip` varchar(45) NOT NULL DEFAULT '' COMMENT '最后登录 IP',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',

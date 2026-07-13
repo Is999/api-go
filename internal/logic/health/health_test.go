@@ -3,10 +3,12 @@ package health
 import (
 	"context"
 	"testing"
+	"time"
 
 	codes "api/common/codes"
 	"api/internal/config"
 	"api/internal/svc"
+	"api/internal/types"
 
 	"github.com/Is999/go-utils/errors"
 )
@@ -50,6 +52,42 @@ func TestReadinessUsesComponentRegistry(t *testing.T) {
 	}
 	if resp.Dependencies[1].Name != "redis" || resp.Dependencies[1].Code != codes.RedisUnavailable {
 		t.Fatalf("redis dependency = %+v", resp.Dependencies[1])
+	}
+}
+
+// TestRunDependencyChecksRunsConcurrently 确保慢依赖不会串行放大 readiness 延迟。
+func TestRunDependencyChecksRunsConcurrently(t *testing.T) {
+	started := make(chan string, 2)
+	release := make(chan struct{})
+	checks := []dependencyCheck{
+		func() (types.HealthDependencyStatus, error) {
+			started <- "mysql"
+			<-release
+			return dependencyOK("mysql"), nil
+		},
+		func() (types.HealthDependencyStatus, error) {
+			started <- "redis"
+			<-release
+			return dependencyOK("redis"), nil
+		},
+	}
+	done := make(chan []types.HealthDependencyStatus, 1)
+	go func() {
+		statuses, _ := runDependencyChecks(checks)
+		done <- statuses
+	}()
+
+	for range checks {
+		select {
+		case <-started:
+		case <-time.After(time.Second):
+			t.Fatal("依赖探测未并发启动")
+		}
+	}
+	close(release)
+	statuses := <-done
+	if len(statuses) != 2 || statuses[0].Name != "mysql" || statuses[1].Name != "redis" {
+		t.Fatalf("依赖状态顺序不稳定: %+v", statuses)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"api/internal/bootstrap"
 	"api/internal/database"
@@ -16,9 +17,11 @@ import (
 
 // 迁移动作常量限定命令行允许的执行模式。
 const (
-	actionStatus = "status"  // 只查看迁移状态
-	actionDryRun = "dry-run" // 预览迁移计划但不执行 SQL
-	actionUp     = "up"      // 执行允许范围内的待迁移 SQL
+	actionStatus      = "status"               // 只查看迁移状态
+	actionDryRun      = "dry-run"              // 预览迁移计划但不执行 SQL
+	actionUp          = "up"                   // 执行允许范围内的待迁移 SQL
+	migrationLockName = "app:schema-migration" // 与 admin 共用迁移锁，避免同实例并发修改库结构
+	migrationLockWait = time.Minute            // 发布任务等待已有迁移结束的最大时间
 )
 
 // buildVersion 由构建阶段通过 -ldflags 注入，用于发布排查。
@@ -59,14 +62,20 @@ func run(configFile string, action string, allowBootstrap bool, allowDestructive
 		return errors.Wrap(err, "连接 MySQL 失败")
 	}
 	sqlDB, err := db.DB()
-	if err == nil {
-		defer sqlDB.Close()
+	if err != nil {
+		return errors.Wrap(err, "获取 MySQL 底层连接失败")
 	}
+	defer sqlDB.Close()
 
-	results, err := database.RunMigrations(ctx, database.NewGormMigrationStore(db), database.DefaultMigrations(), database.MigrationRunOptions{
-		DryRun:           action != actionUp,
-		AllowBootstrap:   allowBootstrap,
-		AllowDestructive: allowDestructive,
+	var results []database.MigrationRunItem
+	err = database.WithMigrationLock(ctx, sqlDB, migrationLockName, migrationLockWait, func() error {
+		var runErr error
+		results, runErr = database.RunMigrations(ctx, database.NewGormMigrationStore(db), database.DefaultMigrations(), database.MigrationRunOptions{
+			DryRun:           action != actionUp,
+			AllowBootstrap:   allowBootstrap,
+			AllowDestructive: allowDestructive,
+		})
+		return errors.Tag(runErr)
 	})
 	printResults(results)
 	return errors.Tag(err)

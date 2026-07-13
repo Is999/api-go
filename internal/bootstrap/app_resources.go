@@ -23,7 +23,7 @@ func BuildServiceContext(ctx context.Context, c config.Config, version string) (
 	collectorManager, err := collectorx.New(c.Collector)
 	if err != nil {
 		runtimecfg.Restore(previousRuntime)
-		_ = bootstrapresources.CloseServiceContextResources(svcCtx)
+		_ = bootstrapresources.CloseServiceContextResources(ctx, svcCtx)
 		if shutdown != nil {
 			_ = shutdown(context.Background())
 		}
@@ -33,7 +33,7 @@ func BuildServiceContext(ctx context.Context, c config.Config, version string) (
 	componentRegistry, err := components.NewRegistry(svcCtx)
 	if err != nil {
 		runtimecfg.Restore(previousRuntime)
-		_ = bootstrapresources.CloseServiceContextResources(svcCtx)
+		_ = bootstrapresources.CloseServiceContextResources(ctx, svcCtx)
 		if shutdown != nil {
 			_ = shutdown(context.Background())
 		}

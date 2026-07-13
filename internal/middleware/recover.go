@@ -8,7 +8,6 @@ import (
 	i18n "api/common/i18n"
 	"api/helper"
 	"api/internal/infra/loggerx"
-	"api/internal/requestctx"
 
 	"github.com/Is999/go-utils/errors"
 	"github.com/zeromicro/go-zero/core/logx"
@@ -29,12 +28,11 @@ func (m *RecoverMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 			if err := recover(); err != nil {
 				ctx := r.Context()
 				panicErr := errors.Errorf("请求 panic: %v", err)
-				message := i18n.MessageByKey(i18n.MsgKeyInternalError, i18n.LocaleZHCN)
-				requestctx.SetErrorResponse(ctx, http.StatusInternalServerError, codes.InternalError, message, panicErr, panicErr.Error())
 				loggerx.Errorw(ctx, "请求 发生异常", panicErr, logx.Field("stacktrace", string(debug.Stack())))
 				helper.NewJSONResp(ctx, w).
 					SetHTTPStatus(http.StatusInternalServerError).
 					SetCode(codes.InternalError).
+					SetError(panicErr).
 					Fail(i18n.MsgKeyInternalError)
 			}
 		}()

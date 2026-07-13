@@ -1,0 +1,52 @@
+package idgen
+
+import (
+	"os"
+	"regexp"
+	"sort"
+	"testing"
+)
+
+// TestObservabilityDocumentsOnlyUseImplementedMetrics 防止监控资产引用不存在的业务指标。
+func TestObservabilityDocumentsOnlyUseImplementedMetrics(t *testing.T) {
+	t.Parallel()
+
+	implemented := map[string]struct{}{
+		"api_collector_kafka_publish_events_total":             {},
+		"api_idgen_generate_duration_seconds_bucket":           {},
+		"api_idgen_generated_total":                            {},
+		"api_idgen_segment_allocation_duration_seconds_bucket": {},
+		"api_idgen_segment_allocations_total":                  {},
+		"api_idgen_segment_remaining":                          {},
+		"api_idgen_snowflake_lease_events_total":               {},
+	}
+	metricPattern := regexp.MustCompile(`\bapi_[a-z][a-z0-9_]*\b`)
+	files := []string{
+		"../../docs/grafana/api-dashboard.json",
+		"../../docs/prometheus/api-alerts.yml",
+	}
+
+	for _, file := range files {
+		content, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatalf("读取监控资产 %s 失败: %v", file, err)
+		}
+
+		unknown := make(map[string]struct{})
+		for _, metric := range metricPattern.FindAllString(string(content), -1) {
+			if _, ok := implemented[metric]; !ok {
+				unknown[metric] = struct{}{}
+			}
+		}
+		if len(unknown) == 0 {
+			continue
+		}
+
+		metrics := make([]string, 0, len(unknown))
+		for metric := range unknown {
+			metrics = append(metrics, metric)
+		}
+		sort.Strings(metrics)
+		t.Fatalf("监控资产 %s 引用了未实现指标: %v", file, metrics)
+	}
+}

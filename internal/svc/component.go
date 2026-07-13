@@ -11,8 +11,8 @@ import (
 // ComponentCheckFunc 表示组件健康探测函数。
 type ComponentCheckFunc func(ctx context.Context) error
 
-// ComponentCloseFunc 表示组件资源关闭函数。
-type ComponentCloseFunc func() error
+// ComponentCloseFunc 表示受应用停止期限约束的组件资源关闭函数。
+type ComponentCloseFunc func(context.Context) error
 
 // Component 描述一个启动期组件的健康探测和关闭入口。
 type Component struct {
@@ -57,9 +57,12 @@ func (r *ComponentRegistry) Items() []Component {
 }
 
 // Close 按注册顺序反向释放组件资源，并保证只执行一次。
-func (r *ComponentRegistry) Close() error {
+func (r *ComponentRegistry) Close(ctx context.Context) error {
 	if r == nil || r.closed.Swap(true) {
 		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 	var firstErr error
 	for i := len(r.items) - 1; i >= 0; i-- {
@@ -67,9 +70,12 @@ func (r *ComponentRegistry) Close() error {
 		if closeFunc == nil {
 			continue
 		}
-		if err := closeFunc(); err != nil && firstErr == nil {
+		if err := closeFunc(ctx); err != nil && firstErr == nil {
 			firstErr = errors.Tag(err)
 		}
+	}
+	if err := ctx.Err(); err != nil && firstErr == nil {
+		firstErr = errors.Tag(err)
 	}
 	return firstErr
 }

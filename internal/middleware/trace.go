@@ -11,8 +11,8 @@ import (
 	i18n "api/common/i18n"
 	"api/internal/infra/loggerx"
 	"api/internal/requestctx"
+	"api/internal/svc"
 
-	"github.com/Is999/go-utils"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
@@ -20,15 +20,21 @@ import (
 
 // TraceMiddleware 在 HTTP 请求入口创建或继承链路上下文。
 type TraceMiddleware struct {
-	tracer trace.Tracer // HTTP 入口 span 使用的 tracer 实例
-	node   string       // 当前服务节点名称
+	tracer trace.Tracer        // HTTP 入口 span 使用的 tracer 实例
+	node   string              // 当前服务节点名称
+	svc    *svc.ServiceContext // 客户端 IP 可信代理配置来源
 }
 
 // NewTraceMiddleware 创建服务端 span 中间件。
-func NewTraceMiddleware() *TraceMiddleware {
+func NewTraceMiddleware(svcCtx *svc.ServiceContext) *TraceMiddleware {
+	instanceID := ""
+	if svcCtx != nil {
+		instanceID = svcCtx.CurrentConfig().InstanceID
+	}
 	return &TraceMiddleware{
 		tracer: otel.Tracer("api/http"),
-		node:   resolveNodeName(),
+		node:   resolveNodeName(instanceID),
+		svc:    svcCtx,
 	}
 }
 
@@ -36,7 +42,7 @@ func NewTraceMiddleware() *TraceMiddleware {
 func (m *TraceMiddleware) Handle(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx, _ := requestctx.New(r.Context())
-		requestctx.SetRequest(ctx, r.Method, r.URL.Path, utils.ClientIP(r))
+		requestctx.SetRequest(ctx, r.Method, r.URL.Path, requestClientIP(m.svc, r))
 		requestctx.SetLocale(ctx, i18n.NormalizeLocale(r.Header.Get("Accept-Language")))
 		requestctx.SetNode(ctx, m.node)
 		requestctx.SetMode(ctx, "api")
@@ -125,8 +131,11 @@ func syncSpanWithMeta(span trace.Span, meta *requestctx.Meta) {
 	span.SetAttributes(loggerx.TraceAttributesFromMeta(meta)...)
 }
 
-// resolveNodeName 读取当前主机名，失败时返回 unknown。
-func resolveNodeName() string {
+// resolveNodeName 优先使用实例配置，未配置时读取主机名。
+func resolveNodeName(instanceID string) string {
+	if instanceID = strings.TrimSpace(instanceID); instanceID != "" {
+		return instanceID
+	}
 	if name, err := os.Hostname(); err == nil && strings.TrimSpace(name) != "" {
 		return strings.TrimSpace(name)
 	}

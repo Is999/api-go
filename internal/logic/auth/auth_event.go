@@ -6,7 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,10 +16,14 @@ import (
 	"api/internal/svc"
 )
 
-// 认证风控事件 Collector 业务类型常量。
+// AuthCollectorBizType 表示认证风控事件的 Collector bizType。
+const AuthCollectorBizType = collectorx.BizTypeAuthSecurity
+
 const (
-	// AuthCollectorBizType 表示认证风控事件的 Collector bizType。
-	AuthCollectorBizType = collectorx.BizTypeAuthSecurity
+	// authEventPartitionHashLength 表示分区键使用的脱敏哈希字符数。
+	authEventPartitionHashLength = 32
+	// authEventEnqueueTimeout 限制 best-effort 认证事件占用请求主链路的最长时间。
+	authEventEnqueueTimeout = 100 * time.Millisecond
 )
 
 // 认证风控事件动作。
@@ -64,22 +68,22 @@ const (
 
 // AuthEventInput 表示认证流程内待投递的轻量风控事件。
 type AuthEventInput struct {
-	Action   string // 事件动作
-	UserID   int64  // 用户 ID，未知时为 0
-	Identity string // 登录身份主体，仅用于生成脱敏哈希
-	ClientIP string // 客户端 IP，仅用于生成脱敏哈希
-	JTI      string // JWT ID，仅用于生成脱敏哈希
-	Reason   string // 事件原因
-	Count    int    // 批量操作影响数量
+	Action    string // 事件动作
+	UserID    int64  // 用户 ID，未知时为 0
+	Identity  string // 登录身份主体，仅用于生成脱敏哈希
+	ClientIP  string // 客户端 IP，仅用于生成脱敏哈希
+	SessionID string // 稳定会话 ID，仅用于生成脱敏哈希
+	Reason    string // 事件原因
+	Count     int    // 批量操作影响数量
 }
 
 // authEventPayload 表示写入 Collector 的脱敏认证事件负载。
 type authEventPayload struct {
 	Action         string `json:"action"`                   // 事件动作
-	UserID         int64  `json:"user_id,omitempty"`        // 用户 ID
+	UserID         string `json:"user_id,omitempty"`        // 用户 ID 十进制字符串，避免跨语言整数精度丢失
 	IdentityHash   string `json:"identity_hash,omitempty"`  // 登录身份 HMAC 哈希
 	ClientIPHash   string `json:"client_ip_hash,omitempty"` // 客户端 IP HMAC 哈希
-	SessionHash    string `json:"session_hash,omitempty"`   // jti HMAC 哈希
+	SessionHash    string `json:"session_hash,omitempty"`   // 稳定 sid 的 HMAC 哈希
 	AppID          string `json:"app_id"`                   // 当前站点命名空间
 	Route          string `json:"route,omitempty"`          // 路由别名
 	TraceID        string `json:"trace_id,omitempty"`       // 链路追踪 ID
@@ -113,7 +117,10 @@ func RecordAuthEvent(ctx context.Context, svcCtx *svc.ServiceContext, input Auth
 	if err != nil {
 		return
 	}
-	_, _ = svcCtx.Collector.Enqueue(ctx, collectorx.Event{
+	// 认证结果不能被 Kafka 写超时拖住，使用独立短期限且不继承响应结束后的取消信号。
+	enqueueCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), authEventEnqueueTimeout)
+	defer cancel()
+	_, _ = svcCtx.Collector.Enqueue(enqueueCtx, collectorx.Event{
 		BizType:      AuthCollectorBizType,
 		PartitionKey: authEventPartitionKey(payload),
 		Payload:      json.RawMessage(data),
@@ -126,11 +133,13 @@ func buildAuthEventPayload(ctx context.Context, cfg config.Config, input AuthEve
 	clientIP := strings.TrimSpace(input.ClientIP)
 	payload := authEventPayload{
 		Action:         strings.TrimSpace(input.Action),
-		UserID:         input.UserID,
 		AppID:          strings.TrimSpace(cfg.AppID),
 		Reason:         strings.TrimSpace(input.Reason),
 		Count:          input.Count,
 		OccurredAtUnix: time.Now().Unix(),
+	}
+	if input.UserID > 0 {
+		payload.UserID = strconv.FormatInt(input.UserID, 10)
 	}
 	if meta != nil {
 		if clientIP == "" {
@@ -150,22 +159,27 @@ func buildAuthEventPayload(ctx context.Context, cfg config.Config, input AuthEve
 	}
 	payload.IdentityHash = authEventHash(cfg, input.Identity)
 	payload.ClientIPHash = authEventHash(cfg, clientIP)
-	payload.SessionHash = authEventHash(cfg, input.JTI)
+	payload.SessionHash = authEventHash(cfg, input.SessionID)
 	return payload
 }
 
 // authEventPartitionKey 返回 Collector 分区键，优先按用户聚合。
 func authEventPartitionKey(payload authEventPayload) string {
-	if payload.UserID > 0 {
-		return fmt.Sprintf("%s:%d", payload.AppID, payload.UserID)
+	if payload.UserID != "" {
+		return payload.AppID + ":" + payload.UserID
 	}
-	if payload.IdentityHash != "" {
-		return payload.AppID + ":" + payload.IdentityHash
+	// hash 只用于 Kafka 分区，截短后仍保留足够离散度且不会超过 Collector 契约。
+	hash := payload.IdentityHash
+	if hash == "" {
+		hash = payload.ClientIPHash
 	}
-	if payload.ClientIPHash != "" {
-		return payload.AppID + ":" + payload.ClientIPHash
+	if hash == "" {
+		return payload.AppID
 	}
-	return payload.AppID
+	if len(hash) > authEventPartitionHashLength {
+		hash = hash[:authEventPartitionHashLength]
+	}
+	return payload.AppID + ":" + hash
 }
 
 // authEventHash 使用应用密钥对敏感字段做不可逆关联哈希。

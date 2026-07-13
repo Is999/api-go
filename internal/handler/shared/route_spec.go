@@ -33,7 +33,7 @@ const (
 	RouteSecurityPublic RouteSecurityChain = "public"
 	// RouteSecurityAuth 表示路由必须校验 JWT 与 Redis session。
 	RouteSecurityAuth RouteSecurityChain = "auth"
-	// RouteSecurityInternal 表示路由必须校验内网来源、Ops 令牌和 HMAC 签名。
+	// RouteSecurityInternal 表示路由必须校验内网来源、Ops HMAC 和 nonce 防重放。
 	RouteSecurityInternal RouteSecurityChain = "internal"
 )
 

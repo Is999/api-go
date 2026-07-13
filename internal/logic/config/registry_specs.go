@@ -1,12 +1,6 @@
 package config
 
-// RuntimeRegistrySpec 描述运行期配置提供的轻量扩展入口。
-type RuntimeRegistrySpec struct {
-	Name        string // 注册名称，必须在运行时扩展清单中唯一
-	File        string // 注册实现所在文件
-	Method      string // 注册入口方法
-	Description string // 注册项中文说明
-}
+import corelogic "api/internal/logic"
 
 const (
 	// RuntimeRegistrySysConfigCache 表示 sys_config 缓存读取入口。
@@ -16,7 +10,7 @@ const (
 )
 
 // runtimeRegistrySpecs 是运行期配置运行时注册入口的清单源。
-var runtimeRegistrySpecs = []RuntimeRegistrySpec{
+var runtimeRegistrySpecs = []corelogic.RuntimeRegistrySpec{
 	{
 		Name:        RuntimeRegistrySysConfigCache,
 		File:        "internal/logic/config/sys_config.go",
@@ -32,6 +26,6 @@ var runtimeRegistrySpecs = []RuntimeRegistrySpec{
 }
 
 // RuntimeRegistrySpecs 返回运行期配置运行时注册入口规格快照。
-func RuntimeRegistrySpecs() []RuntimeRegistrySpec {
-	return append([]RuntimeRegistrySpec(nil), runtimeRegistrySpecs...)
+func RuntimeRegistrySpecs() []corelogic.RuntimeRegistrySpec {
+	return append([]corelogic.RuntimeRegistrySpec(nil), runtimeRegistrySpecs...)
 }

@@ -10,8 +10,8 @@ import (
 
 // SysConfigKey 描述一个业务运行期配置项。
 type SysConfigKey struct {
-	UUID        string // sys_config.uuid
-	Type        int    // sys_config.type
+	UUID        string // 系统配置唯一标识，对应 sys_config.uuid
+	Type        int    // 系统配置类型，对应 sys_config.type
 	HasDefault  bool   // 配置不存在时是否返回默认值
 	Default     any    // 配置不存在时返回的默认值
 	Description string // 配置用途说明

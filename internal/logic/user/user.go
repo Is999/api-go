@@ -2,11 +2,14 @@ package user
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"time"
 
 	codes "api/common/codes"
 	i18n "api/common/i18n"
 	keys "api/common/rediskeys"
+	redislock "api/internal/infra/redsync"
 	corelogic "api/internal/logic"
 	"api/internal/model"
 	"api/internal/svc"
@@ -14,6 +17,7 @@ import (
 
 	"github.com/Is999/go-utils/errors"
 	"github.com/redis/go-redis/v9"
+	"golang.org/x/sync/singleflight"
 	"gorm.io/gorm"
 )
 
@@ -23,6 +27,18 @@ var (
 	ErrUserNotFound = errors.New("前台用户不存在")
 	// ErrUserDisabled 表示前台用户已禁用。
 	ErrUserDisabled = errors.New("前台用户已禁用")
+)
+
+// userProfileLoadGroup 合并当前进程内同一用户资料缓存的并发回源。
+var userProfileLoadGroup singleflight.Group
+
+const (
+	// userProfileRebuildLockTTL 是用户资料缓存跨进程重建锁租约。
+	userProfileRebuildLockTTL = 10 * time.Second
+	// userProfileRebuildWaitStep 是锁竞争时轮询缓存的间隔。
+	userProfileRebuildWaitStep = 50 * time.Millisecond
+	// userProfileRebuildWaitAttempts 限制等待其它实例重建的次数。
+	userProfileRebuildWaitAttempts = 20
 )
 
 // UserLogic 承载前台用户资料查询与缓存能力。
@@ -65,7 +81,7 @@ func (l *UserLogic) getUserByID(db *gorm.DB, userID int64) (*model.User, error) 
 	if userID <= 0 {
 		return nil, nil
 	}
-	user, err := model.FindUserByID(db, userID)
+	user, err := model.FindUserByID(db, userID, l.Svc.CurrentConfig().User.RouteShardCount)
 	if err != nil {
 		return nil, errors.Tag(err)
 	}
@@ -95,17 +111,67 @@ func (l *UserLogic) GetUserProfile(userID int64) (*types.UserProfile, error) {
 		return nil, errors.Errorf("用户 ID不能为空")
 	}
 	cacheKey := l.userProfileKey(userID)
-	if l.Redis() != nil {
-		profile := &types.UserProfile{}
-		if err := l.RdsGetJSONObj(cacheKey, profile); err == nil && profile.ID > 0 {
-			return profile, nil
-		} else if err != nil && !errors.Is(err, redis.Nil) {
-			return nil, errors.Wrapf(err, "读取用户资料缓存失败 user_id=%d", userID)
-		}
+	profile, found, err := l.cachedUserProfile(cacheKey, userID)
+	if err != nil || found {
+		return profile, errors.Tag(err)
 	}
-	user, err := l.GetActiveUser(userID)
+
+	// loadKey 在 Redis 未配置时仍按用户隔离并发回源。
+	loadKey := cacheKey
+	if loadKey == "" {
+		loadKey = fmt.Sprintf(keys.UserProfile, userID)
+	}
+	value, err, _ := userProfileLoadGroup.Do(loadKey, func() (any, error) {
+		return l.loadUserProfile(cacheKey, userID)
+	})
 	if err != nil {
 		return nil, errors.Tag(err)
+	}
+	profile, ok := value.(*types.UserProfile)
+	if !ok {
+		return nil, errors.Errorf("用户资料回源结果类型错误 user_id=%d", userID)
+	}
+	return profile, nil
+}
+
+// loadUserProfile 通过 Redis 分布式锁保护跨进程缓存回源。
+func (l *UserLogic) loadUserProfile(cacheKey string, userID int64) (*types.UserProfile, error) {
+	if l.Redis() == nil {
+		return l.loadUserProfileFromDB(userID)
+	}
+	var profile *types.UserProfile
+	err := redislock.WithLock(l.Ctx, l.Redis(), l.userProfileRebuildLockKey(userID), userProfileRebuildLockTTL, func(lockCtx context.Context) error {
+		lockedLogic := NewUserLogic(lockCtx, l.Svc)
+		cached, found, err := lockedLogic.cachedUserProfile(cacheKey, userID)
+		if err != nil || found {
+			profile = cached
+			return errors.Tag(err)
+		}
+		profile, err = lockedLogic.loadUserProfileFromDB(userID)
+		return errors.Tag(err)
+	})
+	if err == nil {
+		return profile, nil
+	}
+	if !redislock.IsLockTaken(err) {
+		return nil, errors.Tag(err)
+	}
+	return l.waitCachedUserProfile(cacheKey, userID)
+}
+
+// loadUserProfileFromDB 回源用户资料，并写入正值或空值缓存。
+func (l *UserLogic) loadUserProfileFromDB(userID int64) (*types.UserProfile, error) {
+	user, err := l.GetActiveUser(userID)
+	if err != nil {
+		if !errors.Is(err, ErrUserNotFound) && !errors.Is(err, model.ErrUserIdentityMissing) {
+			return nil, errors.Tag(err)
+		}
+		if l.Redis() != nil {
+			if err := l.cacheMissingUserProfile(userID); err != nil {
+				return nil, errors.Wrapf(err, "写入用户资料空值缓存失败 user_id=%d", userID)
+			}
+		}
+		return nil, ErrUserNotFound
 	}
 	profile := BuildUserProfile(user)
 	if l.Redis() != nil {
@@ -114,6 +180,66 @@ func (l *UserLogic) GetUserProfile(userID int64) (*types.UserProfile, error) {
 		}
 	}
 	return profile, nil
+}
+
+// waitCachedUserProfile 在锁竞争时有界等待其它实例写回缓存。
+func (l *UserLogic) waitCachedUserProfile(cacheKey string, userID int64) (*types.UserProfile, error) {
+	for attempt := 0; attempt <= userProfileRebuildWaitAttempts; attempt++ {
+		profile, found, err := l.cachedUserProfile(cacheKey, userID)
+		if err != nil || found {
+			return profile, errors.Tag(err)
+		}
+		if attempt == userProfileRebuildWaitAttempts {
+			break
+		}
+		timer := time.NewTimer(userProfileRebuildWaitStep)
+		select {
+		case <-l.Ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
+			return nil, errors.Tag(l.Ctx.Err())
+		case <-timer.C:
+		}
+	}
+	return nil, errors.Errorf("等待用户资料缓存重建超时 user_id=%d", userID)
+}
+
+// cachedUserProfile 读取用户资料缓存，并区分命中与未命中。
+func (l *UserLogic) cachedUserProfile(cacheKey string, userID int64) (*types.UserProfile, bool, error) {
+	if l.Redis() == nil {
+		return nil, false, nil
+	}
+	if cacheKey == "" {
+		return nil, false, errors.Errorf("用户资料缓存 Key 为空 user_id=%d", userID)
+	}
+	value, err := l.Redis().Get(l.Ctx, cacheKey).Result()
+	if errors.Is(err, redis.Nil) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, errors.Wrapf(err, "读取用户资料缓存失败 user_id=%d", userID)
+	}
+	if corelogic.CacheIsEmptyMarker(value) {
+		return nil, true, ErrUserNotFound
+	}
+	profile := &types.UserProfile{}
+	if err := json.Unmarshal([]byte(value), profile); err != nil {
+		return nil, false, errors.Wrapf(err, "解析用户资料缓存失败 user_id=%d", userID)
+	}
+	return profile, profile.ID > 0, nil
+}
+
+// cacheMissingUserProfile 短时缓存用户不存在结果，避免重复穿透数据库。
+func (l *UserLogic) cacheMissingUserProfile(userID int64) error {
+	if l.Redis() == nil {
+		return nil
+	}
+	cacheKey := l.userProfileKey(userID)
+	if cacheKey == "" {
+		return errors.Errorf("用户资料缓存 Key 为空 user_id=%d", userID)
+	}
+	return errors.Tag(l.Redis().Set(l.Ctx, cacheKey, keys.EmptyValueMarker, corelogic.EmptyCacheTTL()).Err())
 }
 
 // CacheUserProfile 写入用户资料缓存，调用方不需要了解具体 Redis key。
@@ -135,6 +261,11 @@ func (l *UserLogic) DeleteUserProfileCache(userID int64) error {
 // userProfileKey 生成当前站点下的用户资料缓存 Key。
 func (l *UserLogic) userProfileKey(userID int64) string {
 	return l.AppRedisKey(fmt.Sprintf(keys.UserProfile, userID))
+}
+
+// userProfileRebuildLockKey 生成当前站点下的用户资料缓存重建锁 Key。
+func (l *UserLogic) userProfileRebuildLockKey(userID int64) string {
+	return l.AppRedisKey(fmt.Sprintf(keys.UserProfileRebuildLock, userID))
 }
 
 // profileCacheTTL 返回用户资料缓存 TTL，未配置时使用 5 分钟。

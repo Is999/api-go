@@ -39,8 +39,8 @@ func Setup(ctx context.Context, cfg config.ObservabilityConfig) (func(context.Co
 	}
 
 	sampleRatio := cfg.SampleRatio
-	if sampleRatio <= 0 || sampleRatio > 1 {
-		sampleRatio = 1
+	if sampleRatio < 0 || sampleRatio > 1 {
+		return nil, errors.Errorf("observability.sample_ratio 必须在 0-1 之间")
 	}
 	if !cfg.TraceEnabled {
 		sampleRatio = 0
@@ -50,7 +50,7 @@ func Setup(ctx context.Context, cfg config.ObservabilityConfig) (func(context.Co
 		sdktrace.WithSampler(sdktrace.TraceIDRatioBased(sampleRatio)),
 		sdktrace.WithResource(resource),
 	}
-	if cfg.OTLPEndpoint != "" {
+	if cfg.TraceEnabled && cfg.OTLPEndpoint != "" {
 		protocol := normalizeOTLPProtocol(cfg.OTLPProtocol)
 		switch protocol {
 		case "grpc":
@@ -101,7 +101,7 @@ func normalizeOTLPProtocol(protocol string) string {
 	switch protocol {
 	case "", "grpc", "grpc/protobuf":
 		return "grpc"
-	case "http", "http/protobuf", "http-protobuf", "http/json":
+	case "http", "http/protobuf", "http-protobuf":
 		return "http"
 	default:
 		return protocol

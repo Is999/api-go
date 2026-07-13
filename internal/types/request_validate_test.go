@@ -39,6 +39,7 @@ func TestAuthReqValidate(t *testing.T) {
 	}{
 		{name: "用户名过短", req: &RegisterReq{Username: "ab", Password: "secret123"}},
 		{name: "密码为空", req: &RegisterReq{Username: "demo_user", Password: "   "}},
+		{name: "密码超过bcrypt字节上限", req: &RegisterReq{Username: "demo_user", Password: strings.Repeat("密", 25)}},
 		{name: "昵称过长", req: &RegisterReq{Username: "demo_user", Password: "secret123", Nickname: strings.Repeat("名", authNicknameMaxLength+1)}},
 		{name: "邮箱过长", req: &RegisterReq{Username: "demo_user", Password: "secret123", Email: strings.Repeat("a", authEmailMaxLength+1)}},
 		{name: "手机号过长", req: &RegisterReq{Username: "demo_user", Password: "secret123", Phone: strings.Repeat("1", authPhoneMaxLength+1)}},
@@ -60,6 +61,12 @@ func TestAuthReqValidate(t *testing.T) {
 	}
 	if err := (&LoginReq{IdentityType: LoginIdentityTypeUsername, IdentityValue: "demo_user", Password: " "}).Validate(); err == nil {
 		t.Fatal("LoginReq.Validate() should reject blank password")
+	}
+	if err := (&LoginReq{IdentityType: LoginIdentityTypeUsername, IdentityValue: "demo_user", Password: strings.Repeat("a", authPasswordMaxBytes)}).Validate(); err != nil {
+		t.Fatalf("LoginReq.Validate() should accept a 72-byte password: %v", err)
+	}
+	if err := (&LoginReq{IdentityType: LoginIdentityTypeUsername, IdentityValue: "demo_user", Password: strings.Repeat("a", authPasswordMaxBytes+1)}).Validate(); err == nil {
+		t.Fatal("LoginReq.Validate() should reject a 73-byte password")
 	}
 	if err := (&LoginReq{IdentityType: "oauth", IdentityValue: "demo", Password: "secret123"}).Validate(); err == nil {
 		t.Fatal("LoginReq.Validate() should reject oauth password login")
@@ -110,5 +117,8 @@ func TestUserRuntimeSyncReqValidate(t *testing.T) {
 	}
 	if err := (&UserRuntimeSyncReq{ID: 42, Reason: strings.Repeat("a", userRuntimeSyncReasonMaxLength+1)}).Validate(); err == nil {
 		t.Fatal("UserRuntimeSyncReq.Validate() should reject long reason")
+	}
+	if err := (&UserRuntimeSyncReq{ID: 42, Sessions: true}).Validate(); err == nil {
+		t.Fatal("UserRuntimeSyncReq.Validate() should require authVersion for session invalidation")
 	}
 }

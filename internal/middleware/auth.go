@@ -15,7 +15,6 @@ import (
 	"api/internal/routealias"
 	"api/internal/svc"
 
-	"github.com/Is999/go-utils"
 	"github.com/Is999/go-utils/errors"
 )
 
@@ -28,7 +27,7 @@ const (
 	Ignore = routealias.Ignore
 )
 
-// AuthMiddleware 负责 JWT 鉴权、Redis session 校验以及请求元数据补全。
+// AuthMiddleware 负责 JWT、Redis session 鉴权以及请求元数据补全。
 type AuthMiddleware struct {
 	svc       *svc.ServiceContext  // 鉴权依赖的服务上下文
 	crypto    *CryptoMiddleware    // 请求解密与响应加密中间件
@@ -54,7 +53,7 @@ func (m *AuthMiddleware) PublicHandle(next http.HandlerFunc, alias RouteAlias) h
 		handler = m.crypto.Handle(handler)
 	}
 	return func(w http.ResponseWriter, r *http.Request) {
-		handler(w, bindRequestMeta(r, alias))
+		handler(w, bindRequestMeta(r, alias, m.svc))
 	}
 }
 
@@ -62,7 +61,8 @@ func (m *AuthMiddleware) PublicHandle(next http.HandlerFunc, alias RouteAlias) h
 func (m *AuthMiddleware) Handle(next http.HandlerFunc, alias RouteAlias) http.HandlerFunc {
 	handler := func(w http.ResponseWriter, r *http.Request) {
 		ctx, _ := requestctx.New(r.Context())
-		requestctx.SetRequest(ctx, r.Method, r.URL.Path, utils.ClientIP(r))
+		clientIP := requestClientIP(m.svc, r)
+		requestctx.SetRequest(ctx, r.Method, r.URL.Path, clientIP)
 		if alias != "" && alias != Ignore {
 			requestctx.SetRoute(ctx, string(alias))
 		}
@@ -94,6 +94,7 @@ func (m *AuthMiddleware) Handle(next http.HandlerFunc, alias RouteAlias) http.Ha
 			return
 		}
 
+		// 主库状态和认证版本是最终撤销边界，Redis 会话只负责快速拒绝和原子生命周期。
 		user, err := userlogic.NewUserLogic(ctx, m.svc).GetActiveUserForAuth(identity.UserID)
 		if err != nil {
 			if errors.Is(err, userlogic.ErrUserDisabled) {
@@ -107,13 +108,23 @@ func (m *AuthMiddleware) Handle(next http.HandlerFunc, alias RouteAlias) http.Ha
 			failUnauthorized(codes.TokenInvalid, i18n.MsgKeyTokenInvalid, err, reason, identity)
 			return
 		}
+		if !authVersionMatches(user, identity) {
+			failUnauthorized(codes.SessionExpired, i18n.MsgKeySessionExpired, errSessionExpired, authlogic.AuthEventReasonSessionExpired, identity)
+			return
+		}
 
 		requestctx.SetAccessToken(ctx, identity.Token)
-		requestctx.SetUser(ctx, identity.UserID, user.Username, utils.ClientIP(r))
+		requestctx.SetSessionID(ctx, identity.SessionID)
+		requestctx.SetUser(ctx, identity.UserID, user.Username, clientIP)
 		ctx = loggerx.BindContext(ctx)
 		next(w, r.WithContext(ctx))
 	}
 	return m.PublicHandle(handler, alias)
+}
+
+// authVersionMatches 校验 JWT 认证版本与主库用户版本一致。
+func authVersionMatches(user *model.User, identity *UserTokenIdentity) bool {
+	return user != nil && identity != nil && user.AuthVersion > 0 && user.AuthVersion == identity.AuthVersion
 }
 
 // emitAuthFailureEvent 投递登录态鉴权失败事件，Collector 不可用时不影响响应。
@@ -128,18 +139,18 @@ func (m *AuthMiddleware) emitAuthFailureEvent(ctx context.Context, reason string
 	if identity != nil {
 		input.UserID = identity.UserID
 		input.Identity = model.UserIdentitySubject(model.UserIdentityTypeUsername, model.UserIdentityProviderLocal, identity.UserName)
-		input.JTI = identity.JTI
+		input.SessionID = identity.SessionID
 	}
 	authlogic.RecordAuthEvent(ctx, m.svc, input)
 }
 
 // bindRequestMeta 为公开路由补齐请求元数据和稳定路由别名。
-func bindRequestMeta(r *http.Request, alias RouteAlias) *http.Request {
+func bindRequestMeta(r *http.Request, alias RouteAlias, svcCtx *svc.ServiceContext) *http.Request {
 	if r == nil {
 		return r
 	}
 	ctx, _ := requestctx.New(r.Context())
-	requestctx.SetRequest(ctx, r.Method, r.URL.Path, utils.ClientIP(r))
+	requestctx.SetRequest(ctx, r.Method, r.URL.Path, requestClientIP(svcCtx, r))
 	if alias != "" && alias != Ignore {
 		requestctx.SetRoute(ctx, string(alias))
 	}

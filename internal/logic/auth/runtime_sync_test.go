@@ -29,7 +29,7 @@ func TestSyncUserRuntimeDefaultsToProfileCache(t *testing.T) {
 // TestSyncUserRuntimeSessionsRequireRedis 验证登录态失效必须由 API 进程持有 Redis 后才能执行。
 func TestSyncUserRuntimeSessionsRequireRedis(t *testing.T) {
 	logicObj := NewAuthLogic(context.Background(), svc.NewServiceContext(config.Config{}, "test-version", svc.Dependencies{}))
-	resp := logicObj.SyncUserRuntime(&types.UserRuntimeSyncReq{ID: 42, Sessions: true})
+	resp := logicObj.SyncUserRuntime(&types.UserRuntimeSyncReq{ID: 42, Sessions: true, AuthVersion: 2})
 	if resp.Code != codes.ServerError {
 		t.Fatalf("SyncUserRuntime() code = %d, want %d when Redis missing", resp.Code, codes.ServerError)
 	}

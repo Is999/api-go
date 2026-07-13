@@ -68,9 +68,9 @@ func TestEmitAuthFailureEventIncludesKnownIdentity(t *testing.T) {
 	middleware := NewAuthMiddleware(svcCtx)
 
 	middleware.emitAuthFailureEvent(context.Background(), authlogic.AuthEventReasonSessionExpired, &UserTokenIdentity{
-		UserID:   42,
-		UserName: "Demo_User",
-		JTI:      "session-jti",
+		UserID:    42,
+		UserName:  "Demo_User",
+		SessionID: "session-id",
 	})
 
 	if len(*seen) != 1 {
@@ -84,14 +84,14 @@ func TestEmitAuthFailureEventIncludesKnownIdentity(t *testing.T) {
 	if err := json.Unmarshal(event.Payload, &payload); err != nil {
 		t.Fatalf("Unmarshal(payload) error = %v", err)
 	}
-	if payload["user_id"].(float64) != 42 {
+	if payload["user_id"] != "42" {
 		t.Fatalf("payload user_id = %v, want 42", payload["user_id"])
 	}
 	if payload["reason"] != authlogic.AuthEventReasonSessionExpired {
 		t.Fatalf("payload reason = %v, want %s", payload["reason"], authlogic.AuthEventReasonSessionExpired)
 	}
 	raw := string(event.Payload)
-	for _, forbidden := range []string{"Demo_User", "session-jti"} {
+	for _, forbidden := range []string{"Demo_User", "session-id"} {
 		if strings.Contains(raw, forbidden) {
 			t.Fatalf("payload leaked raw value %q: %s", forbidden, raw)
 		}
@@ -166,6 +166,11 @@ func (f *fakeMiddlewareCollector) Enqueue(_ context.Context, event collectorx.Ev
 // SetAlertHook 保存告警钩子。
 func (f *fakeMiddlewareCollector) SetAlertHook(hook collectorx.AlertHook) {
 	f.alertHook = hook
+}
+
+// Ready 返回测试 Collector 的就绪状态。
+func (f *fakeMiddlewareCollector) Ready(context.Context) error {
+	return nil
 }
 
 // Close 标记收集器已关闭。

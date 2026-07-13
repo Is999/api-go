@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	codes "api/common/codes"
@@ -27,6 +28,9 @@ type HealthLogic struct {
 	*corelogic.BaseLogic // BaseLogic 提供统一上下文、日志和 ServiceContext 访问能力。
 }
 
+// dependencyCheck 表示一个互不依赖的 readiness 探测。
+type dependencyCheck func() (types.HealthDependencyStatus, error)
+
 // NewHealthLogic 创建健康检查 logic。
 func NewHealthLogic(ctx context.Context, svcCtx *svc.ServiceContext) *HealthLogic {
 	return &HealthLogic{BaseLogic: corelogic.NewBaseLogicWithContext(ctx, svcCtx)}
@@ -44,27 +48,31 @@ func (l *HealthLogic) Liveness() *types.HealthStatusResp {
 
 // Readiness 检查核心依赖是否可用。
 func (l *HealthLogic) Readiness(ctx context.Context) (*types.HealthStatusResp, error) {
-	statuses := make([]types.HealthDependencyStatus, 0, 4)
-	var firstErr error
-	appendStatus := func(status types.HealthDependencyStatus, err error) {
-		statuses = append(statuses, status)
-		if err != nil && firstErr == nil {
-			firstErr = errors.Tag(err)
-		}
+	if ctx == nil {
+		ctx = context.Background()
 	}
+	checks := make([]dependencyCheck, 0, 5)
 
 	if l.service() == nil {
-		appendStatus(dependencyError("service_context", codes.DependencyUnavailable, errors.Errorf("ServiceContext未初始化")))
+		checks = append(checks, func() (types.HealthDependencyStatus, error) {
+			return dependencyError("service_context", codes.DependencyUnavailable, errors.Errorf("ServiceContext未初始化"))
+		})
 	} else {
 		components := l.service().ComponentRegistry()
 		items := components.Items()
 		if len(items) == 0 {
-			appendStatus(dependencyError("component_registry", codes.DependencyUnavailable, errors.Errorf("组件生命周期注册表未初始化")))
+			checks = append(checks, func() (types.HealthDependencyStatus, error) {
+				return dependencyError("component_registry", codes.DependencyUnavailable, errors.Errorf("组件生命周期注册表未初始化"))
+			})
 		}
 		for _, component := range items {
-			appendStatus(l.checkComponent(ctx, component))
+			component := component
+			checks = append(checks, func() (types.HealthDependencyStatus, error) {
+				return l.checkComponent(ctx, component)
+			})
 		}
 	}
+	statuses, firstErr := runDependencyChecks(checks)
 
 	resp := &types.HealthStatusResp{
 		Status:       healthStatusOK,
@@ -78,6 +86,34 @@ func (l *HealthLogic) Readiness(ctx context.Context) (*types.HealthStatusResp, e
 		return resp, firstErr
 	}
 	return resp, nil
+}
+
+// runDependencyChecks 并行探测独立依赖，并按注册顺序返回状态。
+func runDependencyChecks(checks []dependencyCheck) ([]types.HealthDependencyStatus, error) {
+	type result struct {
+		status types.HealthDependencyStatus // 当前依赖的健康状态
+		err    error                        // 当前依赖的探测错误
+	}
+	results := make([]result, len(checks))
+	var wg sync.WaitGroup
+	wg.Add(len(checks))
+	for index, check := range checks {
+		go func() {
+			defer wg.Done()
+			results[index].status, results[index].err = check()
+		}()
+	}
+	wg.Wait()
+
+	statuses := make([]types.HealthDependencyStatus, len(results))
+	var firstErr error
+	for index, item := range results {
+		statuses[index] = item.status
+		if item.err != nil && firstErr == nil {
+			firstErr = errors.Tag(item.err)
+		}
+	}
+	return statuses, firstErr
 }
 
 // currentConfig 返回健康检查使用的当前配置快照。

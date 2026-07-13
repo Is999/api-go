@@ -1,6 +1,17 @@
 {
-  "version": 1,
+  "version": 2,
   "signVectors": [
+    {
+      "name": "header_only_request",
+      "appID": "demo-app",
+      "traceID": "trace-demo-000",
+      "timestamp": "1700000000",
+      "fields": [],
+      "data": {
+        "ignored": "value"
+      },
+      "expected": "v2|app=8:demo-app|trace=14:trace-demo-000|timestamp=10:1700000000"
+    },
     {
       "name": "login_request_fields",
       "appID": "demo-app",
@@ -13,7 +24,7 @@
         "nickname": "",
         "sign": "ignored"
       },
-      "expected": "password=P@ssw0rd!&username=demo&key=5a68d419027120213277f2516ed87d4d"
+      "expected": "v2|app=8:demo-app|trace=14:trace-demo-001|timestamp=10:1700000000|field=8:password9:P@ssw0rd!|field=8:username4:demo"
     },
     {
       "name": "all_fields_stable_json",
@@ -32,7 +43,22 @@
           "age": 18
         }
       },
-      "expected": "a=1&b=2&profile={\"age\":18,\"name\":\"tom\"}&key=6f057939b4dab9d24dc26d88ba15d59b"
+      "expected": "v2|app=8:demo-app|trace=14:trace-demo-002|timestamp=10:1700000000|field=1:a1:1|field=1:b1:2|field=7:profile23:{\"age\":18,\"name\":\"tom\"}"
+    },
+    {
+      "name": "nested_response_fields",
+      "appID": "demo-app",
+      "traceID": "trace-demo-003",
+      "timestamp": "1700000000",
+      "fields": ["token", "user.email", "user.phone"],
+      "data": {
+        "token": "jwt-token",
+        "user": {
+          "email": "de***o@example.com",
+          "phone": "138****0000"
+        }
+      },
+      "expected": "v2|app=8:demo-app|trace=14:trace-demo-003|timestamp=10:1700000000|field=5:token9:jwt-token|field=10:user.email18:de***o@example.com|field=10:user.phone11:138****0000"
     }
   ],
   "cipherHeaderVectors": [

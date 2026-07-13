@@ -4,7 +4,6 @@ import (
 	"io/fs"
 	"net/http"
 	"net/url"
-	"os"
 	pathpkg "path"
 	"strings"
 )
@@ -17,18 +16,12 @@ const (
 
 // Handler 返回 API 内网文档资源处理器；调用方仍需在路由层挂 OpsMiddleware。
 func Handler() http.HandlerFunc {
-	var fileServer http.Handler
 	var initErr error
-	if _, err := os.Stat("docs/site"); err == nil {
-		fileServer = http.FileServer(http.Dir("docs/site"))
-	} else {
-		sub, err := fs.Sub(FS, "site")
-		if err != nil {
-			initErr = err
-		} else {
-			fileServer = http.FileServer(http.FS(sub))
-		}
+	sub, err := fs.Sub(FS, "site")
+	if err != nil {
+		initErr = err
 	}
+	fileServer := http.FileServer(http.FS(sub))
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		if initErr != nil {

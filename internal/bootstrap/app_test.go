@@ -20,7 +20,7 @@ func TestBuildServiceContextDoesNotPublishRuntimeConfigOnFailure(t *testing.T) {
 	svcCtx, shutdown, err := BuildServiceContext(context.Background(), config.Config{AppID: "failed-app"}, "failed-version")
 	if err == nil {
 		if svcCtx != nil {
-			_ = bootstrapresources.CloseServiceContextResources(svcCtx)
+			_ = bootstrapresources.CloseServiceContextResources(context.Background(), svcCtx)
 		}
 		if shutdown != nil {
 			_ = shutdown(context.Background())

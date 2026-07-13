@@ -61,6 +61,9 @@ Name: "api"
 Host: "0.0.0.0"
 Port: 8890
 Mode: "dev"
+internal_server:
+  host: "127.0.0.1"
+  port: 8891
 app_id: "1"
 snowflake:
   worker_id: 1
@@ -104,7 +107,7 @@ collector:
     auth.security:
       topic: "api_collector_auth_security_events"
 ops:
-  config_reload_token: "runtime-token"
+  config_reload_token: "runtime-api-ops-token"
 unknown_block:
   ignored: true
 `), 0o644); err != nil {
@@ -124,10 +127,10 @@ unknown_block:
 	if cfg.Security.SecretKey.SignStatus != 0 || cfg.Security.SecretKey.CryptoStatus != 0 || cfg.Security.SecretKey.GrayPercent != 7 {
 		t.Fatalf("security config not merged: %+v", cfg.Security)
 	}
-	if !cfg.Collector.Enabled || cfg.Collector.Tasks["auth.security"].Topic != "api_collector_auth_security_events" {
+	if !cfg.Collector.Enabled || cfg.Collector.Tasks[config.CollectorBizTypeAuthSecurity].Topic != config.CollectorTopicAuthSecurity {
 		t.Fatalf("collector config not merged: %+v", cfg.Collector)
 	}
-	if cfg.Ops.ConfigReloadToken != "runtime-token" {
+	if cfg.Ops.ConfigReloadToken != "runtime-api-ops-token" {
 		t.Fatalf("ops config not merged: %+v", cfg.Ops)
 	}
 }

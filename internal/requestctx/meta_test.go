@@ -28,3 +28,12 @@ func TestSetLatencyRoundsSubMillisecondToOne(t *testing.T) {
 		t.Fatalf("SetLatency(1ns) latency_ms = %d, want 1", meta.LatencyMS)
 	}
 }
+
+// TestSetSessionID 保存中间件已经解析出的会话 ID。
+func TestSetSessionID(t *testing.T) {
+	ctx, meta := New(context.Background())
+	SetSessionID(ctx, " session-id ")
+	if meta.SessionID != "session-id" {
+		t.Fatalf("SessionID = %q, want session-id", meta.SessionID)
+	}
+}

@@ -19,11 +19,11 @@ func TestNewComponentRegistryRejectsDuplicate(t *testing.T) {
 func TestComponentRegistryCloseReverseAndOnce(t *testing.T) {
 	closed := make([]string, 0, 2)
 	registry, err := NewComponentRegistry(
-		Component{Name: "mysql", Close: func() error {
+		Component{Name: "mysql", Close: func(context.Context) error {
 			closed = append(closed, "mysql")
 			return nil
 		}},
-		Component{Name: "redis", Close: func() error {
+		Component{Name: "redis", Close: func(context.Context) error {
 			closed = append(closed, "redis")
 			return nil
 		}},
@@ -32,10 +32,10 @@ func TestComponentRegistryCloseReverseAndOnce(t *testing.T) {
 		t.Fatalf("NewComponentRegistry() error = %v", err)
 	}
 
-	if err = registry.Close(); err != nil {
+	if err = registry.Close(context.Background()); err != nil {
 		t.Fatalf("Close(first) error = %v", err)
 	}
-	if err = registry.Close(); err != nil {
+	if err = registry.Close(context.Background()); err != nil {
 		t.Fatalf("Close(second) error = %v", err)
 	}
 	want := []string{"redis", "mysql"}
@@ -48,14 +48,41 @@ func TestComponentRegistryCloseReverseAndOnce(t *testing.T) {
 func TestComponentRegistryCloseReturnsFirstError(t *testing.T) {
 	wantErr := errors.Errorf("redis close failed")
 	registry, err := NewComponentRegistry(
-		Component{Name: "mysql", Close: func() error { return nil }},
-		Component{Name: "redis", Close: func() error { return wantErr }},
+		Component{Name: "mysql", Close: func(context.Context) error { return nil }},
+		Component{Name: "redis", Close: func(context.Context) error { return wantErr }},
 	)
 	if err != nil {
 		t.Fatalf("NewComponentRegistry() error = %v", err)
 	}
-	if err = registry.Close(); !errors.Is(err, wantErr) {
+	if err = registry.Close(context.Background()); !errors.Is(err, wantErr) {
 		t.Fatalf("Close() error = %v, want %v", err, wantErr)
+	}
+}
+
+// TestComponentRegistryCloseAfterContextDone 确保期限到达后仍尝试释放可立即关闭的后续资源。
+func TestComponentRegistryCloseAfterContextDone(t *testing.T) {
+	closed := make([]string, 0, 2)
+	registry, err := NewComponentRegistry(
+		Component{Name: "mysql", Close: func(context.Context) error {
+			closed = append(closed, "mysql")
+			return nil
+		}},
+		Component{Name: "redis", Close: func(context.Context) error {
+			closed = append(closed, "redis")
+			return nil
+		}},
+	)
+	if err != nil {
+		t.Fatalf("NewComponentRegistry() error = %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err = registry.Close(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Close() error = %v, want context canceled", err)
+	}
+	want := []string{"redis", "mysql"}
+	if !reflect.DeepEqual(closed, want) {
+		t.Fatalf("context canceled 后关闭顺序 = %v, want %v", closed, want)
 	}
 }
 

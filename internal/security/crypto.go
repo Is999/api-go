@@ -14,8 +14,6 @@ import (
 
 // 安全算法请求头短码常量。
 const (
-	// SignatureTypeMD5 表示 MD5 签名方式，对应 X-Signature=M。
-	SignatureTypeMD5 = "M"
 	// SignatureTypeAES 表示 AES 签名方式，对应 X-Signature=A。
 	SignatureTypeAES = "A"
 	// SignatureTypeRSA 表示 RSA 签名方式，对应 X-Signature=R。
@@ -34,8 +32,6 @@ func NormalizeSignatureType(value string) string {
 		return SignatureTypeRSA
 	case "A", "AES":
 		return SignatureTypeAES
-	case "M", "MD5":
-		return SignatureTypeMD5
 	default:
 		return strings.ToUpper(strings.TrimSpace(value))
 	}
@@ -63,23 +59,6 @@ type Signer interface {
 type Cryptor interface {
 	Encrypt(data string) (string, error) // Encrypt 加密明文字符串
 	Decrypt(data string) (string, error) // Decrypt 解密密文字符串
-}
-
-// MD5Signer 实现简单 MD5 签名。
-type MD5Signer struct{}
-
-// Sign 对待签名字符串做 MD5 摘要。
-func (MD5Signer) Sign(data string) (string, error) {
-	return utils.MD5(data), nil
-}
-
-// Verify 校验 MD5 签名。
-func (s MD5Signer) Verify(data, sign string) (bool, error) {
-	expected, err := s.Sign(data)
-	if err != nil {
-		return false, errors.Tag(err)
-	}
-	return expected == sign, nil
 }
 
 // AESCipher 实现 AES-256-CBC 加解密与签名能力。

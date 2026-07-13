@@ -118,6 +118,13 @@ type ConfigFilesConfig struct {
 	Runtime string `json:"runtime,optional"` // 运行期配置文件路径
 }
 
+const (
+	// CollectorBizTypeAuthSecurity 表示认证风控事件业务类型。
+	CollectorBizTypeAuthSecurity = "auth.security"
+	// CollectorTopicAuthSecurity 表示 API 与 Admin 共享的认证风控 Kafka Topic。
+	CollectorTopicAuthSecurity = "api_collector_auth_security_events"
+)
+
 // CollectorKafkaConfig 定义通用收集器 Kafka 投递配置。
 type CollectorKafkaConfig struct {
 	Brokers                    []string `json:"brokers,optional"`                       // Kafka broker 地址
@@ -133,24 +140,23 @@ type CollectorTaskConfig struct {
 
 // CollectorConfig 定义通用收集器配置。
 type CollectorConfig struct {
-	Enabled     bool                           `json:"enabled,optional"`      // 是否启用通用收集器
-	Kafka       CollectorKafkaConfig           `json:"kafka,optional"`        // Kafka 投递链路配置
-	DefaultTask CollectorTaskConfig            `json:"default_task,optional"` // 未单独配置 bizType 时的默认路由
-	Tasks       map[string]CollectorTaskConfig `json:"tasks,optional"`        // 按 bizType 覆盖的 Kafka 路由
+	Enabled bool                           `json:"enabled,optional"` // 是否启用通用收集器
+	Kafka   CollectorKafkaConfig           `json:"kafka,optional"`   // Kafka 投递链路配置
+	Tasks   map[string]CollectorTaskConfig `json:"tasks,optional"`   // 按 bizType 配置的 Kafka 路由
 }
 
 // ObservabilityConfig 聚合日志、链路追踪相关配置。
 type ObservabilityConfig struct {
-	ServiceName     string  `json:"service_name,optional"`       // 服务名
-	Environment     string  `json:"environment,optional"`        // 观测环境，由顶层 Mode 填充
-	TraceEnabled    bool    `json:"trace_enabled,optional"`      // 是否启用 trace 采样/上报
-	OTLPProtocol    string  `json:"otlp_protocol,optional"`      // OTLP 协议：grpc/http
-	OTLPEndpoint    string  `json:"otlp_endpoint,optional"`      // OTLP endpoint
-	OTLPInsecure    bool    `json:"otlp_insecure,optional"`      // OTLP 是否明文
-	SampleRatio     float64 `json:"sample_ratio,optional"`       // trace 采样率 0~1
-	SlowSQLMs       int64   `json:"slow_sql_ms,optional"`        // 慢 SQL 阈值，毫秒
-	RedisSlowMs     int64   `json:"redis_slow_ms,optional"`      // 慢 Redis 阈值，毫秒
-	LogBodyMaxBytes int     `json:"log_body_max_bytes,optional"` // 日志负载最大长度
+	ServiceName     string  `json:"service_name,optional"`           // 服务名
+	Environment     string  `json:"environment,optional"`            // 观测环境，由顶层 Mode 填充
+	TraceEnabled    bool    `json:"trace_enabled,optional"`          // 是否启用 trace 采样/上报
+	OTLPProtocol    string  `json:"otlp_protocol,optional"`          // OTLP 协议：grpc/http
+	OTLPEndpoint    string  `json:"otlp_endpoint,optional"`          // OTLP 上报地址
+	OTLPInsecure    bool    `json:"otlp_insecure,optional"`          // OTLP 是否明文
+	SampleRatio     float64 `json:"sample_ratio,optional,default=1"` // trace 采样率 0~1
+	SlowSQLMs       int64   `json:"slow_sql_ms,optional"`            // 慢 SQL 阈值，毫秒
+	RedisSlowMs     int64   `json:"redis_slow_ms,optional"`          // 慢 Redis 阈值，毫秒
+	LogBodyMaxBytes int     `json:"log_body_max_bytes,optional"`     // 日志负载最大长度
 }
 
 // LarkAlertConfig 定义 Lark 群机器人告警配置。
@@ -173,7 +179,7 @@ type AlertConfig struct {
 // AuthConfig 定义前台用户登录态运行参数。
 type AuthConfig struct {
 	RegisterEnabled        bool                `json:"register_enabled,optional"`              // 是否开放注册接口
-	Issuer                 string              `json:"issuer,optional"`                        // JWT issuer
+	Issuer                 string              `json:"issuer,optional"`                        // JWT 发行方
 	SessionTTLSeconds      int64               `json:"session_ttl_seconds,optional"`           // Redis 会话 TTL；<=0 或超过 JWT 时使用 jwt_expires_in
 	ProfileCacheTTLSeconds int64               `json:"profile_cache_ttl_seconds,optional"`     // 用户资料缓存 TTL
 	PasswordMinLength      int                 `json:"password_min_length,optional,default=8"` // 密码最小长度
@@ -189,9 +195,9 @@ type AuthRateLimitConfig struct {
 	LockSeconds   int  `json:"lock_seconds,optional"`   // 超限后的锁定时间，单位秒
 }
 
-// UserConfig 定义业务用户写入和后续拆表路由配置。
+// UserConfig 定义业务用户物理路由配置。
 type UserConfig struct {
-	RouteShardCount int `json:"route_shard_count,optional,default=1"` // 新增用户默认物理表数量：1/2/4/.../1024
+	RouteShardCount int `json:"route_shard_count,optional,default=1"` // 用户物理分片数量，由当前部署方案校验允许值
 }
 
 // OpsConfig 定义运维级接口保护配置。
@@ -200,25 +206,36 @@ type OpsConfig struct {
 	ConfigReloadAllowedIPs []string `json:"config_reload_allowed_ips,optional"` // 配置热加载允许的内网 IP 或 CIDR
 }
 
+// InternalServerConfig 定义只注册内网路由的独立监听器。
+type InternalServerConfig struct {
+	Host         string `json:"host"`                    // 监听 IP；生产环境必须为回环或私有地址
+	Port         int    `json:"port"`                    // 独立监听端口，不得与公网端口相同
+	CertFile     string `json:"cert_file,optional"`      // mTLS 服务端证书文件
+	KeyFile      string `json:"key_file,optional"`       // mTLS 服务端私钥文件
+	ClientCAFile string `json:"client_ca_file,optional"` // mTLS 客户端 CA 文件
+}
+
 // Config 是前台 API 服务总配置。
 type Config struct {
-	rest.RestConf                     // go-zero HTTP 服务配置
-	AppID         string              `json:"app_id,optional"`                       // 站点/应用 ID
-	AppKey        string              `json:"app_key,optional"`                      // 全局应用密钥，用于安全链路扩展
-	InstanceID    string              `json:"instance_id,optional"`                  // 当前实例 ID；为空时使用主机名
-	Snowflake     SnowflakeConfig     `json:"snowflake,optional"`                    // 分布式雪花 ID 配置
-	JwtSecret     string              `json:"jwt_secret"`                            // JWT 签名密钥
-	JwtExpiresIn  int64               `json:"jwt_expires_in,optional,default=86400"` // JWT 过期时间，单位秒
-	Auth          AuthConfig          `json:"auth,optional"`                         // 前台用户认证配置
-	User          UserConfig          `json:"user,optional"`                         // 业务用户写入路由配置
-	HotReload     HotReloadConfig     `json:"hot_reload,optional"`                   // 配置热加载配置
-	ConfigFiles   ConfigFilesConfig   `json:"config_files,optional"`                 // 外部配置文件入口
-	Security      SecurityConfig      `json:"security,optional"`                     // 签名验签和加解密配置
-	Collector     CollectorConfig     `json:"collector,optional"`                    // 通用收集器配置
-	Ops           OpsConfig           `json:"ops,optional"`                          // 运维级接口保护配置
-	Observability ObservabilityConfig `json:"observability,optional"`                // 日志与链路追踪配置
-	Alert         AlertConfig         `json:"alert,optional"`                        // 外部运行异常告警配置
-	MySQL         MySQLConfig         `json:"mysql,optional"`                        // 默认主库 MySQL 配置
-	SiteMySQL     SiteMySQLConfig     `json:"site_mysql,optional"`                   // 可选命名扩展库配置
-	Redis         RedisConfig         `json:"redis"`                                 // Redis 连接与连接池配置
+	rest.RestConf                       // go-zero HTTP 服务配置
+	AppID          string               `json:"app_id,optional"`                       // 站点/应用 ID
+	AppKey         string               `json:"app_key,optional"`                      // 持久数据根密钥，用于用户敏感字段加解密与查询哈希
+	InstanceID     string               `json:"instance_id,optional"`                  // 当前实例 ID；为空时使用主机名
+	TrustedProxies []string             `json:"trusted_proxies,optional"`              // 允许提供 X-Forwarded-For 的反向代理 IP/CIDR
+	Snowflake      SnowflakeConfig      `json:"snowflake,optional"`                    // 分布式雪花 ID 配置
+	JwtSecret      string               `json:"jwt_secret"`                            // JWT 签名密钥
+	JwtExpiresIn   int64                `json:"jwt_expires_in,optional,default=86400"` // JWT 过期时间，单位秒
+	Auth           AuthConfig           `json:"auth,optional"`                         // 前台用户认证配置
+	User           UserConfig           `json:"user,optional"`                         // 业务用户写入路由配置
+	HotReload      HotReloadConfig      `json:"hot_reload,optional"`                   // 配置热加载配置
+	ConfigFiles    ConfigFilesConfig    `json:"config_files,optional"`                 // 外部配置文件入口
+	Security       SecurityConfig       `json:"security,optional"`                     // 签名验签和加解密配置
+	Collector      CollectorConfig      `json:"collector,optional"`                    // 通用收集器配置
+	Ops            OpsConfig            `json:"ops,optional"`                          // 运维级接口保护配置
+	InternalServer InternalServerConfig `json:"internal_server,optional"`              // 内网路由独立监听配置
+	Observability  ObservabilityConfig  `json:"observability,optional"`                // 日志与链路追踪配置
+	Alert          AlertConfig          `json:"alert,optional"`                        // 外部运行异常告警配置
+	MySQL          MySQLConfig          `json:"mysql,optional"`                        // 默认主库 MySQL 配置
+	SiteMySQL      SiteMySQLConfig      `json:"site_mysql,optional"`                   // 可选命名扩展库配置
+	Redis          RedisConfig          `json:"redis"`                                 // Redis 连接与连接池配置
 }

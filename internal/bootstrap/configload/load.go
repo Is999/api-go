@@ -53,7 +53,7 @@ func Normalize(c *config.Config) {
 	if c.Auth.PasswordMinLength <= 0 {
 		c.Auth.PasswordMinLength = 8
 	}
-	if c.User.RouteShardCount <= 0 {
+	if c.User.RouteShardCount == 0 {
 		c.User.RouteShardCount = defaultUserRouteShardCount
 	}
 }

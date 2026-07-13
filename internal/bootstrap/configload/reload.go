@@ -24,12 +24,84 @@ type hotReloadRestartSpec struct {
 func hotReloadRestartSpecs() []hotReloadRestartSpec {
 	return []hotReloadRestartSpec{
 		{
-			Reason: "HTTP监听地址变更",
+			Reason: "HTTP服务配置变更",
 			Changed: func(oldCfg, newCfg config.Config) bool {
-				return oldCfg.Host != newCfg.Host || oldCfg.Port != newCfg.Port
+				return !reflect.DeepEqual(oldCfg.RestConf, newCfg.RestConf) ||
+					!reflect.DeepEqual(oldCfg.InternalServer, newCfg.InternalServer)
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, newCfg config.Config) {
+				effective.RestConf = oldCfg.RestConf
+				effective.InternalServer = oldCfg.InternalServer
+				if oldCfg.Mode != newCfg.Mode {
+					effective.Observability.Environment = oldCfg.Observability.Environment
+				}
+			},
+		},
+		{
+			Reason: "应用ID变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return oldCfg.AppID != newCfg.AppID
 			},
 			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
-				effective.RestConf = oldCfg.RestConf
+				effective.AppID = oldCfg.AppID
+			},
+		},
+		{
+			Reason: "应用密钥变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return oldCfg.AppKey != newCfg.AppKey
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
+				effective.AppKey = oldCfg.AppKey
+			},
+		},
+		{
+			Reason: "实例标识变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return oldCfg.InstanceID != newCfg.InstanceID
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
+				effective.InstanceID = oldCfg.InstanceID
+			},
+		},
+		{
+			Reason: "可信代理配置变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return !reflect.DeepEqual(oldCfg.TrustedProxies, newCfg.TrustedProxies)
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
+				effective.TrustedProxies = oldCfg.TrustedProxies
+			},
+		},
+		{
+			Reason: "JWT认证配置变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return oldCfg.JwtSecret != newCfg.JwtSecret ||
+					oldCfg.JwtExpiresIn != newCfg.JwtExpiresIn ||
+					oldCfg.Auth.Issuer != newCfg.Auth.Issuer
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
+				effective.JwtSecret = oldCfg.JwtSecret
+				effective.JwtExpiresIn = oldCfg.JwtExpiresIn
+				effective.Auth.Issuer = oldCfg.Auth.Issuer
+			},
+		},
+		{
+			Reason: "安全链路配置变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return !reflect.DeepEqual(oldCfg.Security, newCfg.Security)
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
+				effective.Security = oldCfg.Security
+			},
+		},
+		{
+			Reason: "Collector配置变更",
+			Changed: func(oldCfg, newCfg config.Config) bool {
+				return !reflect.DeepEqual(oldCfg.Collector, newCfg.Collector)
+			},
+			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
+				effective.Collector = oldCfg.Collector
 			},
 		},
 		{
@@ -70,14 +142,12 @@ func hotReloadRestartSpecs() []hotReloadRestartSpec {
 			},
 		},
 		{
-			Reason: "OTLP导出配置变更",
+			Reason: "可观测性配置变更",
 			Changed: func(oldCfg, newCfg config.Config) bool {
-				return oldCfg.Observability.OTLPEndpoint != newCfg.Observability.OTLPEndpoint ||
-					oldCfg.Observability.OTLPProtocol != newCfg.Observability.OTLPProtocol
+				return !reflect.DeepEqual(oldCfg.Observability, newCfg.Observability)
 			},
 			Preserve: func(effective *config.Config, oldCfg config.Config, _ config.Config) {
-				effective.Observability.OTLPEndpoint = oldCfg.Observability.OTLPEndpoint
-				effective.Observability.OTLPProtocol = oldCfg.Observability.OTLPProtocol
+				effective.Observability = oldCfg.Observability
 			},
 		},
 		{

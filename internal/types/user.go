@@ -27,10 +27,11 @@ type UserProfile struct {
 
 // UserRuntimeSyncReq 表示内网同步单个业务用户运行态缓存的请求。
 type UserRuntimeSyncReq struct {
-	ID       int64  `path:"id" json:"id,optional" form:"id,optional"` // 用户 ID
-	Profile  bool   `json:"profile,optional"`                         // 是否删除用户资料缓存
-	Sessions bool   `json:"sessions,optional"`                        // 是否失效该用户全部登录态
-	Reason   string `json:"reason,optional"`                          // 触发同步的后台操作原因
+	ID          int64  `path:"id" json:"id,optional" form:"id,optional"` // 用户 ID
+	Profile     bool   `json:"profile,optional"`                         // 是否删除用户资料缓存
+	Sessions    bool   `json:"sessions,optional"`                        // 是否失效该用户全部登录态
+	AuthVersion uint64 `json:"authVersion,optional"`                     // admin 已在业务用户表提交的新认证版本
+	Reason      string `json:"reason,optional"`                          // 触发同步的后台操作原因
 }
 
 // Validate 校验并归一化内网用户运行态同步请求。
@@ -44,6 +45,9 @@ func (r *UserRuntimeSyncReq) Validate() error {
 	if !r.Profile && !r.Sessions {
 		r.Profile = true
 	}
+	if r.Sessions && r.AuthVersion == 0 {
+		return errors.New("失效登录态时认证版本不能为空")
+	}
 	r.Reason = strings.TrimSpace(r.Reason)
 	if len([]rune(r.Reason)) > userRuntimeSyncReasonMaxLength {
 		return errors.Errorf("同步原因不能超过 %d 个字符", userRuntimeSyncReasonMaxLength)
@@ -56,5 +60,6 @@ type UserRuntimeSyncResp struct {
 	UserID                  int64  `json:"userId,string"`           // 用户 ID，JSON 以字符串返回，避免前端丢失精度
 	ProfileCacheInvalidated bool   `json:"profileCacheInvalidated"` // 是否已处理资料缓存
 	SessionsInvalidated     bool   `json:"sessionsInvalidated"`     // 是否已处理全部登录态
+	AuthVersion             uint64 `json:"authVersion"`             // 本次登录态失效使用的已提交认证版本
 	Reason                  string `json:"reason"`                  // 后台传入的同步原因
 }

@@ -14,6 +14,7 @@ const (
 	authEmailMaxLength         = 128 // 邮箱最大长度
 	authPhoneMaxLength         = 32  // 手机号最大长度
 	authIdentityValueMaxLength = 191 // 登录身份值最大长度
+	authPasswordMaxBytes       = 72  // bcrypt 登录密码最大字节数
 )
 
 // 前台密码登录支持的身份类型。
@@ -47,6 +48,9 @@ func (r *RegisterReq) Validate() error {
 	if strings.TrimSpace(r.Password) == "" {
 		return errors.New("密码不能为空")
 	}
+	if len(r.Password) > authPasswordMaxBytes {
+		return errors.Errorf("密码不能超过 %d 字节", authPasswordMaxBytes)
+	}
 	if len([]rune(r.Nickname)) > authNicknameMaxLength {
 		return errors.Errorf("昵称不能超过 %d 个字符", authNicknameMaxLength)
 	}
@@ -78,6 +82,9 @@ func (r *LoginReq) Validate() error {
 	}
 	if strings.TrimSpace(r.Password) == "" {
 		return errors.New("密码不能为空")
+	}
+	if len(r.Password) > authPasswordMaxBytes {
+		return errors.Errorf("密码不能超过 %d 字节", authPasswordMaxBytes)
 	}
 	return nil
 }
@@ -114,7 +121,7 @@ func validateLoginIdentity(identityType string, identityValue string) error {
 
 // AuthTokenResp 表示登录或刷新后的令牌响应。
 type AuthTokenResp struct {
-	Token     string       `json:"token"`     // Bearer token
+	Token     string       `json:"token"`     // Bearer 访问令牌
 	ExpiresAt int64        `json:"expiresAt"` // 过期时间戳，单位秒
 	User      *UserProfile `json:"user"`      // 当前用户资料
 }
