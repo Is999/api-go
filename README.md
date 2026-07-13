@@ -57,7 +57,7 @@ cmd/api
 
 ## 目录结构
 
-`api` 延续 `admin` 的 go-zero 分层方式：入口只负责启动参数，`bootstrap` 负责装配，`handler/logic/model/types` 分别承担 HTTP 入口、用例编排、数据访问和接口契约。启动组件、HTTP 路由、数据库迁移、Redis Key、运行期配置和轻量扩展都有固定登记位置，避免后续能力散落在调用点。
+`api` 延续 `admin` 的 go-zero 分层方式。本分支代码树与 `main` 完全一致，仅本 README 按 Proxy 部署方式说明目录职责。运行配置保持 `user.route_shard_count=1`，共享的 `internal/sharding` 路由函数返回逻辑表名；身份目录和固定 `shard_no` 提供路由条件，物理拓扑与迁移工具由 Admin 维护。
 
 ```text
 api
@@ -68,10 +68,10 @@ api
 ├── docs                      # 开发规范、接口文档、运维手册和监控资产
 │   ├── site
 │   │   ├── 角色文档
-│   │   │   ├── 后端开发       # AI 规范、扩展指南、组件清单、安全同步说明
-│   │   │   └── 运维          # 部署发布、数据库迁移治理
+│   │   │   ├── 后端开发    # AI 规范、扩展指南、组件清单、安全同步说明
+│   │   │   └── 运维        # 部署发布、数据库迁移治理
 │   │   └── 接口文档
-│   │       └── 前台系统       # 认证、用户、系统、健康检查接口
+│   │       └── 前台系统    # 认证、用户、系统、健康检查接口
 │   ├── prometheus            # Prometheus 告警规则
 │   ├── grafana               # Grafana 面板
 │   └── handler.go            # 内网文档资源读取入口
@@ -86,11 +86,11 @@ api
     ├── infra                 # MySQL、Redis、redsync、日志、Trace、Collector 适配
     ├── logic                 # 用例编排、规则校验、缓存保护和运行时扩展
     ├── middleware            # 鉴权、签名、加解密、内网 Ops、访问日志、Recover
-    ├── model                 # GORM Model、身份目录、物理表定位和数据访问
+    ├── model                 # GORM Model、身份目录、固定分片字段和 Proxy 逻辑表访问
     ├── requestctx            # 链路字段、调用方、耗时和 trace 元数据
     ├── routealias            # 路由别名常量
     ├── security              # 路由字段级签名、加密、大小限制和测试向量
-    ├── sharding              # 固定桶物理表数量校验和稳定表名映射
+    ├── sharding              # main 共享的固定桶映射；本分支配置为 1，仅返回逻辑表名
     ├── svc                   # ServiceContext 与基础设施依赖聚合
     └── types                 # API 请求、响应、列表项和参数校验
 ```
