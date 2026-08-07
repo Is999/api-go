@@ -136,8 +136,12 @@ func TestRouteNoTokenBehaviorMatchesSecurityContracts(t *testing.T) {
 	defer internalServer.Stop()
 
 	svcCtx := svc.NewServiceContext(config.Config{JwtSecret: "test-secret-please-change"}, "test-version", svc.Dependencies{})
-	RegisterPublicHandlers(publicServer, svcCtx)
-	RegisterInternalHandlers(internalServer, svcCtx)
+	if err := RegisterPublicHandlers(publicServer, svcCtx); err != nil {
+		t.Fatalf("注册公网路由失败: %v", err)
+	}
+	if err := RegisterInternalHandlers(internalServer, svcCtx); err != nil {
+		t.Fatalf("注册内网路由失败: %v", err)
+	}
 	routeHandlers := routeHandlerByKey(append(publicServer.Routes(), internalServer.Routes()...))
 	securityByAlias := routeSecurityContractByAlias()
 

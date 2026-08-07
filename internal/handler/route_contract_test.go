@@ -74,8 +74,12 @@ func TestDefaultRouteContractsMatchRegisteredRoutes(t *testing.T) {
 	defer internalServer.Stop()
 
 	svcCtx := svc.NewServiceContext(config.Config{}, "test-version", svc.Dependencies{})
-	RegisterPublicHandlers(publicServer, svcCtx)
-	RegisterInternalHandlers(internalServer, svcCtx)
+	if err := RegisterPublicHandlers(publicServer, svcCtx); err != nil {
+		t.Fatalf("注册公网路由失败: %v", err)
+	}
+	if err := RegisterInternalHandlers(internalServer, svcCtx); err != nil {
+		t.Fatalf("注册内网路由失败: %v", err)
+	}
 
 	publicRoutes := routeSet(publicServer.Routes())
 	internalRoutes := routeSet(internalServer.Routes())
@@ -124,7 +128,9 @@ func TestRegisterHandlersAppendsRouteModules(t *testing.T) {
 			},
 		}}
 	})
-	RegisterPublicHandlers(server, svc.NewServiceContext(config.Config{}, "test-version", svc.Dependencies{}), module)
+	if err := RegisterPublicHandlers(server, svc.NewServiceContext(config.Config{}, "test-version", svc.Dependencies{}), module); err != nil {
+		t.Fatalf("注册扩展路由失败: %v", err)
+	}
 
 	routeSet := make(map[string]struct{}, len(server.Routes()))
 	for _, route := range server.Routes() {
@@ -150,8 +156,12 @@ func TestCustomRouteModuleIsPartitionedBySecurityChain(t *testing.T) {
 		}}
 	})
 	svcCtx := svc.NewServiceContext(config.Config{}, "test-version", svc.Dependencies{})
-	RegisterPublicHandlersWithModules(publicServer, svcCtx, module)
-	RegisterInternalHandlersWithModules(internalServer, svcCtx, module)
+	if err := RegisterPublicHandlersWithModules(publicServer, svcCtx, module); err != nil {
+		t.Fatalf("注册公网扩展路由失败: %v", err)
+	}
+	if err := RegisterInternalHandlersWithModules(internalServer, svcCtx, module); err != nil {
+		t.Fatalf("注册内网扩展路由失败: %v", err)
+	}
 	if _, ok := routeSet(publicServer.Routes())[http.MethodPost+" /internal/custom"]; ok {
 		t.Fatal("扩展内网路由不能注册到公网监听器")
 	}

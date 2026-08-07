@@ -62,6 +62,43 @@ func TestGetUserByIDUsesIdentityRoute(t *testing.T) {
 	}
 }
 
+// TestUserProfileRebuildWaitDelay 校验缓存观察间隔线性增长、封顶和抖动边界。
+func TestUserProfileRebuildWaitDelay(t *testing.T) {
+	// cases 覆盖每轮上下界以及非法参数归一化，防止缓存竞争路径退化为固定高频轮询。
+	cases := []struct {
+		name    string        // 当前边界场景
+		attempt int           // 第几段等待，从 1 开始
+		jitter  time.Duration // 测试注入的抖动
+		want    time.Duration // 归一化后的最终等待
+	}{
+		{name: "first lower", attempt: 1, jitter: 0, want: 50 * time.Millisecond},
+		{name: "first upper", attempt: 1, jitter: 50 * time.Millisecond, want: 100 * time.Millisecond},
+		{name: "second lower", attempt: 2, jitter: 0, want: 100 * time.Millisecond},
+		{name: "third upper", attempt: 3, jitter: 50 * time.Millisecond, want: 200 * time.Millisecond},
+		{name: "fifth lower", attempt: 5, jitter: 0, want: 250 * time.Millisecond},
+		{name: "base capped", attempt: 6, jitter: 0, want: 250 * time.Millisecond},
+		{name: "jitter capped", attempt: 6, jitter: time.Second, want: 300 * time.Millisecond},
+		{name: "invalid values", attempt: 0, jitter: -time.Second, want: 50 * time.Millisecond},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := userProfileRebuildWaitDelay(tt.attempt, tt.jitter); got != tt.want {
+				t.Fatalf("userProfileRebuildWaitDelay(%d, %v) = %v, want %v", tt.attempt, tt.jitter, got, tt.want)
+			}
+		})
+	}
+
+	var minTotal time.Duration
+	var maxTotal time.Duration
+	for attempt := 1; attempt <= userProfileRebuildWaitAttempts; attempt++ {
+		minTotal += userProfileRebuildWaitDelay(attempt, 0)
+		maxTotal += userProfileRebuildWaitDelay(attempt, userProfileRebuildWaitJitter)
+	}
+	if minTotal != 750*time.Millisecond || maxTotal != time.Second {
+		t.Fatalf("cache observation delay total = %v–%v, want 750ms–1s", minTotal, maxTotal)
+	}
+}
+
 // TestGetUserProfileCollapsesConcurrentCacheMiss 验证并发缓存未命中只执行一次身份目录和物理表回源。
 func TestGetUserProfileCollapsesConcurrentCacheMiss(t *testing.T) {
 	const (
@@ -168,6 +205,7 @@ func TestGetUserProfileCollapsesConcurrentCacheMiss(t *testing.T) {
 	}()
 
 	queryCountBeforeWait := queryCount.Load()
+	commandsBeforeWait := server.CommandCount()
 	waitErr := make(chan error, 1)
 	go func() {
 		profile, err := logic.loadUserProfile(cacheKey, userID)
@@ -195,6 +233,10 @@ func TestGetUserProfileCollapsesConcurrentCacheMiss(t *testing.T) {
 	}
 	if got := queryCount.Load(); got != queryCountBeforeWait {
 		t.Fatalf("profile query count during distributed lock contention = %d, want %d", got, queryCountBeforeWait)
+	}
+	// miniredis 的单轮冷启动锁路径最多计 4 条命令，随后最多六次 GET，测试写回再占一次 SET；上限 12 可防止恢复双重轮询。
+	if got := server.CommandCount() - commandsBeforeWait; got > 12 {
+		t.Fatalf("Redis command count during distributed lock contention = %d, want <= 12", got)
 	}
 	if err := lock.Unlock(); err != nil {
 		t.Fatalf("Unlock() error = %v", err)
