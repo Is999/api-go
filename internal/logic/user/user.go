@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math/rand/v2"
 	"time"
 
 	codes "api/common/codes"
@@ -35,10 +36,14 @@ var userProfileLoadGroup singleflight.Group
 const (
 	// userProfileRebuildLockTTL 是用户资料缓存跨进程重建锁租约。
 	userProfileRebuildLockTTL = 10 * time.Second
-	// userProfileRebuildWaitStep 是锁竞争时轮询缓存的间隔。
+	// userProfileRebuildWaitStep 是观察其它实例写回缓存的线性基础步长，首轮等待 50ms。
 	userProfileRebuildWaitStep = 50 * time.Millisecond
-	// userProfileRebuildWaitAttempts 限制等待其它实例重建的次数。
-	userProfileRebuildWaitAttempts = 20
+	// userProfileRebuildWaitMaxBaseDelay 把单轮基础等待限制在 250ms，避免缓存已经写回后长时间空等。
+	userProfileRebuildWaitMaxBaseDelay = 250 * time.Millisecond
+	// userProfileRebuildWaitJitter 把同一时刻失败的跨进程竞争者分散到 50ms 窗口。
+	userProfileRebuildWaitJitter = 50 * time.Millisecond
+	// userProfileRebuildWaitAttempts 限制为五段等待和最多六次缓存读取，纯等待总计 750ms–1s。
+	userProfileRebuildWaitAttempts = 5
 )
 
 // UserLogic 承载前台用户资料查询与缓存能力。
@@ -140,7 +145,8 @@ func (l *UserLogic) loadUserProfile(cacheKey string, userID int64) (*types.UserP
 		return l.loadUserProfileFromDB(userID)
 	}
 	var profile *types.UserProfile
-	err := redislock.WithLock(l.Ctx, l.Redis(), l.userProfileRebuildLockKey(userID), userProfileRebuildLockTTL, func(lockCtx context.Context) error {
+	// 缓存重建只抢锁一次；竞争失败后观察现有持有者的写回，避免锁重试和缓存轮询同时放大 Redis 往返。
+	err := redislock.WithLockOnce(l.Ctx, l.Redis(), l.userProfileRebuildLockKey(userID), userProfileRebuildLockTTL, func(lockCtx context.Context) error {
 		lockedLogic := NewUserLogic(lockCtx, l.Svc)
 		cached, found, err := lockedLogic.cachedUserProfile(cacheKey, userID)
 		if err != nil || found {
@@ -192,7 +198,10 @@ func (l *UserLogic) waitCachedUserProfile(cacheKey string, userID int64) (*types
 		if attempt == userProfileRebuildWaitAttempts {
 			break
 		}
-		timer := time.NewTimer(userProfileRebuildWaitStep)
+		// delay 逐轮线性增加并叠加随机抖动，限制跨实例竞争时的同步 Redis GET 峰值。
+		jitter := time.Duration(rand.Int64N(int64(userProfileRebuildWaitJitter) + 1))
+		delay := userProfileRebuildWaitDelay(attempt+1, jitter)
+		timer := time.NewTimer(delay)
 		select {
 		case <-l.Ctx.Done():
 			if !timer.Stop() {
@@ -203,6 +212,23 @@ func (l *UserLogic) waitCachedUserProfile(cacheKey string, userID int64) (*types
 		}
 	}
 	return nil, errors.Errorf("等待用户资料缓存重建超时 user_id=%d", userID)
+}
+
+// userProfileRebuildWaitDelay 计算缓存观察间隔；基础等待达到 250ms 后不再增长，抖动限制在 0–50ms。
+func userProfileRebuildWaitDelay(attempt int, jitter time.Duration) time.Duration {
+	if attempt < 1 {
+		attempt = 1
+	}
+	base := time.Duration(attempt) * userProfileRebuildWaitStep
+	if base > userProfileRebuildWaitMaxBaseDelay {
+		base = userProfileRebuildWaitMaxBaseDelay
+	}
+	if jitter < 0 {
+		jitter = 0
+	} else if jitter > userProfileRebuildWaitJitter {
+		jitter = userProfileRebuildWaitJitter
+	}
+	return base + jitter
 }
 
 // cachedUserProfile 读取用户资料缓存，并区分命中与未命中。

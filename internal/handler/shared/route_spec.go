@@ -7,6 +7,7 @@ import (
 	"api/internal/requestctx"
 	"api/internal/svc"
 
+	"github.com/Is999/go-utils/errors"
 	"github.com/zeromicro/go-zero/rest"
 )
 
@@ -51,22 +52,40 @@ type RouteSpec struct {
 	Handler       RouteHandler       // 真实 Handler 构造函数
 }
 
-// RestRoute 将路由规格转换为 go-zero 路由，并按 Chain 统一挂载安全链路。
-func (s RouteSpec) RestRoute(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware, opsMw *middleware.OpsMiddleware) rest.Route {
+// RestRoute 将路由规格转换为 go-zero 路由；规格错误返回启动错误，禁止用 panic 终止进程。
+func (s RouteSpec) RestRoute(svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware, opsMw *middleware.OpsMiddleware) (rest.Route, error) {
 	if s.Handler == nil {
-		panic("路由规格缺少 Handler: " + s.Method + " " + s.Path)
+		return rest.Route{}, errors.Errorf("路由规格缺少 Handler: %s %s", s.Method, s.Path)
+	}
+	if svcCtx == nil {
+		return rest.Route{}, errors.Errorf("路由规格缺少 ServiceContext: %s %s", s.Method, s.Path)
+	}
+	if err := s.validateSecurityBoundary(); err != nil {
+		return rest.Route{}, errors.Tag(err)
 	}
 	handler := s.Handler(svcCtx)
+	if handler == nil {
+		return rest.Route{}, errors.Errorf("路由规格构造出空 Handler: %s %s", s.Method, s.Path)
+	}
 	switch s.Chain {
 	case RouteSecurityNone:
 	case RouteSecurityPublic:
+		if authMw == nil {
+			return rest.Route{}, errors.Errorf("公开安全路由缺少 AuthMiddleware: %s %s", s.Method, s.Path)
+		}
 		handler = authMw.PublicHandle(handler, s.Meta.Alias)
 	case RouteSecurityAuth:
+		if authMw == nil {
+			return rest.Route{}, errors.Errorf("登录态路由缺少 AuthMiddleware: %s %s", s.Method, s.Path)
+		}
 		handler = authMw.Handle(handler, s.Meta.Alias)
 	case RouteSecurityInternal:
+		if opsMw == nil {
+			return rest.Route{}, errors.Errorf("内网路由缺少 OpsMiddleware: %s %s", s.Method, s.Path)
+		}
 		handler = opsMw.Handle(handler)
 	default:
-		panic("未知路由安全链路: " + string(s.Chain))
+		return rest.Route{}, errors.Errorf("未知路由安全链路: %s", s.Chain)
 	}
 	return rest.Route{
 		Method: s.Method,
@@ -80,14 +99,45 @@ func (s RouteSpec) RestRoute(svcCtx *svc.ServiceContext, authMw *middleware.Auth
 			}
 			handler(w, r)
 		},
-	}
+	}, nil
 }
 
-// AddRouteSpecs 按声明顺序注册一组路由规格。
-func AddRouteSpecs(server *rest.Server, svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware, opsMw *middleware.OpsMiddleware, specs []RouteSpec) {
+// validateSecurityBoundary 校验契约访问级别与真实中间件链一致，错误必须阻断启动而不是触发 panic。
+func (s RouteSpec) validateSecurityBoundary() error {
+	if s.Meta.Access == "" {
+		// 未声明 Meta 的外部扩展路由继续由 Chain 决定边界，保持现有注册接口兼容。
+		return nil
+	}
+	valid := false
+	switch s.Meta.Access {
+	case RouteAccessPublic:
+		valid = s.Chain == RouteSecurityNone || s.Chain == RouteSecurityPublic
+	case RouteAccessAuth:
+		valid = s.Chain == RouteSecurityAuth
+	case RouteAccessInternal:
+		valid = s.Chain == RouteSecurityInternal
+	default:
+		return errors.Errorf("未知路由访问类型: %s", s.Meta.Access)
+	}
+	if !valid {
+		return errors.Errorf("路由访问类型与安全链不一致: %s/%s", s.Meta.Access, s.Chain)
+	}
+	return nil
+}
+
+// AddRouteSpecs 按声明顺序转换并注册一组路由规格；任一规格无效时整组不写入 Server。
+func AddRouteSpecs(server *rest.Server, svcCtx *svc.ServiceContext, authMw *middleware.AuthMiddleware, opsMw *middleware.OpsMiddleware, specs []RouteSpec) error {
+	if server == nil {
+		return errors.Errorf("注册路由规格时 HTTP Server 为空")
+	}
 	routes := make([]rest.Route, 0, len(specs))
 	for _, spec := range specs {
-		routes = append(routes, spec.RestRoute(svcCtx, authMw, opsMw))
+		route, err := spec.RestRoute(svcCtx, authMw, opsMw)
+		if err != nil {
+			return errors.Tag(err)
+		}
+		routes = append(routes, route)
 	}
 	server.AddRoutes(routes)
+	return nil
 }

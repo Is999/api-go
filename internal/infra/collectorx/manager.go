@@ -54,7 +54,9 @@ type Manager struct {
 // New 创建通用收集器 Kafka 投递管理器。
 func New(cfg config.CollectorConfig) (*Manager, error) {
 	normalizeCollectorConfig(&cfg)
-	ensureMetricsRegistered()
+	if err := RegisterMetrics(); err != nil {
+		return nil, errors.Wrap(err, "注册 Collector 指标失败")
+	}
 	m := &Manager{
 		cfg:     cfg,
 		writers: make(map[string]kafkaMessageWriter),
