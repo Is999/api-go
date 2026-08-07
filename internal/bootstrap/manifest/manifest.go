@@ -36,15 +36,11 @@ func routeItems() []register.Item {
 func runtimeItems() []register.Item {
 	authSpecs := authlogic.RuntimeRegistrySpecs()
 	configSpecs := configlogic.RuntimeRegistrySpecs()
-	cacheSpecs := corelogic.RuntimeRegistrySpecs()
-	items := make([]register.Item, 0, len(authSpecs)+len(configSpecs)+len(cacheSpecs))
+	items := make([]register.Item, 0, len(authSpecs)+len(configSpecs))
 	items = append(items, itemsFromSpecs(register.KindRuntimeRegistry, authSpecs, func(spec corelogic.RuntimeRegistrySpec) register.Spec {
 		return specFromFields(spec.Name, spec.File, spec.Method, spec.Description)
 	})...)
 	items = append(items, itemsFromSpecs(register.KindRuntimeRegistry, configSpecs, func(spec corelogic.RuntimeRegistrySpec) register.Spec {
-		return specFromFields(spec.Name, spec.File, spec.Method, spec.Description)
-	})...)
-	items = append(items, itemsFromSpecs(register.KindRuntimeRegistry, cacheSpecs, func(spec corelogic.RuntimeRegistrySpec) register.Spec {
 		return specFromFields(spec.Name, spec.File, spec.Method, spec.Description)
 	})...)
 	return items

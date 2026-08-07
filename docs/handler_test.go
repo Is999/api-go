@@ -43,6 +43,21 @@ func TestHandlerUsesEmbeddedDocsWithPartialWorkingTree(t *testing.T) {
 	}
 }
 
+// TestHandlerServesDocsHomepage 校验内网文档根路径返回任务导航首页，而不是某一篇接口详情。
+func TestHandlerServesDocsHomepage(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	Handler()(recorder, httptest.NewRequest(http.MethodGet, "/internal/docs", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("http status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	for _, text := range []string{"API 文档中心", "按任务开始", "服务职责"} {
+		if !strings.Contains(recorder.Body.String(), text) {
+			t.Fatalf("homepage missing %q", text)
+		}
+	}
+}
+
 // TestHandlerServesSidebar 校验文档站侧边栏由 API 项目自身提供。
 func TestHandlerServesSidebar(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/internal/docs/_sidebar.md", nil)
@@ -53,7 +68,7 @@ func TestHandlerServesSidebar(t *testing.T) {
 		t.Fatalf("http status = %d, want %d", recorder.Code, http.StatusOK)
 	}
 	body := recorder.Body.String()
-	for _, text := range []string{"前台 API 文档", "接口文档", "角色文档", "AI开发规范"} {
+	for _, text := range []string{"文档首页", "前台 API 文档", "接口文档", "开发文档", "AI 开发规范"} {
 		if !strings.Contains(body, text) {
 			t.Fatalf("sidebar missing %q", text)
 		}
@@ -69,7 +84,8 @@ func TestHandlerServesRoleDocs(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("http status = %d, want %d", recorder.Code, http.StatusOK)
 	}
-	if !strings.Contains(recorder.Body.String(), "AI开发规范") {
+	if !strings.Contains(recorder.Body.String(), "AI 开发规范") ||
+		!strings.Contains(recorder.Body.String(), "api-go") {
 		t.Fatal("response should contain role document content")
 	}
 }

@@ -6,3 +6,6 @@ dist/
 *.log
 etc/config.yaml
 /bin/
+
+# 本地运行数据与 DBA/运维 SQL 交付包；增量 SQL 使用 data/sql-changes/，禁止提交。
+/data/
