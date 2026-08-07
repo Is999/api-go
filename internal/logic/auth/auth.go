@@ -45,8 +45,9 @@ const (
 
 // 前台用户会话保护边界。
 const (
-	maxUserSessions            = 8               // 单个用户最多保留的有效会话数，超出时原子淘汰最早过期会话
-	registrationCleanupTimeout = 3 * time.Second // 注册事务失败后的 Redis 补偿超时
+	maxUserSessions                = 8               // 单个用户最多保留的有效会话数，超出时原子淘汰最早过期会话
+	authRuntimeCleanupTimeout      = 3 * time.Second // 数据库提交失败后清理 Redis 会话与资料缓存的独立超时
+	registrationSessionWaitTimeout = 2 * time.Second // 注册事务等待 Redis 创建会话的上限，避免异常依赖长期占用数据库连接
 )
 
 // 认证与会话内部错误哨兵。
@@ -141,7 +142,9 @@ func (l *AuthLogic) Register(req *types.RegisterReq) *types.BizResult {
 			return errors.Tag(err)
 		}
 		sessionAttempted = true
-		created, sessionErr = l.createSession(user)
+		sessionCtx, cancel := context.WithTimeout(l.Ctx, registrationSessionWaitTimeout)
+		created, sessionErr = NewAuthLogic(sessionCtx, l.Svc).createSession(user)
+		cancel()
 		return errors.Tag(sessionErr)
 	})
 	if err != nil {
@@ -235,19 +238,23 @@ func (l *AuthLogic) Login(req *types.LoginReq) *types.BizResult {
 			WithError(errors.Errorf("AuthLogic.Login 用户[%s]已禁用", user.Username))
 	}
 	now := time.Now()
+	user.LastLoginAt = now
+	user.LastLoginIP = l.ClientIP()
+	user.UpdatedAt = now
+	// Redis 会话先于最后登录信息提交；会话创建失败时数据库保持原值，不记录一次未完成的登录。
+	created, err := l.createSession(user)
+	if err != nil {
+		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Login 创建用户[%s]会话失败", user.Username).ToBizResult()
+	}
 	if err = model.UpdateUser(l.Svc.WriteDB(svc.DatabaseMain), user.ID, map[string]any{
 		"last_login_at": now,
 		"last_login_ip": l.ClientIP(),
 		"updated_at":    now,
 	}, cfg.User.RouteShardCount); err != nil {
+		if cleanupErr := l.discardCreatedLoginRuntimeState(user.ID, created.SessionID); cleanupErr != nil {
+			err = errors.Wrapf(err, "更新最后登录信息失败且清理本次会话失败 cleanup_error=%v", cleanupErr)
+		}
 		return types.DBError(i18n.MsgKeyDBError, err, "AuthLogic.Login 更新用户[%s]登录信息", user.Username).ToBizResult()
-	}
-	user.LastLoginAt = now
-	user.LastLoginIP = l.ClientIP()
-	user.UpdatedAt = now
-	created, err := l.createSession(user)
-	if err != nil {
-		return types.ServerError(i18n.MsgKeyInternalError, err, "AuthLogic.Login 创建用户[%s]会话失败", user.Username).ToBizResult()
 	}
 	l.clearAuthRateLimit(authRateLimitActionLoginIP, l.ClientIP())
 	l.clearAuthRateLimit(authRateLimitActionLoginIdentity, identitySubject)
@@ -491,12 +498,28 @@ func (l *AuthLogic) deleteUserSession(userID int64, sessionID string) error {
 	return errors.Tag(err)
 }
 
+// discardCreatedLoginRuntimeState 按 sid 清理数据库提交失败前创建的会话，并删除含未提交资料的共享缓存。
+func (l *AuthLogic) discardCreatedLoginRuntimeState(userID int64, sessionID string) error {
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), authRuntimeCleanupTimeout)
+	defer cancel()
+	cleanupLogic := NewAuthLogic(cleanupCtx, l.Svc)
+	sessionErr := cleanupLogic.deleteUserSession(userID, sessionID)
+	profileErr := userlogic.NewUserLogic(cleanupCtx, l.Svc).DeleteUserProfileCache(userID)
+	if sessionErr != nil && profileErr != nil {
+		return errors.Wrapf(sessionErr, "清理用户资料缓存失败 profile_error=%v", profileErr)
+	}
+	if sessionErr != nil {
+		return errors.Tag(sessionErr)
+	}
+	return errors.Tag(profileErr)
+}
+
 // discardRegistrationRuntimeState 使用独立超时上下文清理注册回滚后的会话和资料缓存。
 func (l *AuthLogic) discardRegistrationRuntimeState(userID int64) error {
 	if userID <= 0 || l.Redis() == nil {
 		return nil
 	}
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), registrationCleanupTimeout)
+	cleanupCtx, cancel := context.WithTimeout(context.Background(), authRuntimeCleanupTimeout)
 	defer cancel()
 	sessionErr := l.Redis().Del(cleanupCtx, keys.UserSessionKeys(userID)...).Err()
 	profileErr := userlogic.NewUserLogic(cleanupCtx, l.Svc).DeleteUserProfileCache(userID)
