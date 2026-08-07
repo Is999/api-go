@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	internalDocsPathPrefix  = "/internal/docs"    // API 内网文档资源路由前缀
-	internalDocsDefaultPath = "接口文档/前台系统/系统接口.md" // 直接访问入口时返回的默认文档
-	docsPageCacheHeader     = "no-cache"          // Markdown 文档不做强缓存
+	internalDocsPathPrefix  = "/internal/docs" // API 内网文档资源路由前缀
+	internalDocsDefaultPath = "文档首页.md"        // 直接访问入口时返回的文档中心首页
+	docsPageCacheHeader     = "no-cache"       // Markdown 文档不做强缓存
 )
 
 // Handler 返回 API 内网文档资源处理器；调用方仍需在路由层挂 OpsMiddleware。
@@ -78,6 +78,9 @@ func hasDocsPathTraversal(requestPath string) bool {
 func allowedInternalDocsAsset(docsPath string) bool {
 	docsPath = strings.Trim(strings.TrimSpace(docsPath), "/")
 	if docsPath == "_sidebar.md" {
+		return true
+	}
+	if docsPath == internalDocsDefaultPath {
 		return true
 	}
 	if !strings.HasSuffix(docsPath, ".md") {

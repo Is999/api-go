@@ -17,10 +17,15 @@ MaxBytes: 10485760
 
 # 内网接口独立监听器；生产跨主机调用必须改为明确私网 IP 并配置 mTLS。
 internal_server:
+  # 内网路由监听 IP；仅接受明确的回环、私网或非生产通配 IP，生产禁止通配地址，变更后必须重启。
   host: "127.0.0.1"
+  # 内网路由监听端口，取值 1-65535 且不能与公网 Port 相同，变更后必须重启。
   port: 8891
+  # mTLS 服务端证书文件；与 key_file、client_ca_file 同时为空或同时配置，生产跨主机监听必须配置，变更后必须重启。
   cert_file: ""
+  # mTLS 服务端私钥文件；必须与 cert_file、client_ca_file 成组配置，文件内容不得写入 YAML 或日志，变更后必须重启。
   key_file: ""
+  # mTLS 客户端 CA 文件；配置后内网监听器强制校验客户端证书，必须与 cert_file、key_file 成组配置，变更后必须重启。
   client_ca_file: ""
 
 # 站点/应用 ID，用于 Redis Key 命名空间。
@@ -98,7 +103,7 @@ config_files:
 auth:
   # 是否开放注册接口，生产环境默认关闭。
   register_enabled: false
-  # JWT issuer。
+  # JWT iss 签发方；空值回退顶层 name，签发与验签必须一致，修改后重启进程。
   issuer: "api"
   # Redis 会话 TTL；<=0 或超过 jwt_expires_in 时使用 jwt_expires_in。
   session_ttl_seconds: 86400
@@ -270,6 +275,9 @@ redis:
   # Redis 节点地址列表；单机填 1 个，集群可填多个。
   addrs:
     - "127.0.0.1:6379"
+  # Redis Cluster 地址改写示例；key 为唯一的节点公告主机名，value 为当前进程可达主机/IP，条目顺序无意义；空表不改写，仅 cluster 模式允许配置，修改后必须重启。
+  # addr_map:
+  #   redis-cluster-7001: "127.0.0.1"
   # Redis 认证密码；无密码可留空。
   password: ""
   # Redis DB 编号；Cluster 模式通常固定为 0。
