@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"api/common/idgen"
 	"api/internal/bootstrap/appalert"
 	"api/internal/bootstrap/hotreload"
 	"api/internal/bootstrap/register"
@@ -41,6 +42,10 @@ func New(ctx context.Context, c config.Config, version string) (*App, error) {
 	runtimeAlerts, err := newRuntimeAlertSink(c)
 	if err != nil {
 		return nil, errors.Tag(err)
+	}
+	if err := idgen.RegisterMetrics(); err != nil {
+		runtimeAlerts.notify(context.Background(), appalert.LifecycleFailure("start", "metrics_registry", err))
+		return nil, errors.Wrap(err, "注册 ID 生成指标失败")
 	}
 	svcCtx, shutdown, err := BuildServiceContext(ctx, c, version)
 	if err != nil {
@@ -86,8 +91,22 @@ func New(ctx context.Context, c config.Config, version string) (*App, error) {
 	}
 	svcCtx.ConfigReload = app
 	app.bindCollectorRuntimeAlerts()
-	handler.RegisterPublicHandlersWithModules(server, svcCtx, routeModules...)
-	handler.RegisterInternalHandlersWithModules(internalServer, svcCtx, routeModules...)
+	if err := handler.RegisterPublicHandlersWithModules(server, svcCtx, routeModules...); err != nil {
+		runtimeAlerts.notify(context.Background(), appalert.LifecycleFailure("start", "route_registry", err))
+		_ = bootstrapresources.CloseServiceContextResources(ctx, svcCtx)
+		if shutdown != nil {
+			_ = shutdown(context.Background())
+		}
+		return nil, errors.Wrap(err, "注册公网 HTTP 路由失败")
+	}
+	if err := handler.RegisterInternalHandlersWithModules(internalServer, svcCtx, routeModules...); err != nil {
+		runtimeAlerts.notify(context.Background(), appalert.LifecycleFailure("start", "route_registry", err))
+		_ = bootstrapresources.CloseServiceContextResources(ctx, svcCtx)
+		if shutdown != nil {
+			_ = shutdown(context.Background())
+		}
+		return nil, errors.Wrap(err, "注册内网 HTTP 路由失败")
+	}
 	return app, nil
 }
 

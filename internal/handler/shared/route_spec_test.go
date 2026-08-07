@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"api/internal/config"
 	"api/internal/requestctx"
 	"api/internal/svc"
 )
@@ -39,9 +40,31 @@ func TestRouteSpecRestRouteWritesRequestMeta(t *testing.T) {
 		},
 	}
 
-	route := spec.RestRoute(nil, nil, nil)
+	service := svc.NewServiceContext(config.Config{}, "test-version", svc.Dependencies{})
+	route, err := spec.RestRoute(service, nil, nil)
+	if err != nil {
+		t.Fatalf("RestRoute() error = %v", err)
+	}
 	route.Handler(httptest.NewRecorder(), req)
 	if !called {
 		t.Fatal("期望执行路由 handler")
+	}
+}
+
+// TestRouteSpecRestRouteRejectsSecurityBoundaryDrift 确保内网契约与安全链不一致时返回启动错误，不触发 panic。
+func TestRouteSpecRestRouteRejectsSecurityBoundaryDrift(t *testing.T) {
+	spec := RouteSpec{
+		Method: http.MethodPost,
+		Path:   "/internal/config-reload",
+		Meta:   SystemConfigReloadRun,
+		Chain:  RouteSecurityNone,
+		Handler: func(*svc.ServiceContext) http.HandlerFunc {
+			return func(http.ResponseWriter, *http.Request) {}
+		},
+	}
+
+	service := svc.NewServiceContext(config.Config{}, "test-version", svc.Dependencies{})
+	if _, err := spec.RestRoute(service, nil, nil); err == nil {
+		t.Fatal("路由访问类型与安全链不一致时必须返回启动错误")
 	}
 }
