@@ -7,6 +7,13 @@ import (
 	codes "api/common/codes"
 )
 
+// TestValidateCatalog 确保发布物内嵌的全部语言资产可在应用启动前完成解析和注册。
+func TestValidateCatalog(t *testing.T) {
+	if err := ValidateCatalog(); err != nil {
+		t.Fatalf("ValidateCatalog() error = %v", err)
+	}
+}
+
 // TestMessageByCodeUsesLocale 验证业务码按语言返回对应文案。
 func TestMessageByCodeUsesLocale(t *testing.T) {
 	if got := MessageByCode(codes.TokenExpired, LocaleENUS); !strings.Contains(strings.ToLower(got), "expired") {

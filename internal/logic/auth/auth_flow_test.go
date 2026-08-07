@@ -137,6 +137,112 @@ func TestRegisterRollsBackDatabaseWhenSessionCreationFails(t *testing.T) {
 	}
 }
 
+// TestLoginKeepsDatabaseStateWhenSessionCreationFails 确保 Redis 不可用时不会把未完成的登录写成最后登录记录。
+func TestLoginKeepsDatabaseStateWhenSessionCreationFails(t *testing.T) {
+	svcCtx, _, _ := newAuthFlowTestService(t)
+	registerResp := requireAuthTokenResp(t, NewAuthLogic(authFlowContext(
+		AuthEventActionRegisterSuccess,
+		string(routealias.AuthRegister),
+		http.MethodPost,
+		"/api/auth/register",
+		"10.0.0.8",
+	), svcCtx).Register(&types.RegisterReq{
+		Username: "session_failure_user",
+		Password: "P@ssw0rd!",
+	}), codes.CreateSuccess)
+	cfg := svcCtx.CurrentConfig()
+	before, err := model.FindUserByIdentity(
+		svcCtx.WriteDB(svc.DatabaseMain),
+		model.UserIdentityTypeUsername,
+		model.UserIdentityProviderLocal,
+		"session_failure_user",
+		cfg.AppKey,
+		cfg.User.RouteShardCount,
+	)
+	if err != nil || before == nil {
+		t.Fatalf("FindUserByIdentity(before) user=%+v error=%v", before, err)
+	}
+	if before.ID != registerResp.User.ID {
+		t.Fatalf("registered user id=%d, database user id=%d", registerResp.User.ID, before.ID)
+	}
+
+	svcCtx.Rds = nil
+	result := NewAuthLogic(authFlowContext(
+		AuthEventActionLoginSuccess,
+		string(routealias.AuthLogin),
+		http.MethodPost,
+		"/api/auth/login",
+		"10.0.0.9",
+	), svcCtx).Login(&types.LoginReq{
+		IdentityType:  types.LoginIdentityTypeUsername,
+		IdentityValue: "session_failure_user",
+		Password:      "P@ssw0rd!",
+	})
+	if result == nil || result.Code != codes.ServerError {
+		t.Fatalf("Login() = %+v, want server error", result)
+	}
+	after, err := model.FindUserByIdentity(
+		svcCtx.WriteDB(svc.DatabaseMain),
+		model.UserIdentityTypeUsername,
+		model.UserIdentityProviderLocal,
+		"session_failure_user",
+		cfg.AppKey,
+		cfg.User.RouteShardCount,
+	)
+	if err != nil || after == nil {
+		t.Fatalf("FindUserByIdentity(after) user=%+v error=%v", after, err)
+	}
+	if after.LastLoginIP != before.LastLoginIP || !after.LastLoginAt.Equal(before.LastLoginAt) {
+		t.Fatalf("last login changed after session failure: before=(%s,%s) after=(%s,%s)",
+			before.LastLoginIP, before.LastLoginAt, after.LastLoginIP, after.LastLoginAt)
+	}
+}
+
+// TestLoginRemovesCreatedSessionWhenDatabaseUpdateFails 确保最后登录信息提交失败不会遗留未返回给客户端的新会话。
+func TestLoginRemovesCreatedSessionWhenDatabaseUpdateFails(t *testing.T) {
+	svcCtx, rds, _ := newAuthFlowTestService(t)
+	registerResp := requireAuthTokenResp(t, NewAuthLogic(authFlowContext(
+		AuthEventActionRegisterSuccess,
+		string(routealias.AuthRegister),
+		http.MethodPost,
+		"/api/auth/register",
+		"10.0.0.8",
+	), svcCtx).Register(&types.RegisterReq{
+		Username: "database_failure_user",
+		Password: "P@ssw0rd!",
+	}), codes.CreateSuccess)
+	registerSID := requireSessionToken(t, svcCtx, rds, registerResp.User.ID, registerResp.Token)
+
+	db := svcCtx.WriteDB(svc.DatabaseMain)
+	const callbackName = "test:reject_login_last_login_update"
+	if err := db.Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
+		if tx.Statement.Table == model.TableNameUser {
+			tx.AddError(fmt.Errorf("injected last login update failure"))
+		}
+	}); err != nil {
+		t.Fatalf("register update callback: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = db.Callback().Update().Remove(callbackName)
+	})
+
+	result := NewAuthLogic(authFlowContext(
+		AuthEventActionLoginSuccess,
+		string(routealias.AuthLogin),
+		http.MethodPost,
+		"/api/auth/login",
+		"10.0.0.9",
+	), svcCtx).Login(&types.LoginReq{
+		IdentityType:  types.LoginIdentityTypeUsername,
+		IdentityValue: "database_failure_user",
+		Password:      "P@ssw0rd!",
+	})
+	if result == nil || result.Code != codes.DBError {
+		t.Fatalf("Login() = %+v, want database error", result)
+	}
+	requireSessionIndexMembers(t, rds, registerResp.User.ID, []string{registerSID})
+}
+
 // TestRuntimeSyncRequiresCommittedAuthVersion 确保内网会话失效只接受主库已提交的新认证版本。
 func TestRuntimeSyncRequiresCommittedAuthVersion(t *testing.T) {
 	svcCtx, rds, _ := newAuthFlowTestService(t)

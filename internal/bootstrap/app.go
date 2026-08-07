@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	i18n "api/common/i18n"
 	"api/common/idgen"
 	"api/internal/bootstrap/appalert"
 	"api/internal/bootstrap/hotreload"
@@ -35,10 +36,15 @@ type App struct {
 	shutdown       func(context.Context) error // tracing 等基础设施关闭钩子
 	hotReload      hotreload.State             // 配置热加载运行态资源
 	runtimeAlerts  *runtimeAlertSink           // API 运行异常 Lark 告警发送器
+	publicHTTP     *httpServerRun              // 公网监听器运行态，用于启动探测和局部失败关闭
+	internalHTTP   *httpServerRun              // 内网监听器运行态，用于启动探测和局部失败关闭
 }
 
 // New 负责把依赖装配与 HTTP 服务注册串起来。
 func New(ctx context.Context, c config.Config, version string) (*App, error) {
+	if err := i18n.ValidateCatalog(); err != nil {
+		return nil, errors.Wrap(err, "校验内嵌多语言资产失败")
+	}
 	runtimeAlerts, err := newRuntimeAlertSink(c)
 	if err != nil {
 		return nil, errors.Tag(err)
@@ -88,6 +94,8 @@ func New(ctx context.Context, c config.Config, version string) (*App, error) {
 		ServiceContext: svcCtx,
 		shutdown:       shutdown,
 		runtimeAlerts:  runtimeAlerts,
+		publicHTTP:     newHTTPServerRun("公网", c.Host, c.Port, server),
+		internalHTTP:   newHTTPServerRun("内网", c.InternalServer.Host, c.InternalServer.Port, internalServer),
 	}
 	svcCtx.ConfigReload = app
 	app.bindCollectorRuntimeAlerts()
@@ -121,25 +129,18 @@ func (a *App) Start() error {
 	}
 	a.startConfigHotReload()
 	cfg := a.ServiceContext.CurrentConfig()
-	loggerx.Infow(context.Background(), "应用 服务已启动",
+	loggerx.Infow(context.Background(), "应用 HTTP 服务开始监听",
 		logx.Field("service", cfg.Name),
 		logx.Field("host", fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)),
 		logx.Field("internal_host", fmt.Sprintf("%s:%d", cfg.InternalServer.Host, cfg.InternalServer.Port)),
 		logx.Field("mode", cfg.Mode),
 		logx.Field("version", a.ServiceContext.CurrentVersion()),
 	)
-	go startHTTPServer(a.InternalServer, httpDrainTimeout)
-	startHTTPServer(a.Server, httpDrainTimeout)
-	return nil
-}
-
-// startHTTPServer 启动 HTTP 服务，并为框架的无期限请求排空增加上限。
-func startHTTPServer(server *rest.Server, drainTimeout time.Duration) {
-	drainDone := make(chan struct{})
-	defer close(drainDone)
-	server.StartWithOpts(func(httpServer *http.Server) {
-		limitHTTPDrain(httpServer, drainTimeout, drainDone)
-	})
+	err := runHTTPServers([]*httpServerRun{a.internalHTTP, a.publicHTTP}, httpDrainTimeout)
+	if err != nil {
+		a.notifyLifecycleFailure(context.Background(), "start", "http_server", err)
+	}
+	return errors.Tag(err)
 }
 
 // limitHTTPDrain 到期后关闭仍未结束的连接，确保后续资源关闭可以继续执行。
@@ -166,17 +167,18 @@ func (a *App) Stop(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	if a.Server != nil {
-		a.Server.Stop()
-	}
-	if a.InternalServer != nil {
-		a.InternalServer.Stop()
-	}
 	var firstErr error
 	recordErr := func(err error) {
 		if err != nil && firstErr == nil {
 			firstErr = errors.Tag(err)
 		}
+	}
+	recordErr(shutdownHTTPServers(ctx, a.publicHTTP, a.internalHTTP))
+	if a.Server != nil {
+		a.Server.Stop()
+	}
+	if a.InternalServer != nil {
+		a.InternalServer.Stop()
 	}
 	recordErr(a.stopConfigHotReload(ctx))
 	recordErr(bootstrapresources.CloseServiceContextResources(ctx, a.ServiceContext))
