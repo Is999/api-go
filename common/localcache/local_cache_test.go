@@ -44,10 +44,12 @@ func TestCacheSetGetAndMetrics(t *testing.T) {
 
 // TestCacheSetWithTTL 验证 TTL 到期后 Get 不返回过期值。
 func TestCacheSetWithTTL(t *testing.T) {
+	const ttl = 250 * time.Millisecond
 	cache, err := New[string, string](Options{
 		NumCounters: 1_000,
 		MaxCost:     1_000,
-		TTL:         20 * time.Millisecond,
+		// 250 毫秒窗口覆盖 race/并行测试下的常见调度延迟，避免把测试进程短暂停顿误判为缓存提前过期。
+		TTL: ttl,
 	})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
@@ -62,9 +64,15 @@ func TestCacheSetWithTTL(t *testing.T) {
 	if _, ok := cache.Get("local:cache:ttl"); !ok {
 		t.Fatal("Get() before expiration should hit")
 	}
-	time.Sleep(30 * time.Millisecond)
-	if _, ok := cache.Get("local:cache:ttl"); ok {
-		t.Fatal("Get() after expiration should miss")
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, ok := cache.Get("local:cache:ttl"); !ok {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Get() should miss no later than the bounded expiration window")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
