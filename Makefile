@@ -11,7 +11,7 @@ PROMTOOL_IMAGE ?= prom/prometheus:v2.55.1
 PROMETHEUS_RULES := $(wildcard docs/prometheus/*.yml)
 PROMETHEUS_RULES_IN_CONTAINER := $(patsubst docs/prometheus/%,/rules/%,$(PROMETHEUS_RULES))
 GOVULNCHECK_VERSION ?= v1.6.0
-GO_TOOLCHAIN ?= go1.26.5
+GO_TOOLCHAIN ?= go1.26.6
 
 .PHONY: fmt fmt-check test test-race vet build build-tools package check ci diff-check branch-drift-check secret-scan promtool-check govulncheck security-scan integration-env-up integration-env-down integration-test migrate-status migrate-dry-run migrate-up clean
 
