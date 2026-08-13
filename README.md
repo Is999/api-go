@@ -36,7 +36,7 @@ API 不承载管理员后台、任务队列、Scheduler、运营工作流或大�
 
 ## 技术栈
 
-- Go `1.26.5`、go-zero HTTP 框架。
+- Go `1.26.6`、go-zero HTTP 框架。
 - GORM + MySQL，支持主从读写路由和站点扩展库。
 - go-redis，支持单机、Cluster 和 redsync 分布式锁。
 - JWT + Redis session 登录态。
@@ -150,7 +150,7 @@ API 不直接向浏览器公开文档站。Admin 通过内网 `/internal/docs` �
 
 ### 1. 准备依赖
 
-必需依赖为 Go `1.26.5`、MySQL 和 Redis；Collector、OTLP 等依赖按启用能力准备。
+必需依赖为 Go `1.26.6`、MySQL 和 Redis；Collector、OTLP 等依赖按启用能力准备。
 
 ```bash
 cp etc/config.dnmp.sample.yaml etc/config.yaml
